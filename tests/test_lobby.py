@@ -30,15 +30,16 @@ def test_lanes_assigned_in_order():
     [SPECS[0], {"name": "Two", "kind": "in_person"}],      # two in-person
     [SPECS[0], {"name": "", "kind": "remote"}],            # no name
     [SPECS[0], {"name": "Bot", "kind": "robot"}],          # bad kind
+    [SPECS[0], {"name": "Bot", "kind": "ai"}],             # AI seats are out for v1
 ])
 def test_bad_rosters_rejected(specs):
     with pytest.raises(EngineError):
         new_game("g", specs)
 
 
-def test_grandma_and_ai_ready_kids_not():
-    s = new_game("g", [SPECS[0], {"name": "Bot", "kind": "ai"}, SPECS[1]])
-    assert [p.connected for p in s.players] == [True, True, False]
+def test_grandma_ready_kids_not():
+    s = new_game("g", SPECS)
+    assert [p.connected for p in s.players] == [True, False, False]
 
 
 def test_start_waits_for_every_remote_seat():
@@ -89,6 +90,8 @@ def test_unknown_and_future_actions_rejected():
     with pytest.raises(EngineError, match="unknown"):
         apply_action(s, SYSTEM, {"action": "teleport"})
     with pytest.raises(EngineError, match="isn't implemented"):
+        apply_action(s, SYSTEM, {"action": "card", "id": "spell_01"})
+    with pytest.raises(EngineError, match="hasn't started"):
         apply_action(s, "p2", {"action": "roll"})
 
 

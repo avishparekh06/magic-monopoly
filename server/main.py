@@ -42,7 +42,7 @@ def lan_ip() -> str:
 
 class PlayerSpec(BaseModel):
     name: str
-    kind: str  # "in_person" | "remote" | "ai"
+    kind: str  # "in_person" | "remote"
 
 
 class CreateGame(BaseModel):

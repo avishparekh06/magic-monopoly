@@ -162,3 +162,35 @@ def test_dev_panel_reaches_engine_via_adapter(client, game):
 def test_lan_base(client):
     base = client.get("/api/lan").json()["base"]
     assert base.startswith("http://") and "localhost" not in base
+
+
+def test_kid_turn_end_to_end_through_stub_bridge(client, game):
+    """Roll -> stub bridge reports move_done -> offer -> Buy -> paid; Grandma's tap via dev panel."""
+    gid = game["game_id"]
+    with client.websocket_connect(f"/ws/{gid}?role=board") as board, \
+         client.websocket_connect(f"/ws/{gid}?seat={seat_token(game, 'p2')}") as maya, \
+         client.websocket_connect(f"/ws/{gid}?seat={seat_token(game, 'p3')}") as leo:
+        recv_until(leo, is_state)
+        board.send_json({"action": "start"})
+        recv_until(maya, lambda m: m["type"] == "turn_started")
+
+        # Grandma's turn: camera reads 6 -> she lands on Gingerbread House.
+        board.send_json({"source": "vision", "type": "dice", "value": 6})
+        offer = recv_until(board, lambda m: m["type"] == "offer")
+        assert offer["square"] == 6
+        board.send_json({"source": "voice", "text": "yes please"})
+        recv_until(board, lambda m: m["type"] == "payment_requested")
+        board.send_json({"source": "vision", "type": "player_card", "player": "p2"})
+        assert "Maya's card" in recv_until(board, lambda m: m["type"] == "error")["message"]
+        board.send_json({"source": "vision", "type": "player_card", "player": "p1"})
+        line = recv_until(board, lambda m: m["type"] == "mirror" and "bought" in m["text"])
+        assert "you now have 1400" in line["text"]
+
+        # Maya's turn: Roll button, engine rolls, stub bridge finishes the move.
+        recv_until(maya, lambda m: m["type"] == "turn_started" and m["player"] == "p2")
+        maya.send_json({"player": "p2", "action": "roll"})
+        recv_until(maya, lambda m: m["type"] == "move")
+        st = recv_until(maya, lambda m: is_state(m) and m["state"]["phase"] != "MOVING"
+                        and m["state"]["phase"] != "WAITING_FOR_ROLL")
+        pos = next(p for p in st["state"]["players"] if p["id"] == "p2")["position"]
+        assert pos == st["state"]["last_roll"]

@@ -75,7 +75,7 @@ export function createBoardView(el, boardData) {
     const cell = cells[t.shown];
     const w = cell.offsetWidth, h = cell.offsetHeight;
     const size = Math.min(w, h) * 0.42;
-    const x = cell.offsetLeft + w * (0.2 + 0.3 * (t.lane - 1)) - size / 2;
+    const x = cell.offsetLeft + w * (0.23 + 0.27 * (t.lane - 1)) - size / 2;
     const y = cell.offsetTop + h * 0.74 - size / 2;  // low in the square, under the name
     t.el.style.transition = animate ? `left ${STEP_MS - 20}ms ease-in-out, top ${STEP_MS - 20}ms ease-in-out` : "none";
     Object.assign(t.el.style, { left: `${x}px`, top: `${y}px`, width: `${size}px`, height: `${size}px`, fontSize: `${size * 0.5}px` });
@@ -114,7 +114,10 @@ export function createBoardView(el, boardData) {
         place(t, false);
       }
       t.el.hidden = p.bankrupt;
-      t.target = p.position;
+      // While the motor is moving this token, walk toward where it's going so
+      // the screen moves together with the real board (not after move_done).
+      const move = state.pending?.kind === "move" && state.pending.player === p.id ? state.pending : null;
+      t.target = move ? move.to : p.position;
       if (t.shown !== t.target) walk(t);
     }
   }
@@ -183,4 +186,33 @@ function injectStyles() {
   const style = document.createElement("style");
   style.textContent = css;
   document.head.append(style);
+}
+
+// One sentence describing what the game is waiting for, from `viewer`'s
+// point of view ("board" for the laptop, or a player id for a kid's phone).
+export function statusText(state, boardData, viewer) {
+  const name = (pid) => state.players.find((p) => p.id === pid)?.name ?? "the bank";
+  const cur = state.players.find((p) => p.id === state.current_player);
+  const pend = state.pending;
+  const place = (i) => boardData.squares[i].name;
+  switch (state.phase) {
+    case "LOBBY": return "";
+    case "WAITING_FOR_ROLL":
+      if (cur.kind === "in_person") return `${cur.name}, roll the dice into the tray`;
+      return viewer === cur.id ? "Tap Roll!" : `Waiting for ${cur.name} to roll`;
+    case "MOVING": return `${name(pend.player)} is on the move to ${place(pend.to)}…`;
+    case "WAITING_FOR_DECISION": {
+      const who = state.players.find((p) => p.id === pend.player);
+      if (viewer === who.id) return `Buy ${place(pend.square)} for 🪙${pend.price}?`;
+      if (who.kind === "in_person") return `${who.name}, buy ${place(pend.square)} for 🪙${pend.price}? Say yes or no`;
+      return `${who.name} is deciding about ${place(pend.square)}`;
+    }
+    case "WAITING_FOR_PAYMENT": {
+      const what = pend.reason === "buy" ? `for ${place(pend.square)}` : `to ${name(pend.payee)}`;
+      return `${name(pend.payer)}, tap your card to pay 🪙${pend.amount} ${what}`;
+    }
+    case "WAITING_FOR_CARD": return `${state.players[0].name}, please draw a card`;
+    case "GAME_OVER": return `${name(state.winner)} wins the kingdom! 👑`;
+    default: return "";
+  }
 }

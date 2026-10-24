@@ -77,8 +77,16 @@
           <button class="btn small secondary" data-act="hear">Hear</button>
         </div>
 
+        <h4>Payment fallback</h4>
+        <div class="row">
+          <button class="btn small secondary" data-act="confirm-pay">Confirm payment (card not read)</button>
+        </div>
+
         <h4>Motors</h4>
-        <p class="muted" style="margin: 0">In sim mode moves finish by themselves after ~1 s.</p>
+        <p class="muted" style="margin: 0 0 8px">In sim mode moves finish by themselves after ~1 s.</p>
+        <div class="row">
+          <button class="btn small secondary" data-act="retry-move">Retry stuck move</button>
+        </div>
 
         <h4>Raw messages</h4>
         <pre id="raw"></pre>
@@ -88,7 +96,7 @@
 
 <script type="module">
 import { connect, toast, h, tokenDot } from "/static/net.js";
-import { loadBoard, createBoardView } from "/static/board.js";
+import { loadBoard, createBoardView, statusText } from "/static/board.js";
 
 const gameId = location.pathname.split("/")[2];
 const boardData = await loadBoard();
@@ -141,21 +149,8 @@ const net = connect(`/ws/${gameId}?role=board`, {
 });
 
 // ---- rendering ------------------------------------------------------------
-const PHASE_TEXT = {
-  WAITING_FOR_ROLL: (p) => p.kind === "in_person" ? `${p.name}, roll the dice into the tray` : `${p.name}'s turn to roll`,
-  MOVING: (p) => `${p.name} is on the move…`,
-  RESOLVING: () => "The Mirror is thinking…",
-  WAITING_FOR_DECISION: (p) => `Waiting for ${p.name} to decide`,
-  WAITING_FOR_PAYMENT: () => "Waiting for payment",
-  WAITING_FOR_CARD: () => "Grandma, please draw a card",
-  END_OF_TURN: (p) => `End of ${p.name}'s turn`,
-  GAME_OVER: () => "The tale is told!",
-};
-
 function render() {
   board.render(state);
-  const current = state.players.find((p) => p.id === state.current_player);
-
   // Board center
   const c = board.center;
   if (state.phase === "LOBBY") {
@@ -168,8 +163,8 @@ function render() {
     const roll = state.last_roll;
     c.replaceChildren(
       h("div", { class: "center-title" }, "🪞 Magic Mirror"),
-      roll ? h("div", { class: "dice" }, `🎲 ${roll}`) : "",
-      h("div", { class: "center-phase" }, (PHASE_TEXT[state.phase] || (() => state.phase))(current)));
+      roll ? h("div", { class: "dice" }, state.last_dice ? `🎲 ${state.last_dice.join(" + ")} = ${roll}` : `🎲 ${roll}`) : "",
+      h("div", { class: "center-phase" }, statusText(state, boardData, "board")));
   }
 
   // Players
@@ -211,6 +206,8 @@ const ACTS = {
   yes: () => net.send({ source: "voice", answer: "yes" }),
   no: () => net.send({ source: "voice", answer: "no" }),
   hear: () => net.send({ source: "voice", text: document.getElementById("heard").value }),
+  "confirm-pay": () => net.send({ action: "confirm_payment" }),
+  "retry-move": () => net.send({ action: "retry_move" }),
 };
 document.getElementById("dev").addEventListener("click", (e) => {
   const act = e.target.dataset?.act;

@@ -91,7 +91,7 @@ export function seatList(state) {
 }
 
 export function kindLabel(kind) {
-  return { in_person: "at the board", remote: "on a phone", ai: "AI" }[kind] || kind;
+  return { in_person: "at the board", remote: "on a phone" }[kind] || kind;
 }
 
 export function tokenDot(p) {
@@ -100,6 +100,5 @@ export function tokenDot(p) {
 
 export function tokenGlyph(p) {
   if (p.kind === "in_person") return "👵";
-  if (p.kind === "ai") return "🤖";
   return (p.name[0] || "?").toUpperCase();
 }

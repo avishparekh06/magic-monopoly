@@ -15,6 +15,7 @@
     @keyframes pulse { 50% { transform: scale(1.02); } }
     .actions { display: grid; gap: 12px; margin: 16px 0; }
     .actions .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .status { text-align: center; font-size: 18px; margin: -6px 0 14px; color: var(--ink-dim); min-height: 1.3em; }
     .where { text-align: center; margin: 8px 0 0; font-size: 18px; }
     .center-title { font-family: Georgia, serif; color: var(--gold); }
     .magic-card { text-align: center; border-radius: var(--radius); padding: 20px; color: #fff; }
@@ -49,6 +50,7 @@
     <!-- Game -->
     <section id="game" hidden>
       <div class="banner" id="banner"></div>
+      <p class="status" id="status"></p>
       <div id="board"></div>
       <p class="where" id="where"></p>
 
@@ -76,7 +78,7 @@
 
 <script type="module">
 import { connect, toast, h, seatList, tokenDot } from "/static/net.js";
-import { loadBoard, createBoardView } from "/static/board.js";
+import { loadBoard, createBoardView, statusText } from "/static/board.js";
 
 // URL is /game/<game_id>/join/<seat_token>
 const [, , gameId, , seatToken] = location.pathname.split("/");
@@ -124,7 +126,7 @@ function render() {
 
   board.render(state);
   board.center.replaceChildren(h("div", { class: "center-title" }, "🪞"),
-    state.last_roll ? h("div", {}, `🎲 ${state.last_roll}`) : "");
+    state.last_roll ? h("div", {}, state.last_dice ? `🎲 ${state.last_dice.join(" + ")}` : `🎲 ${state.last_roll}`) : "");
 
   const myTurn = state.current_player === me;
   const banner = document.getElementById("banner");
@@ -133,6 +135,7 @@ function render() {
     ? (state.winner === me ? "You won! 👑" : "The tale is told!")
     : myTurn ? "Your turn! ✨" : `${current.name}'s turn`;
 
+  document.getElementById("status").textContent = statusText(state, boardData, me);
   document.getElementById("where").textContent = `You're at ${boardData.squares[mine.position].name}`;
 
   // Buttons only light up when the engine is waiting on *me*.

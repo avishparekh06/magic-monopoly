@@ -5,7 +5,7 @@ rule questions about squares (what happens on landing, how much rent is).
 Swapping in a different game (e.g. a simpler cooperative one) means
 writing another module with the same functions.
 
-Milestone 1-2: data loading only. Landing/rent/purchase logic lands in M3-4.
+Milestone 3: buying and rent. Cards, taxes and jail land in M4.
 """
 from __future__ import annotations
 
@@ -40,3 +40,27 @@ def card(card_id: str) -> dict | None:
 def steps_between(frm: int, to: int) -> int:
     """Squares travelled going forward from `frm` to `to`, wrapping past 39."""
     return (to - frm) % NUM_SQUARES
+
+
+BUYABLE = ("property", "railroad", "utility")
+
+
+def is_buyable(sq: dict) -> bool:
+    return sq["type"] in BUYABLE
+
+
+def rent(index: int, owner_squares: list[int], dice_total: int) -> int:
+    """Rent owed for landing on `index`, given every square its owner holds."""
+    sq = square(index)
+    b = board()
+    if sq["type"] == "property":
+        group = b["groups"][sq["group"]]["squares"]
+        whole_group = all(i in owner_squares for i in group)
+        return sq["rent"] * (2 if whole_group else 1)
+    if sq["type"] == "railroad":
+        owned = sum(1 for i in owner_squares if square(i)["type"] == "railroad")
+        return b["railroad_rent"][owned - 1]
+    if sq["type"] == "utility":
+        owned = sum(1 for i in owner_squares if square(i)["type"] == "utility")
+        return b["utility_multiplier"][owned - 1] * dice_total
+    raise ValueError(f"square {index} has no rent")

@@ -77,7 +77,6 @@ for (const n of [2, 3]) {
       h("input", { id: `name${n}`, placeholder: "Name", maxlength: 20 }),
       h("select", { id: `kind${n}` },
         h("option", { value: "remote", selected: n === 2 }, "Grandchild 📱"),
-        h("option", { value: "ai" }, "AI 🤖"),
         h("option", { value: "empty", selected: n === 3 }, "Empty"))));
 }
 
@@ -87,7 +86,7 @@ document.getElementById("create").addEventListener("submit", async (e) => {
   for (const n of [2, 3]) {
     const kind = document.getElementById(`kind${n}`).value;
     if (kind === "empty") continue;
-    const name = document.getElementById(`name${n}`).value.trim() || (kind === "ai" ? "Mirror Imp" : "");
+    const name = document.getElementById(`name${n}`).value.trim();
     players.push({ name, kind });
   }
   const res = await fetch("/api/games", {
