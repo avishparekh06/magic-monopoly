@@ -34,11 +34,36 @@ class StubBridge(MoveBridge):
         return {"type": "move_done", "lane": lane, "square": to}
 
 
-class GrblBridge(MoveBridge):
-    """Real implementation: G-code over serial to an Arduino running GRBL."""
+class ArduinoBridge(MoveBridge):
+    """Moves through Avish's motor code (arduino/server.py), called in-process.
 
-    def __init__(self, port: str = "/dev/ttyUSB0"):
-        raise NotImplementedError("GRBL bridge not built yet; run with --sim")
+    His server drives one token (axis 0), so lane 1 (Grandma) goes through his
+    board_goto(); other lanes use `fallback` until his server supports them.
+    Set DRY_RUN=1 to run his code without an Arduino attached.
+    """
+
+    def __init__(self, fallback: MoveBridge, busy_wait: float = 60.0):
+        from ..hardware import motor_server
+        self.hw = motor_server()
+        self.fallback = fallback
+        self.busy_wait = busy_wait
 
     async def move(self, lane: int, frm: int, to: int) -> dict:
-        raise NotImplementedError
+        if lane != 1:
+            return await self.fallback.move(lane, frm, to)
+        from fastapi import HTTPException
+        waited = 0.0
+        while True:
+            try:
+                # His endpoint function blocks until the motor is done, so run it off the event loop.
+                # It goes forward from wherever his tracked square is, so a /board/set re-home is respected.
+                result = await asyncio.to_thread(self.hw.board_goto, to, "forward")
+            except HTTPException as e:
+                if e.status_code == 409 and waited < self.busy_wait:  # someone is jogging the token
+                    await asyncio.sleep(0.3)
+                    waited += 0.3
+                    continue
+                return {"type": "move_failed", "lane": lane, "reason": str(e.detail)}
+            except Exception as e:
+                return {"type": "move_failed", "lane": lane, "reason": str(e)}
+            return {"type": "move_done", "lane": lane, "square": result["to"]["square"]}

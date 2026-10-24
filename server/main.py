@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .adapters import make_adapters
+from .adapters import BRIDGES, make_adapters
 from .engine import SYSTEM, EngineError
 from .rooms import GameRoom
 from .rules.monopoly import board, cards
@@ -49,13 +49,18 @@ class CreateGame(BaseModel):
     players: list[PlayerSpec]
 
 
-def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = None) -> FastAPI:
+def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = None,
+               bridge: str = "stub") -> FastAPI:
     app = FastAPI(title="Magic Mirror Monopoly")
+    if bridge == "arduino":
+        # Avish's motor endpoints (/board/*, /move, /stop, /pos, /vision/events), unchanged.
+        from .hardware import motor_routes
+        app.router.routes.extend(motor_routes())
     rooms: dict[str, GameRoom] = {}
     app.state.rooms = rooms
 
     if not sim:
-        make_adapters(sim=False)  # fail at startup, not at first game, if real adapters are missing
+        make_adapters(False, move_delay, bridge)  # fail at startup, not at first game, if real adapters are missing
 
     def page(name: str) -> FileResponse:
         return FileResponse(STATIC / name)
@@ -92,7 +97,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     async def create_game(body: CreateGame):
         try:
             room = await GameRoom.create([p.model_dump() for p in body.players],
-                                         make_adapters(sim, move_delay), seed)
+                                         make_adapters(sim, move_delay, bridge), seed)
         except EngineError as e:
             raise HTTPException(400, str(e))
         rooms[room.game_id] = room
@@ -179,9 +184,12 @@ def main() -> None:
     parser.add_argument("--host", default="0.0.0.0", help="0.0.0.0 lets phones on the same Wi-Fi connect")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--seed", type=int, default=None, help="seed the dice for repeatable games")
+    parser.add_argument("--bridge", choices=BRIDGES, default="stub",
+                        help="stub: fake moves; arduino: Grandma's lane through arduino/server.py "
+                             "(set DRY_RUN=1 without an Arduino), other lanes stubbed")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
-    uvicorn.run(create_app(sim=args.sim, seed=args.seed), host=args.host, port=args.port)
+    uvicorn.run(create_app(sim=args.sim, seed=args.seed, bridge=args.bridge), host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
