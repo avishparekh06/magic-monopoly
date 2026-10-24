@@ -9,8 +9,8 @@ import cv2
 import numpy as np
 
 DIE_WARP = 120          # px, each die is warped to this square for pip counting
-BORDER = 0.12           # fraction of the die square ignored around the edge (hides edges and shadows)
-MIN_DIE_BRIGHTNESS = 70 # Otsu split point must be at least this, else the tray is just felt with sensor noise
+BORDER = 0.10           # fraction of the die square ignored around the edge (hides edges and shadows)
+MIN_DIE_BRIGHTNESS = 50 # threshold must be at least this, else the tray is just felt with sensor noise
 MIN_CONTRAST = 50       # mean(bright) - mean(dark) must be at least this
 
 
@@ -38,8 +38,11 @@ def find_dice(tray_bgr, px_per_mm, die_mm):
     """White blobs on dark felt -> list of (rotated rect, area) plus a 'touching' flag."""
     gray = cv2.cvtColor(tray_bgr, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
-    t, bw = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    if t < MIN_DIE_BRIGHTNESS or (bw > 0).any() and gray[bw > 0].mean() - gray[bw == 0].mean() < MIN_CONTRAST:
+    # Dice are the brightest thing in the tray but only a few % of its pixels, so Otsu would split the
+    # background texture instead. Threshold halfway between the background (median) and the brightest pixels.
+    t = (np.percentile(gray, 99.8) + np.median(gray)) / 2
+    _, bw = cv2.threshold(gray, int(t), 255, cv2.THRESH_BINARY)
+    if t < MIN_DIE_BRIGHTNESS or not (bw > 0).any() or gray[bw > 0].mean() - gray[bw == 0].mean() < MIN_CONTRAST:
         return [], False, np.zeros_like(bw), 0            # nothing white enough to be a die
     k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
     bw = cv2.morphologyEx(bw, cv2.MORPH_OPEN, k)
@@ -51,13 +54,13 @@ def find_dice(tray_bgr, px_per_mm, die_mm):
     dice, touching, noise = [], False, 0
     for c in contours:
         a = cv2.contourArea(c)
-        if a < 0.3 * one:
-            noise += 1
+        if a < 0.4 * one:
+            noise += 1             # glare, a pip reflection, a die cut off at the zone edge
             continue
         rect = cv2.minAreaRect(c)
         (w, h) = rect[1]
         aspect = max(w, h) / max(min(w, h), 1)
-        if 0.5 * one <= a <= 1.6 * one and aspect < 1.35:
+        if a <= 1.6 * one and aspect < 1.35:
             dice.append(rect)
         else:
             touching = True        # too big or too elongated: two dice in one blob, or a hand
@@ -91,7 +94,8 @@ def count_pips(tray_bgr, rect):
             continue
         circ = 4 * np.pi * a / (p * p)
         x, y, w, h = cv2.boundingRect(c)
-        if circ > 0.55 and 0.6 < w / max(h, 1) < 1.6 and x > 0 and y > 0 and x + w < side and y + h < side:
+        # round-ish and not a sliver of a side face; pips may touch the inner crop edge on real dice
+        if circ > 0.55 and 0.6 < w / max(h, 1) < 1.6 and w < 0.4 * side and h < 0.4 * side:
             pips += 1
     return pips, die
 
