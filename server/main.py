@@ -8,6 +8,7 @@ import argparse
 import json
 import logging
 import socket
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -19,9 +20,12 @@ from .adapters import BRIDGES, make_adapters
 from .engine import SYSTEM, EngineError
 from .rooms import GameRoom
 from .rules.monopoly import board, cards
+from .store import Store
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
+DEFAULT_DB = ROOT / "games.db"
+log = logging.getLogger("server")
 
 
 def lan_ip() -> str:
@@ -40,6 +44,20 @@ def lan_ip() -> str:
         s.close()
 
 
+def translate_vision_event(ev: dict) -> dict | None:
+    """vision/watch.py vocabulary -> engine actions. None = nothing for the engine."""
+    t = ev.get("type")
+    if t == "dice_rolled":
+        return {"type": "dice", "value": int(ev["total"])}
+    if t == "dice_unclear":
+        return {"type": "dice_not_visible"}
+    if t == "card_drawn":
+        return {"type": "card", "id": str(ev["card_id"])}
+    if t == "player_card":
+        return {"type": "player_card", "player": ev["player"]}
+    return None          # dice_cleared, card_removed, card_unknown: the engine has no use for these
+
+
 class PlayerSpec(BaseModel):
     name: str
     kind: str  # "in_person" | "remote"
@@ -50,14 +68,34 @@ class CreateGame(BaseModel):
 
 
 def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = None,
-               bridge: str = "stub") -> FastAPI:
-    app = FastAPI(title="Magic Mirror Monopoly")
-    if bridge == "arduino":
-        # Avish's motor endpoints (/board/*, /move, /stop, /pos, /vision/events), unchanged.
-        from .hardware import motor_routes
-        app.router.routes.extend(motor_routes())
+               db_path: str | Path | None = ":memory:", bridge: str = "stub") -> FastAPI:
+    """db_path: SQLite file that games are saved to and resumed from on startup.
+    ":memory:" (the default, used by tests) keeps nothing across restarts.
+    bridge: "stub" fakes moves; "arduino" drives lane 1 through arduino/server.py."""
     rooms: dict[str, GameRoom] = {}
+    store = Store(db_path or ":memory:")
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # Startup: bring every unfinished saved game back to life.
+        for saved in store.games(status="active"):
+            try:
+                rooms[saved["game_id"]] = await GameRoom.restore(saved, make_adapters(sim, move_delay, bridge), store)
+                log.info("resumed game %s (turn %s, %s)", saved["game_id"],
+                         saved["state"].get("turn"), saved["state"].get("phase"))
+            except Exception as e:                       # one bad row must not block the server
+                log.warning("could not resume game %s: %s", saved["game_id"], e)
+        yield
+        store.close()
+
+    app = FastAPI(title="Magic Mirror Monopoly", lifespan=lifespan)
     app.state.rooms = rooms
+    app.state.store = store
+    if bridge == "arduino":
+        # Avish's motor endpoints (/board/*, /move, /stop, /pos), unchanged. His /vision/events
+        # only logged; ours below feeds the engine, so his is left out.
+        from .hardware import motor_routes
+        app.router.routes.extend(r for r in motor_routes() if getattr(r, "path", None) != "/vision/events")
 
     if not sim:
         make_adapters(False, move_delay, bridge)  # fail at startup, not at first game, if real adapters are missing
@@ -97,11 +135,46 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     async def create_game(body: CreateGame):
         try:
             room = await GameRoom.create([p.model_dump() for p in body.players],
-                                         make_adapters(sim, move_delay, bridge), seed)
+                                         make_adapters(sim, move_delay, bridge), seed, store)
         except EngineError as e:
             raise HTTPException(400, str(e))
         rooms[room.game_id] = room
         return links(room)
+
+    @app.get("/api/games")
+    async def list_games(request: Request):
+        """Saved games, newest first, for the resume picker. Host links are only
+        included for requests from the laptop itself (the host's own browser)."""
+        local = request.client is None or request.client.host in ("127.0.0.1", "::1", "testclient")
+        out = []
+        for g in store.games():
+            st = g["state"]
+            row = {
+                "game_id": g["game_id"], "status": g["status"], "created_at": g["created_at"],
+                "updated_at": g["updated_at"], "turn": st.get("turn"), "phase": st.get("phase"),
+                "players": [{"id": p["id"], "name": p["name"], "balance": p["balance"],
+                             "position": p["position"], "bankrupt": p["bankrupt"]} for p in st["players"]],
+                "winner": st.get("winner"), "live": g["game_id"] in rooms,
+                "board_url": f"/board/{g['game_id']}",
+            }
+            if local:
+                row["host_url"] = f"/?game={g['game_id']}&host={g['host_token']}"
+            out.append(row)
+        return out
+
+    @app.get("/api/games/{game_id}/history")
+    async def game_history(game_id: str):
+        if store.game(game_id) is None:
+            raise HTTPException(404, "no such game")
+        return store.history(game_id)
+
+    @app.get("/api/games/{game_id}/stats")
+    async def game_stats(game_id: str):
+        room = rooms.get(game_id)
+        if room is None and store.game(game_id) is None:
+            raise HTTPException(404, "no such game")
+        from .engine import to_public
+        return store.stats(game_id, to_public(room.state) if room else None)
 
     @app.get("/api/games/{game_id}/links")
     async def game_links(game_id: str, host: str):
@@ -109,6 +182,27 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         if host != room.host_token:
             raise HTTPException(403, "wrong host token")
         return links(room)
+
+    # --- camera process -> engine ---
+    # vision/watch.py POSTs its events here. It knows nothing about the game, so
+    # its vocabulary is mapped onto the engine's and the engine decides whether a
+    # read is wanted (a roll nobody is waiting for is rejected, not applied).
+    @app.post("/vision/events")
+    async def vision_event(event: dict, game: str | None = None):
+        mapped = translate_vision_event(event)
+        if mapped is None:
+            return {"ok": True, "ignored": event.get("type")}
+        live = [r for r in rooms.values() if r.state.phase.value not in ("LOBBY", "GAME_OVER")]
+        if game is not None:
+            room = rooms.get(game)
+            if room is None:
+                raise HTTPException(404, "no such game")
+        elif len(live) == 1:
+            room = live[0]
+        else:
+            raise HTTPException(409, "no single running game to send this to (pass ?game=<id>)")
+        await room.on_adapter_event(mapped)
+        return {"ok": True, "game": room.game_id, "sent": mapped}
 
     @app.get("/api/lan")
     async def lan(request: Request):
@@ -187,9 +281,10 @@ def main() -> None:
     parser.add_argument("--bridge", choices=BRIDGES, default="stub",
                         help="stub: fake moves; arduino: Grandma's lane through arduino/server.py "
                              "(set DRY_RUN=1 without an Arduino), other lanes stubbed")
+    parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite file games are saved to and resumed from")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
-    uvicorn.run(create_app(sim=args.sim, seed=args.seed, bridge=args.bridge), host=args.host, port=args.port)
+    uvicorn.run(create_app(sim=args.sim, seed=args.seed, db_path=args.db, bridge=args.bridge), host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

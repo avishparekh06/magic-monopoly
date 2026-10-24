@@ -35,6 +35,11 @@
     </form>
 
     <!-- Step 2: links + live lobby -->
+    <section id="previous" class="panel" hidden style="margin-top:16px">
+      <h2>Previous games</h2>
+      <div id="previous-list"></div>
+    </section>
+
     <section id="lobby" hidden>
       <div class="panel">
         <h2>Send these links</h2>
@@ -116,6 +121,36 @@ async function linkBase() {
   try { return (await (await fetch("/api/lan")).json()).base; }
   catch { return location.origin; }
 }
+
+// Reopen a saved game: /?game=<id>&host=<token> (what the URL becomes after creating one).
+{
+  const q = new URLSearchParams(location.search);
+  if (q.get("game") && q.get("host")) {
+    fetch(`/api/games/${q.get("game")}/links?host=${q.get("host")}`)
+      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+      .then(showLobby)
+      .catch(() => toast("That game isn't available any more.", "error"));
+  }
+}
+
+// Previous games (saved on this laptop): resume or review them.
+fetch("/api/games").then((r) => r.json()).then((games) => {
+  if (!games.length) return;
+  const list = document.getElementById("previous-list");
+  for (const g of games) {
+    const names = g.players.map((p) => `${p.name} 🪙${p.balance}`).join(" · ");
+    const when = new Date(g.updated_at * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+    const status = g.status === "over" ? `finished · ${g.players.find((p) => p.id === g.winner)?.name ?? "?"} won`
+                 : `turn ${g.turn} · ${g.phase.toLowerCase().replaceAll("_", " ")}`;
+    list.append(h("div", { class: "link-card", style: "margin-top:10px" },
+      h("div", {}, h("strong", {}, names)),
+      h("div", { class: "muted" }, `${when} · ${status}`),
+      h("div", { class: "row", style: "margin-top:6px" },
+        g.status !== "over" && g.host_url && h("a", { class: "btn small", href: g.host_url }, "Resume"),
+        h("a", { class: "btn small secondary", href: g.board_url }, g.status === "over" ? "Chronicles" : "Board"))));
+  }
+  document.getElementById("previous").hidden = false;
+}).catch(() => {});
 
 async function showLobby(game) {
   document.getElementById("create").hidden = true;

@@ -157,6 +157,15 @@ def to_public(state: GameState) -> dict:
     return d
 
 
+def from_public(d: dict) -> GameState:
+    """Inverse of to_public: rebuild a GameState from a saved snapshot."""
+    fields = {f for f in GameState.__dataclass_fields__}
+    data = {k: v for k, v in d.items() if k in fields}
+    data["players"] = [Player(**p) for p in d["players"]]
+    data["phase"] = Phase(d["phase"])
+    return GameState(**data)
+
+
 # --- checks -----------------------------------------------------------------
 
 def _require_system(actor: str) -> None:

@@ -17,7 +17,8 @@ import secrets
 from typing import Any, Protocol
 
 from .adapters import Adapters
-from .engine import SYSTEM, EngineError, GameState, apply_action, new_game, to_public
+from .engine import SYSTEM, EngineError, GameState, Phase, apply_action, from_public, new_game, to_public
+from .store import Store
 
 log = logging.getLogger("room")
 
@@ -30,14 +31,18 @@ class Socket(Protocol):
 
 
 class GameRoom:
-    def __init__(self, state: GameState, adapters: Adapters, rng: random.Random):
+    def __init__(self, state: GameState, adapters: Adapters, rng: random.Random,
+                 store: Store | None = None, host_token: str | None = None,
+                 seat_tokens: dict[str, str] | None = None, seq: int = 0):
         self.state = state
         self.adapters = adapters
         self.rng = rng
-        self.host_token = secrets.token_urlsafe(9)
+        self.store = store
+        self.seq = seq                      # number of actions applied so far (0 = just created)
+        self.host_token = host_token or secrets.token_urlsafe(9)
         # token -> player id, for remote seats only
-        self.seat_tokens = {secrets.token_urlsafe(9): p.id
-                            for p in state.players if p.kind == "remote"}
+        self.seat_tokens = seat_tokens or {secrets.token_urlsafe(9): p.id
+                                           for p in state.players if p.kind == "remote"}
         self.lock = asyncio.Lock()
         self.seats: dict[str, Socket] = {}       # player id -> its one live socket
         self.viewers: dict[Socket, str] = {}     # host / board sockets -> role
@@ -45,12 +50,36 @@ class GameRoom:
 
     @classmethod
     async def create(cls, specs: list[dict], adapters: Adapters,
-                     seed: int | None = None) -> "GameRoom":
+                     seed: int | None = None, store: Store | None = None) -> "GameRoom":
         game_id = secrets.token_urlsafe(6)
-        room = cls(new_game(game_id, specs), adapters, random.Random(seed))
-        await adapters.vision.start(room.on_adapter_event)
-        await adapters.voice.start(room.on_adapter_event)
+        room = cls(new_game(game_id, specs), adapters, random.Random(seed), store)
+        if store:
+            store.create_game(game_id, specs, seed, room.host_token, room.seat_tokens, to_public(room.state))
+        await room._start_adapters()
         return room
+
+    @classmethod
+    async def restore(cls, saved: dict, adapters: Adapters, store: Store) -> "GameRoom":
+        """Rebuild a room from a Store.games() row and pick up where it left off.
+
+        Remote seats come back as disconnected (their phones will reconnect by
+        link). A move that was in flight is re-issued. The bridge is told where
+        every token should be so real hardware can drive them back."""
+        state = from_public(saved["state"])
+        for p in state.players:
+            if p.kind == "remote":
+                p.connected = False
+        room = cls(state, adapters, random.Random(), store,
+                   host_token=saved["host_token"], seat_tokens=saved["seat_tokens"], seq=saved["seq"])
+        await room._start_adapters()
+        await adapters.bridge.restore({p.lane: p.position for p in state.players if not p.bankrupt})
+        if state.phase == Phase.MOVING:
+            await room.dispatch(SYSTEM, {"action": "retry_move"})
+        return room
+
+    async def _start_adapters(self) -> None:
+        await self.adapters.vision.start(self.on_adapter_event)
+        await self.adapters.voice.start(self.on_adapter_event)
 
     @property
     def game_id(self) -> str:
@@ -98,6 +127,9 @@ class GameRoom:
         """Apply an action and broadcast the result. Raises EngineError if illegal."""
         async with self.lock:
             self.state, events = apply_action(self.state, actor, action, self.rng)
+            self.seq += 1
+            if self.store and action.get("action") != "set_connected":   # presence is not game history
+                self.store.append(self.game_id, self.seq, actor, action, events, to_public(self.state))
             if events:
                 await self.broadcast({"type": "state", "state": to_public(self.state)})
                 for ev in events:

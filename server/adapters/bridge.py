@@ -23,6 +23,15 @@ class MoveBridge(ABC):
     async def move(self, lane: int, frm: int, to: int) -> dict:
         """Move the token in `lane` forward from `frm` to `to`; return when finished."""
 
+    async def restore(self, positions: dict[int, int]) -> None:
+        """A saved game was resumed: {lane: square} is where each token belongs.
+
+        Positions are dead-reckoned, so after a restart nobody knows where the
+        carriages physically are. Real hardware must home every lane to Castle
+        Gate first (switch, camera mark, or the operator placing tokens by hand
+        and zeroing), then drive each lane forward to its square."""
+        log.info("resume: re-zero tokens at Castle Gate, then drive lanes to %s", positions)
+
 
 class StubBridge(MoveBridge):
     def __init__(self, delay: float = 1.0):

@@ -8,3 +8,4 @@ board_state.json
 zones.json
 vision/live.json
 vision/samples/
+games.db

@@ -44,6 +44,11 @@
         <ul class="log" id="log"></ul>
       </div>
 
+      <details class="panel" id="chronicles">
+        <summary><h2 style="display:inline">📜 Chronicles</h2></summary>
+        <div id="stats" class="muted">No history yet.</div>
+      </details>
+
       <details class="dev panel" id="dev">
         <summary>🛠️ Dev panel (stands in for camera, mic, motors)</summary>
 
@@ -148,9 +153,31 @@ const net = connect(`/ws/${gameId}?role=board`, {
     h("a", { class: "btn", href: "/", style: "display:inline-grid;place-items:center" }, "New game")))),
 });
 
+// ---- Chronicles: stats folded from the saved event log ----------------------
+let statsTimer = null;
+function refreshStats() {
+  clearTimeout(statsTimer);
+  statsTimer = setTimeout(async () => {
+    try {
+      const st = await (await fetch(`/api/games/${gameId}/stats`)).json();
+      const sq = (i) => (i == null ? "—" : boardData.squares[i].name);
+      document.getElementById("stats").replaceChildren(
+        h("div", { class: "muted", style: "margin-bottom:6px" },
+          `${st.turns} turns · most visited: ${sq(st.most_landed_square)}` + (st.winner ? ` · winner: ${st.players.find((p) => p.id === st.winner)?.name}` : "")),
+        ...st.players.map((p) => h("div", { style: "margin-bottom:6px" },
+          h("strong", {}, p.name), p.bankrupt ? " (out)" : "",
+          h("div", { class: "muted", style: "font-size:.85em" },
+            `${p.turns} turns · avg roll ${p.avg_roll ?? "—"} · ${p.bought} places (🪙${p.spent_on_property}) · ` +
+            `rent paid 🪙${p.rent_paid} / earned 🪙${p.rent_received} · salary 🪙${p.salary} · ${p.cards_drawn} cards` +
+            (p.jailed ? ` · locked up ${p.jailed}×` : "")))));
+    } catch { /* stats are optional */ }
+  }, 400);
+}
+
 // ---- rendering ------------------------------------------------------------
 function render() {
   board.render(state);
+  if (state.phase !== "LOBBY") refreshStats();
   // Board center
   const c = board.center;
   if (state.phase === "LOBBY") {
