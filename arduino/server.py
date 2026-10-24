@@ -12,7 +12,9 @@ SQUARE_MM = float(os.environ.get("SQUARE_MM", 30))   # belt travel per Monopoly 
 SPEED_MM_S = float(os.environ.get("SPEED_MM_S", 20))
 DRY_RUN = os.environ.get("DRY_RUN") == "1"            # skip the Arduino and just return rolls
 NORMAL_STEPS = int(os.environ.get("NORMAL_STEPS", 225))   # motor steps per normal step (same as typing "0 225" in control.py)
-CORNER_STEPS = int(os.environ.get("CORNER_STEPS", 500))   # placeholder until the corner math is done
+CORNER_STEPS = int(os.environ.get("CORNER_STEPS", 500))   # used only by /move
+CORNER_IN = int(os.environ.get("CORNER_IN", 300))         # square before a corner -> middle of the corner
+CORNER_OUT = int(os.environ.get("CORNER_OUT", 500))       # middle of the corner -> square after it
 SQUARES = 40                                           # standard Monopoly board, square 0 = GO
 CORNER_SQUARES = {0, 10, 20, 30}                       # GO, Jail, Free Parking, Go To Jail
 SQUARE_NAMES = {0: "GO", 10: "Jail", 20: "Free Parking", 30: "Go To Jail"}
@@ -127,18 +129,23 @@ def board_set(square: int):
 def plan_move(start, squares):
     """Cost of moving `squares` (negative = back) from `start`.
 
-    A hop costs the same in both directions: forward charges the square entered,
-    back charges the square left, so forward then back returns to the same motor position.
+    A hop costs the same in both directions, so forward then back returns to the same motor position.
+    Into a corner costs CORNER_IN, out of one costs CORNER_OUT, every other hop costs NORMAL_STEPS.
     """
     n = abs(squares)
     if squares >= 0:
-        hops = [(start + i) % SQUARES for i in range(1, n + 1)]
+        hops = [((start + i - 1) % SQUARES, (start + i) % SQUARES) for i in range(1, n + 1)]
     else:
-        hops = [(start - i + 1) % SQUARES for i in range(1, n + 1)]
-    corners = sum(1 for s in hops if s in CORNER_SQUARES)
-    steps = n - corners
-    sign = 1 if squares >= 0 else -1
-    return steps, corners, sign * (steps * NORMAL_STEPS + corners * CORNER_STEPS)
+        hops = [((start - i) % SQUARES, (start - i + 1) % SQUARES) for i in range(1, n + 1)]
+    steps = corners = total = 0
+    for a, b in hops:                                    # each hop is a forward hop a -> b
+        if b in CORNER_SQUARES:
+            corners, total = corners + 1, total + CORNER_IN
+        elif a in CORNER_SQUARES:
+            corners, total = corners + 1, total + CORNER_OUT
+        else:
+            steps, total = steps + 1, total + NORMAL_STEPS
+    return steps, corners, (total if squares >= 0 else -total)
 
 
 def run_board_move(squares):
