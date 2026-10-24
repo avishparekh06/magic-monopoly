@@ -1,0 +1,43 @@
+{
+  "_comment": "Physical cards carry an ArUco marker. Game cards use markers 0-31; player (credit) cards use 100-102 so the two can never be confused. Effects are applied by the rules module (milestone 4). Classic house-repair cards are swapped for flat payments because houses are out of scope.",
+  "player_card_markers": {"p1": 100, "p2": 101, "p3": 102},
+  "decks": {
+    "spell": {"name": "Spells", "color": "#7B4FD6"},
+    "fairy": {"name": "Fairy Godmother", "color": "#E98AC8"}
+  },
+  "cards": [
+    {"id": "spell_01", "deck": "spell", "marker": 0,  "art": "🏰", "title": "Homeward Charm",      "text": "Advance to Castle Gate. Collect 200.",                         "effect": {"kind": "advance", "to": 0}},
+    {"id": "spell_02", "deck": "spell", "marker": 1,  "art": "🐉", "title": "Dragon Summons",      "text": "Advance to Dragon's Lair. If you pass Castle Gate, collect 200.", "effect": {"kind": "advance", "to": 24}},
+    {"id": "spell_03", "deck": "spell", "marker": 2,  "art": "🌸", "title": "Meadow Breeze",       "text": "Advance to Goose Girl's Meadow. If you pass Castle Gate, collect 200.", "effect": {"kind": "advance", "to": 11}},
+    {"id": "spell_04", "deck": "spell", "marker": 3,  "art": "💎", "title": "Royal Invitation",    "text": "Advance to Crown Jewel Vault.",                                 "effect": {"kind": "advance", "to": 39}},
+    {"id": "spell_05", "deck": "spell", "marker": 4,  "art": "🧹", "title": "Nearest Steed",       "text": "Advance to the nearest magic ride. Pay the owner twice the usual fare.", "effect": {"kind": "advance_nearest", "type": "railroad", "rent_multiplier": 2}},
+    {"id": "spell_06", "deck": "spell", "marker": 5,  "art": "🪄", "title": "Nearest Steed",       "text": "Advance to the nearest magic ride. Pay the owner twice the usual fare.", "effect": {"kind": "advance_nearest", "type": "railroad", "rent_multiplier": 2}},
+    {"id": "spell_07", "deck": "spell", "marker": 6,  "art": "⛲", "title": "Well Wishes",         "text": "Advance to the nearest Wishing Well or Spinning Wheel. If owned, pay ten times the dice.", "effect": {"kind": "advance_nearest", "type": "utility", "utility_multiplier": 10}},
+    {"id": "spell_08", "deck": "spell", "marker": 7,  "art": "🪙", "title": "Goblin Gold",         "text": "The goblins pay you a dividend. Collect 50.",                  "effect": {"kind": "collect", "amount": 50}},
+    {"id": "spell_09", "deck": "spell", "marker": 8,  "art": "🗝️", "title": "Golden Key",          "text": "Escape Rapunzel's Tower free. Keep this card until needed.",   "effect": {"kind": "jail_free"}},
+    {"id": "spell_10", "deck": "spell", "marker": 9,  "art": "🌀", "title": "Backwards Hex",       "text": "Go back 3 squares.",                                           "effect": {"kind": "back", "spaces": 3}},
+    {"id": "spell_11", "deck": "spell", "marker": 10, "art": "🗼", "title": "Locked Away",         "text": "Go straight to Rapunzel's Tower. Do not pass Castle Gate.",    "effect": {"kind": "go_to_jail"}},
+    {"id": "spell_12", "deck": "spell", "marker": 11, "art": "🔨", "title": "Leaky Roof",          "text": "Your cottage roof leaks. Pay 50 for repairs.",                 "effect": {"kind": "pay", "amount": 50}},
+    {"id": "spell_13", "deck": "spell", "marker": 12, "art": "🐸", "title": "Frog Fine",           "text": "You kissed the wrong frog. Pay 15.",                           "effect": {"kind": "pay", "amount": 15}},
+    {"id": "spell_14", "deck": "spell", "marker": 13, "art": "🪄", "title": "Flying Carpet Ride",  "text": "Take a ride on the Flying Carpet. If you pass Castle Gate, collect 200.", "effect": {"kind": "advance", "to": 5}},
+    {"id": "spell_15", "deck": "spell", "marker": 14, "art": "👑", "title": "Crowned for a Day",   "text": "You are crowned for a day. Pay each player 50.",              "effect": {"kind": "pay_each", "amount": 50}},
+    {"id": "spell_16", "deck": "spell", "marker": 15, "art": "📜", "title": "Enchanted Loan",      "text": "Your enchanted loan matures. Collect 150.",                    "effect": {"kind": "collect", "amount": 150}},
+
+    {"id": "fairy_01", "deck": "fairy", "marker": 16, "art": "🏰", "title": "Bibbidi-Home",        "text": "Advance to Castle Gate. Collect 200.",                         "effect": {"kind": "advance", "to": 0}},
+    {"id": "fairy_02", "deck": "fairy", "marker": 17, "art": "✨", "title": "Fairy's Mistake",     "text": "The fairy miscounted in your favor. Collect 200.",            "effect": {"kind": "collect", "amount": 200}},
+    {"id": "fairy_03", "deck": "fairy", "marker": 18, "art": "🧪", "title": "Potion Doctor",       "text": "Visit the potion doctor. Pay 50.",                             "effect": {"kind": "pay", "amount": 50}},
+    {"id": "fairy_04", "deck": "fairy", "marker": 19, "art": "🍎", "title": "Sold an Apple",       "text": "You sold a (perfectly safe) apple. Collect 50.",              "effect": {"kind": "collect", "amount": 50}},
+    {"id": "fairy_05", "deck": "fairy", "marker": 20, "art": "🗝️", "title": "Silver Key",          "text": "Escape Rapunzel's Tower free. Keep this card until needed.",   "effect": {"kind": "jail_free"}},
+    {"id": "fairy_06", "deck": "fairy", "marker": 21, "art": "🗼", "title": "Spindle Prick",       "text": "Go straight to Rapunzel's Tower. Do not pass Castle Gate.",    "effect": {"kind": "go_to_jail"}},
+    {"id": "fairy_07", "deck": "fairy", "marker": 22, "art": "🎂", "title": "Birthday Wishes",     "text": "It's your birthday! Collect 10 from each player.",            "effect": {"kind": "collect_from_each", "amount": 10}},
+    {"id": "fairy_08", "deck": "fairy", "marker": 23, "art": "🎁", "title": "Holiday Gift",        "text": "A holiday gift from the elves. Collect 100.",                  "effect": {"kind": "collect", "amount": 100}},
+    {"id": "fairy_09", "deck": "fairy", "marker": 24, "art": "💰", "title": "Tax Refund",          "text": "The King refunds your tithe. Collect 20.",                     "effect": {"kind": "collect", "amount": 20}},
+    {"id": "fairy_10", "deck": "fairy", "marker": 25, "art": "🧚", "title": "Fairy Insurance",     "text": "Your fairy insurance pays out. Collect 100.",                  "effect": {"kind": "collect", "amount": 100}},
+    {"id": "fairy_11", "deck": "fairy", "marker": 26, "art": "🏥", "title": "Healer's Bill",       "text": "Pay the healer 100.",                                         "effect": {"kind": "pay", "amount": 100}},
+    {"id": "fairy_12", "deck": "fairy", "marker": 27, "art": "📚", "title": "Wizard School",       "text": "Pay wizard school fees of 50.",                                "effect": {"kind": "pay", "amount": 50}},
+    {"id": "fairy_13", "deck": "fairy", "marker": 28, "art": "🎻", "title": "Minstrel's Fee",      "text": "You played at the royal feast. Collect 25.",                   "effect": {"kind": "collect", "amount": 25}},
+    {"id": "fairy_14", "deck": "fairy", "marker": 29, "art": "🔨", "title": "Tower Repairs",       "text": "Your tower needs repairs. Pay 40.",                            "effect": {"kind": "pay", "amount": 40}},
+    {"id": "fairy_15", "deck": "fairy", "marker": 30, "art": "🌹", "title": "Beauty Contest",      "text": "Second prize in the Beauty and the Beast contest. Collect 10.","effect": {"kind": "collect", "amount": 10}},
+    {"id": "fairy_16", "deck": "fairy", "marker": 31, "art": "🪺", "title": "Golden Egg",          "text": "Your goose laid a golden egg. Collect 100.",                   "effect": {"kind": "collect", "amount": 100}}
+  ]
+}

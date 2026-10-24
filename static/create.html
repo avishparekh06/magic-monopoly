@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Magic Mirror — New Game</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .seat-row { display: grid; grid-template-columns: 1fr 150px; gap: 8px; }
+    .link-card .row { margin-top: 8px; }
+    .hero { text-align: center; padding: 24px 0 8px; }
+    .hero .mirror { font-size: 56px; }
+    #started { text-align: center; }
+    #create .btn.huge { margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div class="mirror">🪞</div>
+      <h1>Magic Mirror Monopoly</h1>
+      <p class="muted">Grandma plays at her table. The family plays from their phones.</p>
+    </div>
+
+    <!-- Step 1: who's playing -->
+    <form id="create" class="panel">
+      <h2>Who's playing?</h2>
+      <label for="grandma">At the board (in person)</label>
+      <input id="grandma" value="Grandma" maxlength="20" required>
+
+      <div id="seat-fields"></div>
+
+      <p id="form-error" class="wait" hidden></p>
+      <button class="btn huge" type="submit">Create the game ✨</button>
+    </form>
+
+    <!-- Step 2: links + live lobby -->
+    <section id="lobby" hidden>
+      <div class="panel">
+        <h2>Send these links</h2>
+        <p class="muted">Paste each one in the family chat. Tapping it puts that grandchild straight in their seat — no sign-up. The same link works again if they get disconnected.</p>
+        <div id="links"></div>
+      </div>
+
+      <div class="panel link-card">
+        <h3>🖥️ The board laptop</h3>
+        <p class="muted">Open this on the laptop next to Grandma's board.</p>
+        <div class="row">
+          <input class="grow" id="board-link" readonly>
+          <button class="btn small secondary" data-copy="board-link" type="button">Copy</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Who's here</h2>
+        <div id="seats"></div>
+        <p id="lobby-note" class="muted"></p>
+        <button id="start" class="btn huge" disabled>Start the game</button>
+        <div id="started" hidden>
+          <h2>The tale has begun! 🏰</h2>
+          <p class="muted">You can close this page.</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+<script type="module">
+import { connect, toast, h, seatList } from "/static/net.js";
+
+// ---- Step 1: form -------------------------------------------------------
+
+const seatFields = document.getElementById("seat-fields");
+for (const n of [2, 3]) {
+  seatFields.append(
+    h("label", { for: `name${n}`, style: "margin-top:16px" }, `Seat ${n}`),
+    h("div", { class: "seat-row" },
+      h("input", { id: `name${n}`, placeholder: "Name", maxlength: 20 }),
+      h("select", { id: `kind${n}` },
+        h("option", { value: "remote", selected: n === 2 }, "Grandchild 📱"),
+        h("option", { value: "ai" }, "AI 🤖"),
+        h("option", { value: "empty", selected: n === 3 }, "Empty"))));
+}
+
+document.getElementById("create").addEventListener("submit", async (e) => {
+  e.preventDefault();  // stop the browser's default full-page form submit
+  const players = [{ name: document.getElementById("grandma").value, kind: "in_person" }];
+  for (const n of [2, 3]) {
+    const kind = document.getElementById(`kind${n}`).value;
+    if (kind === "empty") continue;
+    const name = document.getElementById(`name${n}`).value.trim() || (kind === "ai" ? "Mirror Imp" : "");
+    players.push({ name, kind });
+  }
+  const res = await fetch("/api/games", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ players }),
+  });
+  const body = await res.json();
+  if (!res.ok) return showFormError(body.detail);
+  // Put the game in the URL so a refresh comes back to this lobby.
+  history.replaceState(null, "", `/?game=${body.game_id}&host=${body.host_token}`);
+  showLobby(body);
+});
+
+function showFormError(detail) {
+  const el = document.getElementById("form-error");
+  el.hidden = false;
+  el.textContent = typeof detail === "string" ? detail : "Please give every seat a name.";
+}
+
+// ---- Step 2: links + lobby ----------------------------------------------
+
+// Links must use an address phones can reach. If this page was opened as
+// "localhost", ask the server for the laptop's Wi-Fi address instead.
+async function linkBase() {
+  if (!["localhost", "127.0.0.1"].includes(location.hostname)) return location.origin;
+  try { return (await (await fetch("/api/lan")).json()).base; }
+  catch { return location.origin; }
+}
+
+async function showLobby(game) {
+  document.getElementById("create").hidden = true;
+  document.getElementById("lobby").hidden = false;
+  const base = await linkBase();
+  document.getElementById("board-link").value = base + game.board_url;
+
+  // One socket as the host: receives live state and may press Start.
+  const net = connect(`/ws/${game.game_id}?host=${game.host_token}`, {
+    onState: (s) => { renderLinks(game, base, s); renderLobby(s); },
+    onError: (m) => toast(m, "error"),
+    onClosed: () => toast("This game no longer exists. Create a new one.", "error"),
+  });
+  document.getElementById("start").onclick = () => net.send({ action: "start" });
+}
+
+let linksDrawn = false;
+function renderLinks(game, base, state) {
+  if (linksDrawn) return;
+  linksDrawn = true;
+  const box = document.getElementById("links");
+  for (const [pid, path] of Object.entries(game.join_links)) {
+    const p = state.players.find((x) => x.id === pid);
+    const id = `link-${pid}`;
+    const url = base + path;
+    box.append(h("div", { class: "link-card", style: "margin-top:12px" },
+      h("h3", {}, `📱 ${p.name}`),
+      h("div", { class: "row" },
+        h("input", { class: "grow", id, readonly: true, value: url }),
+        h("button", { class: "btn small secondary", type: "button", "data-copy": id }, "Copy"),
+        navigator.share && h("button", {
+          class: "btn small", type: "button",
+          onclick: () => navigator.share({ title: "Play with Grandma!", text: `${p.name}, tap to join Grandma's game:`, url }).catch(() => {}),
+        }, "Share"))));
+  }
+}
+
+function renderLobby(state) {
+  document.getElementById("seats").replaceChildren(seatList(state));
+  const waiting = state.players.filter((p) => !p.connected).map((p) => p.name);
+  const inLobby = state.phase === "LOBBY";
+  const start = document.getElementById("start");
+  start.hidden = !inLobby;
+  start.disabled = waiting.length > 0;
+  document.getElementById("lobby-note").textContent =
+    inLobby ? (waiting.length ? `Waiting for ${waiting.join(" and ")}…` : "Everyone's here!") : "";
+  document.getElementById("started").hidden = inLobby;
+}
+
+// Copy buttons. navigator.clipboard only works on https or localhost; when the
+// page is opened over the Wi-Fi address we fall back to the older execCommand.
+document.addEventListener("click", async (e) => {
+  const id = e.target.dataset?.copy;
+  if (!id) return;
+  const input = document.getElementById(id);
+  try { await navigator.clipboard.writeText(input.value); }
+  catch { input.select(); document.execCommand("copy"); }
+  toast("Copied!");
+});
+
+// ---- On load: returning to an existing lobby? ---------------------------
+
+const params = new URLSearchParams(location.search);
+if (params.get("game") && params.get("host")) {
+  const res = await fetch(`/api/games/${params.get("game")}/links?host=${params.get("host")}`);
+  if (res.ok) showLobby(await res.json());
+  else { history.replaceState(null, "", "/"); toast("That game is gone (server restarted?). Make a new one.", "error"); }
+}
+</script>
+</body>
+</html>
