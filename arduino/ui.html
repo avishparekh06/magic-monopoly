@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Belt Board</title>
+<style>
+  :root {
+    --bg: #f4f1ea; --panel: #fffdf8; --line: #cfc8b8; --text: #1f1d18; --muted: #6f6a5c;
+    --corner: #e8dfc9; --accent: #c0392b; --accent-text: #fff; --ok: #2e7d4f; --err: #b3261e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #17160f; --panel: #211f17; --line: #3d3a2d; --text: #eee9da; --muted: #9a9482;
+      --corner: #2c2a1e; --accent: #e0584a; --accent-text: #1a0b09; --ok: #6fcf97; --err: #ff8a80;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.4 system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  .board {
+    display: grid; grid-template-columns: repeat(11, 1fr); grid-template-rows: repeat(11, 1fr);
+    aspect-ratio: 1; gap: 2px; background: var(--line); border: 2px solid var(--line);
+  }
+  .sq {
+    background: var(--panel); border: 0; color: var(--text); padding: 2px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font: inherit; font-size: clamp(8px, 1.8vw, 12px); line-height: 1.15; text-align: center;
+    overflow: hidden; min-width: 0; min-height: 0;
+  }
+  .sq.corner { background: var(--corner); font-weight: 600; }
+  .sq:hover { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .sq .n { color: var(--muted); font-size: 0.85em; }
+  .sq .name { overflow-wrap: anywhere; }
+  .sq.here { background: var(--accent); color: var(--accent-text); }
+  .sq.here .n { color: inherit; }
+  .busy .sq { pointer-events: none; opacity: 0.6; }
+  .centre {
+    grid-area: 2 / 2 / 11 / 11; background: var(--panel); padding: 12px;
+    display: flex; flex-direction: column; gap: 10px; justify-content: center; overflow: auto;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .big { font-size: clamp(16px, 3.4vw, 26px); font-weight: 600; }
+  .muted { color: var(--muted); }
+  button.b, select {
+    font: inherit; padding: 6px 12px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--text); cursor: pointer;
+  }
+  button.b:hover { border-color: var(--accent); }
+  button.stop { background: var(--err); color: #fff; border-color: var(--err); font-weight: 600; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; background: var(--bg); color: var(--text); padding: 6px 12px; font: inherit; cursor: pointer; }
+  .seg button.on { background: var(--text); color: var(--bg); }
+  #msg { min-height: 1.4em; }
+  #msg.ok { color: var(--ok); } #msg.err { color: var(--err); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Belt Board</h1>
+  <div class="board" id="board">
+    <div class="centre">
+      <div>
+        <div class="muted">Magnet is on</div>
+        <div class="big" id="where">…</div>
+      </div>
+      <div class="row">
+        <div class="seg" id="mode">
+          <button data-mode="move" class="on">Move here</button>
+          <button data-mode="set">Set position</button>
+        </div>
+        <select id="dir" title="Which way to go when you click a square">
+          <option value="auto">Shortest way</option>
+          <option value="forward">Always forward</option>
+          <option value="back">Always back</option>
+        </select>
+      </div>
+      <div class="row">
+        <button class="b" id="back1">◀ Back 1</button>
+        <button class="b" id="fwd1">Forward 1 ▶</button>
+        <button class="b stop" id="stop">Stop</button>
+      </div>
+      <div id="msg" class="muted">Click a square to send the magnet there.</div>
+    </div>
+  </div>
+</main>
+<script>
+const NAMES = ["GO","Mediterranean Ave","Community Chest","Baltic Ave","Income Tax","Reading Railroad",
+  "Oriental Ave","Chance","Vermont Ave","Connecticut Ave","Jail","St. Charles Place","Electric Company",
+  "States Ave","Virginia Ave","Pennsylvania Railroad","St. James Place","Community Chest","Tennessee Ave",
+  "New York Ave","Free Parking","Kentucky Ave","Chance","Indiana Ave","Illinois Ave","B&O Railroad",
+  "Atlantic Ave","Ventnor Ave","Water Works","Marvin Gardens","Go To Jail","Pacific Ave",
+  "North Carolina Ave","Community Chest","Pennsylvania Ave","Short Line","Chance","Park Place",
+  "Luxury Tax","Boardwalk"];
+
+// Square -> [row, col] on the 11x11 grid. GO is bottom-right and the token travels clockwise.
+function cell(i) {
+  if (i <= 10) return [11, 11 - i];          // bottom edge, right to left
+  if (i <= 20) return [11 - (i - 10), 1];    // left edge, bottom to top
+  if (i <= 30) return [1, 1 + (i - 20)];     // top edge, left to right
+  return [1 + (i - 30), 11];                 // right edge, top to bottom
+}
+
+const boardEl = document.getElementById("board");
+const whereEl = document.getElementById("where");
+const msgEl = document.getElementById("msg");
+const dirEl = document.getElementById("dir");
+let mode = "move", current = 0;
+const buttons = [];
+
+for (let i = 0; i < 40; i++) {
+  const [r, c] = cell(i);
+  const b = document.createElement("button");
+  b.className = "sq" + (i % 10 === 0 ? " corner" : "");
+  b.style.gridArea = `${r} / ${c}`;
+  b.title = `${i} · ${NAMES[i]}`;
+  b.innerHTML = `<span class="n">${i}</span><span class="name">${NAMES[i]}</span>`;
+  b.onclick = () => clickSquare(i);
+  boardEl.appendChild(b);
+  buttons.push(b);
+}
+
+function show(square) {
+  current = square;
+  buttons.forEach((b, i) => b.classList.toggle("here", i === square));
+  whereEl.textContent = `${square} · ${NAMES[square]}`;
+}
+
+function say(text, kind) { msgEl.textContent = text; msgEl.className = kind || "muted"; }
+
+async function call(method, url) {
+  const res = await fetch(url, { method });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(typeof data.detail === "string" ? data.detail : `Request failed (${res.status})`);
+  return data;
+}
+
+async function run(url, label) {
+  boardEl.classList.add("busy");
+  say(label || "Moving…");
+  try {
+    const d = await call("POST", url);
+    show((d.to || d).square);
+    if (d.motor_steps !== undefined) {
+      const dry = d.moved ? "" : " (not sent to motor)";
+      say(`${d.from} → ${d.to.square}: ${d.steps} steps, ${d.corners} corners, ${d.motor_steps} motor steps${dry}`, "ok");
+    } else {
+      say(`Position set to ${d.square}.`, "ok");
+    }
+  } catch (e) {
+    say(e.message, "err");
+  } finally {
+    boardEl.classList.remove("busy");
+  }
+}
+
+function clickSquare(i) {
+  if (mode === "set") return run(`/board/set?square=${i}`, "Saving…");
+  if (i === current) return say("Already there.");
+  run(`/board/goto?square=${i}&direction=${dirEl.value}`);
+}
+
+document.querySelectorAll("#mode button").forEach(b => b.onclick = () => {
+  mode = b.dataset.mode;
+  document.querySelectorAll("#mode button").forEach(x => x.classList.toggle("on", x === b));
+  say(mode === "set" ? "Click where the magnet really is. It will not move." : "Click a square to send the magnet there.");
+});
+document.getElementById("fwd1").onclick = () => run("/board/move?squares=1");
+document.getElementById("back1").onclick = () => run("/board/move?squares=-1");
+document.getElementById("stop").onclick = async () => {
+  try { await call("POST", "/stop"); say("Stopped. If it was mid-move, use Set position to fix where the magnet is.", "err"); }
+  catch (e) { say(e.message, "err"); }
+};
+
+call("GET", "/board").then(d => show(d.square)).catch(e => say(e.message, "err"));
+</script>
+</body>
+</html>
