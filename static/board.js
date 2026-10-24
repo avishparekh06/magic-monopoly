@@ -222,7 +222,7 @@ export function statusText(state, boardData, viewer) {
         tax: `for the ${place(pend.square)}`,
         jail_fine: "to leave the tower",
       }[pend.reason] || `to ${name(pend.payee)}`;
-      return `${name(pend.payer)}, tap your card to pay 🪙${pend.amount} ${what}`;
+      return `${name(pend.payer)}, lay your card on the reader to pay 🪙${pend.amount} ${what}`;
     }
     case "WAITING_FOR_CARD": {
       const deck = pend.deck === "spell" ? "a Spell" : "a Fairy Godmother card";

@@ -99,7 +99,7 @@ class TemplateMirror(Mirror):
             what = f"{amount} gold to leave the tower"
         else:
             what = f"{amount} gold to {self._name(s, e['payee'])}"
-        return f"{payer}, please tap your card on the reader to pay {what}."
+        return f"{payer}, please lay your card on the reader to pay {what}."
 
     def _paid(self, e, s):
         payer, payee = self._name(s, e["from"]), self._name(s, e["to"])

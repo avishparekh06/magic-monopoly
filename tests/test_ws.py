@@ -189,8 +189,9 @@ def test_kid_turn_end_to_end_through_stub_bridge(client, game):
         # Maya's turn: Roll button, engine rolls, stub bridge finishes the move.
         recv_until(maya, lambda m: m["type"] == "turn_started" and m["player"] == "p2")
         maya.send_json({"player": "p2", "action": "roll"})
-        recv_until(maya, lambda m: m["type"] == "move")
-        st = recv_until(maya, lambda m: is_state(m) and m["state"]["phase"] != "MOVING"
-                        and m["state"]["phase"] != "WAITING_FOR_ROLL")
-        pos = next(p for p in st["state"]["players"] if p["id"] == "p2")["position"]
-        assert pos == st["state"]["last_roll"]
+        rolled = recv_until(maya, lambda m: m["type"] == "rolled" and m["player"] == "p2")
+        recv_until(maya, lambda m: m["type"] == "move" and m["player"] == "p2")
+        # The stub bridge reports move_done by itself; wait for its result
+        # (any landing square works, so this doesn't depend on the roll).
+        moved = recv_until(maya, lambda m: m["type"] == "moved" and m["player"] == "p2")
+        assert moved == {"type": "moved", "player": "p2", "from": 0, "to": rolled["value"]}
