@@ -5,3 +5,5 @@ board_state.json
 .venv/
 *.mp4
 zones.json
+vision/live.json
+vision/samples/
