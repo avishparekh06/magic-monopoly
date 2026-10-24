@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+pyserial
+opencv-contrib-python
+numpy
+requests
+pytest

@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 board_state.json
 .DS_Store
+.venv/
+*.mp4
+zones.json

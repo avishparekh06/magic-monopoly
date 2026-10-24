@@ -115,26 +115,37 @@ Conventions across all three:
   - `{"type":"dice_unclear","reason":"touching|count_mismatch|unreadable","seen":[...]}` → the game asks for a re-roll
   - `{"type":"card_drawn","card_id":"fairy_godmother","score":...}` / `{"type":"card_unknown",...}` / `{"type":"card_removed"}`
 
-### What exists
-Nothing yet. A printable ArUco sheet (`DICT_4X4_50` IDs 0–3) for mat corners exists outside the repo.
+### What exists (`vision/`, run with `.venv/bin/python`; see `vision/README.md`)
+- **`probe.py [index]`** — opens the camera, prints which settings macOS honors, live view, `s` saves frames to `vision/samples/`.
+- **`make_aruco_sheet.py`** — writes `vision/aruco_sheet.png` (DICT_4X4_50 ids 0–3). Print it; tape 0 TL, 1 TR, 2 BR, 3 BL.
+- **`calibrate.py [--aruco] [--image f]`** — click 4 corners or auto-detect markers → `zones.json` (gitignored) + warped preview.
+- **`zones.py`** — `Zones`: homography camera→mat, `warp(frame)`, `crop(mat, "dice_zone_mm"|"card_zone_mm")`. Mat and zones
+  in mm; default mat 300×200, dice zone left, card zone right, `px_per_mm` 3, `die_mm` 19, `card_mm` 63×88.
+- **`dice.py`** — `read_dice(tray_bgr, px_per_mm, die_mm)` → values, or reason `empty|touching|count_mismatch|unreadable`.
+  Otsu → blobs filtered by expected die area and aspect → warp each die → count dark round pips. Guarded against an empty
+  tray (Otsu split must be bright enough). 100% on synthetic trays.
+- **`cards.py`** — `CardMatcher(cards_dir).identify(zone_bgr)` → `card_id` or reason `no_card|no_match|ambiguous`.
+  Largest bright quad → warp to 250×350 portrait → ORB + ratio test vs `cards/<id>.png` (and rotated 180°).
+  Needs ≥18 good matches and 1.4× lead over second best. 100% on synthetic cards at 0/±8/90/180°.
+- **`watch.py`** — main loop. `--source clip.mp4`, `--no-post`, `--no-display`, `--server`. Dice state machine
+  EMPTY→ROLLING→SETTLING→READ: motion = mean frame diff in tray > 6; still 0.6 s; 3 agreeing reads; a reading equal to the
+  last emitted one (same values, dice within 0.4 die-widths) is ignored, so a hand passing over does not re-emit.
+  Card: same id 4 frames → `card_drawn`; no card 6 frames → `card_removed`. Prints JSON lines and POSTs each event.
+- **`synth.py`** — synthetic trays, cards and a synthetic mat video (`roll_video`) for tests and dry runs.
+- **`tests/`** — `pytest vision/tests`: every dice pair × 3 seeds, touching/empty/count cases, cards at angles,
+  and an end-to-end synthetic video through both state machines.
+- Server side: `POST /vision/events` (logs + keeps last 200), `GET /vision/events?n=20` in `arduino/server.py`.
+  The rules engine will consume these; today they are only stored.
 
-### Plan
-1. **Calibration:** map the camera image to a top-down view of the mat in mm. Click 4 mat corners once and save to
-   `zones.json`, or auto-detect the ArUco markers. Define dice and card zones in mm in `zones.json`.
-2. **Roll detection state machine:** frame-difference motion in the tray → "rolling" → still ~0.6 s → read 3 consecutive
-   frames and require agreement → emit. Ignore stillness after a hand passes through without a roll (the stable frame
-   must differ from the last frame that was read).
-3. **Dice reading:** Otsu threshold for white dice on dark felt → external contours → filter by expected die area (≈2× area
-   means touching → `dice_unclear`) → warp each die to a square → count dark circular pips (circularity and area filters,
-   ignore the border) → each value 1–6.
-4. **Cards:** largest 4-corner bright contour in the card zone → perspective-warp to portrait 250×350 → ORB-match against
-   `cards/<card_id>.png` (also rotated 180°). Require a minimum good-match count and a clear lead over second best.
-   No confident match → optional Muse Spark fallback (send the crop, ask for JSON with the title).
-5. **Debug overlay window** (zones, dice values, card ID, state); doubles as a demo-screen visual.
-6. Lock camera autofocus, exposure and white balance where the platform allows; macOS AVFoundation often ignores these.
-7. **Test without hardware:** synthetic dice and card images plus a recorded video (`--source file.mp4`).
-   The app keeps a manual "enter roll" override (`/board/move?squares=n` works today).
+### Next
+1. Run `probe.py` with the C920 (grant Camera permission to the terminal app first), save real frames of dice and cards.
+2. Tune `dice.py` on real frames (die area window, pip threshold) and `MOTION_THRESH` for real sensor noise.
+3. Photograph the real fairy-tale cards into `cards/<id>.png`; the ids are the contract with the rules engine.
+4. Lock C920 autofocus/exposure. If OpenCV `cap.set` is ignored (likely on macOS), use Logi Tune and keep it running.
+5. Record a clean `.mp4` of a few rolls and card draws as a regression fixture and demo backup.
+6. Optional: Muse Spark fallback on `dice_unclear` / `card_unknown` (send the crop, ask for JSON).
 
+### Original plan (kept for reference)
 ---
 
 ## Team split

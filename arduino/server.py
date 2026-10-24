@@ -1,7 +1,9 @@
+import collections
 import json
 import os
 import random
 import threading
+import time
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -198,3 +200,23 @@ def stop():
 @app.get("/pos")
 def pos():
     return {"steps": get_board().pos()}
+
+
+# --- vision events (from vision/watch.py). For now: log and keep the recent ones; the rules engine will consume these. ---
+vision_events = collections.deque(maxlen=200)
+
+
+@app.post("/vision/events")
+def vision_event(event: dict):
+    """Receive one event from the vision process: dice_rolled, dice_unclear, dice_cleared, card_drawn, card_unknown, card_removed."""
+    event.setdefault("t", time.time())
+    event["received"] = time.time()
+    vision_events.append(event)
+    print("vision:", json.dumps(event), flush=True)
+    return {"ok": True, "queued": len(vision_events)}
+
+
+@app.get("/vision/events")
+def vision_recent(n: int = 20):
+    """The most recent vision events, newest last."""
+    return list(vision_events)[-n:]
