@@ -1,0 +1,137 @@
+/* Shared look for every page. Colors are defined once here as variables. */
+:root {
+  --sky: #1b1238;          /* page background: night sky */
+  --sky-2: #2a1d55;        /* raised panels */
+  --sky-3: #3a2a70;        /* inputs, hover */
+  --ink: #f6efe0;          /* text on dark */
+  --ink-dim: #b9aedc;
+  --gold: #f4c95d;
+  --gold-ink: #2a1a00;
+  --parchment: #fbf3dc;    /* board squares */
+  --parchment-ink: #3b2a12;
+  --ok: #5ad19a;
+  --wait: #f2a65a;
+  --bad: #ff6b81;
+  --p1: #a66cff;           /* Grandma */
+  --p2: #3fb8ff;
+  --p3: #ff6fb5;
+  --radius: 16px;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body {
+  background: radial-gradient(ellipse at top, #34236b 0%, var(--sky) 60%) fixed var(--sky);
+  color: var(--ink);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+h1, h2, h3 { font-family: Georgia, "Times New Roman", serif; letter-spacing: .02em; margin: 0 0 .5em; }
+h1 { color: var(--gold); }
+a { color: var(--gold); }
+[hidden] { display: none !important; }
+
+.wrap { max-width: 560px; margin: 0 auto; padding: 16px; }
+
+.panel {
+  background: var(--sky-2);
+  border: 1px solid rgba(244, 201, 93, .18);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+/* Buttons: big enough for small fingers. */
+.btn {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  min-height: 56px;
+  padding: 0 24px;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 18px;
+  line-height: 1;
+  background: var(--gold);
+  color: var(--gold-ink);
+  cursor: pointer;
+  transition: transform .08s, filter .15s, opacity .15s;
+}
+.btn:active { transform: scale(.97); }
+.btn:hover:not(:disabled) { filter: brightness(1.08); }
+.btn:disabled { opacity: .35; cursor: not-allowed; }
+.btn.secondary { background: var(--sky-3); color: var(--ink); }
+.btn.small { min-height: 40px; padding: 0 16px; font-size: 15px; }
+.btn.huge { min-height: 84px; font-size: 28px; width: 100%; }
+.btn.block { width: 100%; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row > .grow { flex: 1 1 160px; min-width: 0; }
+
+label { display: block; font-size: 14px; color: var(--ink-dim); margin: 0 0 6px; }
+input, select {
+  font: inherit;
+  font-size: 17px;
+  color: var(--ink);
+  background: var(--sky-3);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  min-height: 48px;
+  padding: 0 12px;
+  width: 100%;
+}
+input:focus, select:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
+input[readonly] { font-size: 14px; color: var(--ink-dim); }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 999px;
+  background: var(--sky-3); font-size: 14px;
+}
+.ok { color: var(--ok); }
+.wait { color: var(--wait); }
+.muted { color: var(--ink-dim); }
+
+/* A colored player token (also used in lists). */
+.token-dot {
+  display: inline-grid; place-items: center;
+  width: 32px; height: 32px; border-radius: 50%;
+  font-weight: 700; font-size: 15px; color: #fff;
+  border: 2px solid rgba(255, 255, 255, .85);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, .35);
+  flex: none;
+}
+
+/* Seat list (lobby) */
+.seats { list-style: none; margin: 0; padding: 0; }
+.seats li { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255, 255, 255, .06); }
+.seats li:last-child { border-bottom: 0; }
+.seats .name { flex: 1; font-size: 18px; }
+
+/* Mirror log: newest first */
+.log { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
+.log li { padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, .06); font-family: Georgia, serif; line-height: 1.35; }
+.log li:first-child { color: var(--gold); }
+
+/* Toast: short-lived message at the bottom of the screen */
+.toast {
+  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  background: #000c; color: var(--ink); padding: 12px 20px; border-radius: 12px;
+  font-size: 16px; z-index: 100; pointer-events: none;
+  animation: toast-in .2s ease-out;
+}
+.toast.error { border-left: 4px solid var(--bad); }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+/* Full-screen notice (seat taken over, bad link, game gone) */
+.notice {
+  position: fixed; inset: 0; z-index: 200;
+  display: grid; place-items: center; text-align: center; padding: 24px;
+  background: rgba(15, 9, 35, .94);
+}
+.notice .panel { max-width: 420px; }
+
+/* Connection status dot in corners */
+.conn { position: fixed; top: 10px; right: 10px; font-size: 12px; z-index: 50; }

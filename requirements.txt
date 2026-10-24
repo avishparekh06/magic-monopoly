@@ -1,7 +1,12 @@
-fastapi
-uvicorn
+# Game server (server/, static/)
+fastapi==0.162.0
+uvicorn[standard]==0.54.0
+httpx==0.28.1
+# Hardware (arduino/control.py)
 pyserial
+# Vision (vision/)
 opencv-contrib-python
 numpy
 requests
-pytest
+# Tests
+pytest==9.1.1

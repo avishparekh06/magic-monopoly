@@ -1,5 +1,6 @@
 __pycache__/
 *.pyc
+.pytest_cache/
 board_state.json
 .DS_Store
 .venv/

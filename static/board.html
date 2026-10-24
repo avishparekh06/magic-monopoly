@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Magic Mirror — Board</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+    #board { max-width: calc(100vh - 32px); margin: 0 auto; }
+    .center-title { font-family: Georgia, serif; color: var(--gold); font-size: 1.6em; }
+    .center-phase { font-size: .9em; }
+    .dice { font-size: 2.4em; letter-spacing: .1em; }
+    .players { list-style: none; margin: 0; padding: 0; }
+    .players li { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; }
+    .players li.turn { background: var(--sky-3); outline: 2px solid var(--gold); }
+    .players .who { flex: 1; min-width: 0; }
+    .players .where { font-size: 13px; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .players .bal { font-weight: 700; font-size: 18px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+    details.dev summary { cursor: pointer; font-weight: 600; color: var(--ink-dim); }
+    details.dev h4 { margin: 16px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-dim); }
+    details.dev select, details.dev input { min-height: 40px; font-size: 15px; }
+    #raw { max-height: 200px; overflow: auto; font-size: 11px; background: #0006; padding: 8px; border-radius: 8px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <span class="conn pill" id="conn">…</span>
+  <div class="layout">
+    <main><div id="board"></div></main>
+
+    <aside>
+      <div class="panel">
+        <h2>Players</h2>
+        <ul class="players" id="players"></ul>
+      </div>
+
+      <div class="panel">
+        <div class="row" style="justify-content: space-between; margin-bottom: 8px">
+          <h2 style="margin: 0">🪞 The Mirror</h2>
+          <button class="btn small" id="voice-btn">🔊 Wake the Mirror</button>
+        </div>
+        <ul class="log" id="log"></ul>
+      </div>
+
+      <details class="dev panel" id="dev">
+        <summary>🛠️ Dev panel (stands in for camera, mic, motors)</summary>
+
+        <h4>Game</h4>
+        <div class="row">
+          <button class="btn small" data-act="start">Start</button>
+          <button class="btn small secondary" data-act="force">Force start</button>
+        </div>
+
+        <h4>Camera — dice tray</h4>
+        <div class="row">
+          <select id="dice" style="width: 90px"></select>
+          <button class="btn small" data-act="dice">Read dice</button>
+          <button class="btn small secondary" data-act="no-dice">Dice not visible</button>
+        </div>
+
+        <h4>Camera — card spot</h4>
+        <div class="row">
+          <select id="card" class="grow"></select>
+          <button class="btn small" data-act="card">Read card</button>
+        </div>
+
+        <h4>Camera — reader spot (player card laid down)</h4>
+        <div class="row" id="taps"></div>
+
+        <h4>Voice (Grandma)</h4>
+        <div class="row">
+          <button class="btn small" data-act="yes">Yes</button>
+          <button class="btn small secondary" data-act="no">No</button>
+          <input id="heard" class="grow" placeholder="…or type what she said">
+          <button class="btn small secondary" data-act="hear">Hear</button>
+        </div>
+
+        <h4>Payment fallback</h4>
+        <div class="row">
+          <button class="btn small secondary" data-act="confirm-pay">Confirm payment (card not read)</button>
+        </div>
+
+        <h4>Motors</h4>
+        <p class="muted" style="margin: 0 0 8px">In sim mode moves finish by themselves after ~1 s.</p>
+        <div class="row">
+          <button class="btn small secondary" data-act="retry-move">Retry stuck move</button>
+        </div>
+
+        <h4>Raw messages</h4>
+        <pre id="raw"></pre>
+      </details>
+    </aside>
+  </div>
+
+<script type="module">
+import { connect, toast, h, tokenDot } from "/static/net.js";
+import { loadBoard, createBoardView, statusText } from "/static/board.js";
+
+const gameId = location.pathname.split("/")[2];
+const boardData = await loadBoard();
+const board = createBoardView(document.getElementById("board"), boardData);
+let state = null;
+
+// ---- Mirror voice ---------------------------------------------------------
+// Browsers only allow speech after someone has clicked the page, so the
+// button "wakes" speechSynthesis; after that every Mirror line is spoken.
+let speaking = false;
+document.getElementById("voice-btn").onclick = (e) => {
+  speaking = !speaking;
+  e.target.textContent = speaking ? "🔊 Mirror is awake" : "🔊 Wake the Mirror";
+  if (speaking) say("The Mirror is awake.");
+  else speechSynthesis.cancel();
+};
+function say(text) {
+  if (!speaking || !("speechSynthesis" in window)) return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 0.95;
+  u.voice = speechSynthesis.getVoices().find((v) => v.lang.startsWith("en")) || null;
+  speechSynthesis.speak(u);
+}
+
+function addLog(text) {
+  const log = document.getElementById("log");
+  log.prepend(h("li", {}, text));
+  while (log.children.length > 30) log.lastChild.remove();
+}
+
+const raw = [];
+function addRaw(msg) {
+  raw.unshift(JSON.stringify(msg));
+  raw.length = Math.min(raw.length, 30);
+  document.getElementById("raw").textContent = raw.join("\n");
+}
+
+// ---- connection -----------------------------------------------------------
+const net = connect(`/ws/${gameId}?role=board`, {
+  onState: (s) => { state = s; addRaw({ type: "state", phase: s.phase }); render(); },
+  onMessage: (m) => {
+    addRaw(m);
+    if (m.type === "mirror") { addLog(m.text); say(m.text); }
+  },
+  onError: (m) => toast(m, "error"),
+  onStatus: (s) => { document.getElementById("conn").textContent = { online: "● live", offline: "○ reconnecting", connecting: "…", closed: "✕" }[s]; },
+  onClosed: () => document.body.append(h("div", { class: "notice" }, h("div", { class: "panel" },
+    h("h2", {}, "This game doesn't exist"), h("p", { class: "muted" }, "The server may have restarted. Create a new game."),
+    h("a", { class: "btn", href: "/", style: "display:inline-grid;place-items:center" }, "New game")))),
+});
+
+// ---- rendering ------------------------------------------------------------
+function render() {
+  board.render(state);
+  // Board center
+  const c = board.center;
+  if (state.phase === "LOBBY") {
+    const waiting = state.players.filter((p) => !p.connected).map((p) => p.name);
+    c.replaceChildren(
+      h("div", { class: "center-title" }, "🪞 Magic Mirror"),
+      h("div", { class: "center-phase" }, waiting.length ? `Waiting for ${waiting.join(" and ")}…` : "Everyone is here!"),
+      h("button", { class: "btn", disabled: waiting.length > 0, onclick: () => net.send({ action: "start" }) }, "Start the game"));
+  } else {
+    const roll = state.last_roll;
+    c.replaceChildren(
+      h("div", { class: "center-title" }, "🪞 Magic Mirror"),
+      roll ? h("div", { class: "dice" }, state.last_dice ? `🎲 ${state.last_dice.join(" + ")} = ${roll}` : `🎲 ${roll}`) : "",
+      h("div", { class: "center-phase" }, statusText(state, boardData, "board")));
+  }
+
+  // Players
+  document.getElementById("players").replaceChildren(...state.players.map((p) =>
+    h("li", { class: p.id === state.current_player && state.phase !== "LOBBY" ? "turn" : "" },
+      tokenDot(p),
+      h("div", { class: "who" },
+        h("div", {}, p.name, p.bankrupt ? " (out)" : ""),
+        h("div", { class: "where" }, boardData.squares[p.position].name, p.in_jail ? " · locked in" : "")),
+      h("span", { class: "bal" }, `🪙${p.balance}`),
+      h("span", { class: "dot", title: p.connected ? "connected" : "not connected", style: `background: var(--${p.connected ? "ok" : "wait"})` }))));
+
+  // Dev panel: one "tap" button per player card
+  const taps = document.getElementById("taps");
+  if (!taps.children.length) {
+    for (const p of state.players) {
+      taps.append(h("button", { class: "btn small secondary", onclick: () => net.send({ source: "vision", type: "player_card", player: p.id }) }, `${p.name}'s card on reader`));
+    }
+  }
+}
+
+// ---- dev panel ------------------------------------------------------------
+const diceSel = document.getElementById("dice");
+for (let v = 2; v <= 12; v++) diceSel.append(h("option", { value: v, selected: v === 7 }, String(v)));
+
+const cardData = await (await fetch("/api/cards")).json();
+const cardSel = document.getElementById("card");
+for (const [deck, info] of Object.entries(cardData.decks)) {
+  cardSel.append(h("optgroup", { label: info.name },
+    cardData.cards.filter((c) => c.deck === deck).map((c) => h("option", { value: c.id }, `${c.art} ${c.id} — ${c.title}`))));
+}
+
+const ACTS = {
+  start: () => net.send({ action: "start" }),
+  force: () => net.send({ action: "start", force: true }),
+  dice: () => net.send({ source: "vision", type: "dice", value: Number(diceSel.value) }),
+  "no-dice": () => net.send({ source: "vision", type: "dice_not_visible" }),
+  card: () => net.send({ source: "vision", type: "card", id: cardSel.value }),
+  yes: () => net.send({ source: "voice", answer: "yes" }),
+  no: () => net.send({ source: "voice", answer: "no" }),
+  hear: () => net.send({ source: "voice", text: document.getElementById("heard").value }),
+  "confirm-pay": () => net.send({ action: "confirm_payment" }),
+  "retry-move": () => net.send({ action: "retry_move" }),
+};
+document.getElementById("dev").addEventListener("click", (e) => {
+  const act = e.target.dataset?.act;
+  if (act) ACTS[act]();
+});
+</script>
+</body>
+</html>
