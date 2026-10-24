@@ -19,7 +19,9 @@ A turn:
         WAITING_FOR_DECISION (unowned: buy yes/no)
         WAITING_FOR_PAYMENT  (Grandma owes: waits for her card tap;
                               remote payers settle immediately)
+        WAITING_FOR_CARD     (Spells / Fairy Godmother: Grandma draws, camera reads)
         END_OF_TURN --> next player's WAITING_FOR_ROLL
+                        (or a pay-the-fine decision if they're in the tower)
 """
 from __future__ import annotations
 
@@ -81,10 +83,13 @@ class GameState:
     last_dice: list[int] | None = None   # both dice for app rolls; None for camera reads (total only)
     # What the engine is waiting on:
     #   {"kind": "move", "player": "p2", "from": 3, "to": 8}
-    #   {"kind": "decision", "player": "p1", "square": 6, "price": 100}
+    #   {"kind": "decision", "type": "buy", "player": "p1", "square": 6, "price": 100}
+    #   {"kind": "decision", "type": "jail", "player": "p2", "price": 50}
     #   {"kind": "payment", "payer": "p1", "payee": "p2", "amount": 25, "reason": "rent", "square": 6}
-    #   {"kind": "card", "deck": "spell", "for": "p2"}            (milestone 4)
+    #   {"kind": "card", "deck": "spell", "for": "p2"}
     pending: dict | None = None
+    payment_queue: list[dict] = field(default_factory=list)  # payments still to come this turn
+    last_card: dict | None = None   # {"id": "spell_07", "for": "p2"}: shown in that kid's app
     winner: str | None = None
 
     def player(self, pid: str) -> Player:
@@ -137,8 +142,6 @@ def apply_action(state: GameState, actor: str, action: dict,
     name = action.get("action")
     handler = _HANDLERS.get(name)
     if handler is None:
-        if name in _NOT_YET:
-            raise EngineError(f"'{name}' isn't implemented yet")
         raise EngineError(f"unknown action: {name}")
     s = copy.deepcopy(state)
     events = handler(s, actor, action, rng or random.Random())
@@ -202,13 +205,9 @@ def _start(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
     missing = [p.name for p in s.players if not p.connected]
     if missing and not a.get("force"):
         raise EngineError("still waiting for " + ", ".join(missing))
-    s.phase = Phase.WAITING_FOR_ROLL
     s.current = 0
     s.turn = 1
-    return [
-        {"type": "game_started", "players": [p.id for p in s.players]},
-        {"type": "turn_started", "player": s.current_player.id},
-    ]
+    return [{"type": "game_started", "players": [p.id for p in s.players]}] + _start_turn(s)
 
 
 # --- rolling and moving -----------------------------------------------------
@@ -247,14 +246,20 @@ def _dice_not_visible(s: GameState, actor: str, a: dict, rng: random.Random) -> 
 
 def _start_move(s: GameState, p: Player, total: int, dice: list[int] | None) -> list[dict]:
     s.last_roll, s.last_dice = total, dice
-    frm, to = p.position, (p.position + total) % rules.NUM_SQUARES
+    rolled = {"type": "rolled", "player": p.id, "value": total, "dice": dice}
+    return [rolled] + _begin_move(s, p, (p.position + total) % rules.NUM_SQUARES)
+
+
+def _begin_move(s: GameState, p: Player, to: int, **flags) -> list[dict]:
+    """Send a token forward to `to`. Flags travel with the move until move_done:
+    no_salary (backwards / to-the-tower moves), to_jail, rent_multiplier,
+    utility_multiplier (from "nearest ride/well" cards)."""
+    frm = p.position
     s.phase = Phase.MOVING
-    s.pending = {"kind": "move", "player": p.id, "from": frm, "to": to}
-    return [
-        {"type": "rolled", "player": p.id, "value": total, "dice": dice},
-        # The room sends this to the move bridge; nothing resolves until move_done.
-        {"type": "move", "player": p.id, "lane": p.lane, "from": frm, "to": to},
-    ]
+    s.pending = {"kind": "move", "player": p.id, "from": frm, "to": to, **flags}
+    # The room sends this to the move bridge; nothing resolves until move_done.
+    # Belts only run forward, so even "go back 3" travels forward around the board.
+    return [{"type": "move", "player": p.id, "lane": p.lane, "from": frm, "to": to}]
 
 
 def _moving_player(s: GameState, actor: str, a: dict) -> Player:
@@ -268,17 +273,21 @@ def _moving_player(s: GameState, actor: str, a: dict) -> Player:
 
 def _move_done(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
     p = _moving_player(s, actor, a)
-    frm, to = s.pending["from"], s.pending["to"]
+    move = s.pending
+    frm, to = move["from"], move["to"]
     if a.get("square") != to:
         raise EngineError(f"token reported at square {a.get('square')}, expected {to}")
     p.position = to
     s.pending = None
     events = [{"type": "moved", "player": p.id, "from": frm, "to": to}]
-    if to < frm:  # wrapped past 39: passed or landed on Castle Gate
+    if to < frm and not move.get("no_salary"):  # wrapped past 39: passed or landed on Castle Gate
         salary = rules.board()["go_salary"]
         p.balance += salary
         events.append({"type": "salary", "player": p.id, "amount": salary})
-    return events + _resolve(s, p)
+    if move.get("to_jail"):
+        p.in_jail, p.jail_turns = True, 0
+        return events + [{"type": "jailed", "player": p.id}] + _end_turn(s)
+    return events + _resolve(s, p, move)
 
 
 def _move_failed(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
@@ -296,11 +305,12 @@ def _retry_move(s: GameState, actor: str, a: dict, rng: random.Random) -> list[d
 
 # --- landing ------------------------------------------------------------------
 
-def _resolve(s: GameState, p: Player) -> list[dict]:
+def _resolve(s: GameState, p: Player, move: dict) -> list[dict]:
     s.phase = Phase.RESOLVING
     idx = p.position
     sq = rules.square(idx)
     events: list[dict] = [{"type": "landed", "player": p.id, "square": idx}]
+
     if rules.is_buyable(sq):
         owner = s.owner_of(idx)
         if owner is None:
@@ -308,31 +318,112 @@ def _resolve(s: GameState, p: Player) -> list[dict]:
                 events.append({"type": "cant_afford", "player": p.id, "square": idx, "price": sq["price"]})
                 return events + _end_turn(s)
             s.phase = Phase.WAITING_FOR_DECISION
-            s.pending = {"kind": "decision", "player": p.id, "square": idx, "price": sq["price"]}
+            s.pending = {"kind": "decision", "type": "buy", "player": p.id, "square": idx, "price": sq["price"]}
             events.append({"type": "offer", "player": p.id, "square": idx, "price": sq["price"]})
             return events
         if owner.id != p.id:
-            amount = rules.rent(idx, owner.properties, s.last_roll or 0)
-            return events + _request_payment(s, p, owner.id, amount, "rent", square=idx)
-    # Cards, taxes and Cursed! are milestone 4; for now they're quiet squares.
-    return events + _end_turn(s)
+            dice = s.last_roll or 0
+            if sq["type"] == "utility" and move.get("utility_multiplier"):
+                amount = move["utility_multiplier"] * dice
+            else:
+                amount = rules.rent(idx, owner.properties, dice) * move.get("rent_multiplier", 1)
+            return events + _request_payment(s, _payment(p.id, owner.id, amount, "rent", square=idx))
+        return events + _end_turn(s)
+
+    if sq["type"] == "card":
+        # Grandma draws the physical card for whoever landed; the camera reads it.
+        s.phase = Phase.WAITING_FOR_CARD
+        s.pending = {"kind": "card", "deck": sq["deck"], "for": p.id}
+        return events + [{"type": "card_requested", "player": p.id, "deck": sq["deck"]}]
+    if sq["type"] == "tax":
+        return events + _request_payment(s, _payment(p.id, BANK, sq["amount"], "tax", square=idx))
+    if sq["type"] == "go_to_jail":
+        return events + [{"type": "cursed", "player": p.id}] + _send_to_jail(s, p)
+    return events + _end_turn(s)  # Castle Gate, Fairy Ring, just visiting the tower
 
 
-# --- buy decision -------------------------------------------------------------
+def _send_to_jail(s: GameState, p: Player) -> list[dict]:
+    return _begin_move(s, p, rules.board()["jail_square"], no_salary=True, to_jail=True)
+
+
+# --- cards ----------------------------------------------------------------------
+
+def _card(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
+    """A game card was read: by the camera (system) or picked in the drawer's
+    app when the camera couldn't read it."""
+    if s.phase != Phase.WAITING_FOR_CARD:
+        raise EngineError("nobody is drawing a card right now")
+    pend = s.pending
+    p = s.player(pend["for"])
+    if actor != SYSTEM and actor != p.id:
+        raise EngineError(f"that card is for {p.name}")
+    card = rules.card(a.get("id", ""))
+    if card is None:
+        raise EngineError(f"unknown card: {a.get('id')}")
+    if card["deck"] != pend["deck"]:
+        decks = rules.cards()["decks"]
+        raise EngineError(f"that's a {decks[card['deck']]['name']} card — "
+                          f"{p.name} needs a {decks[pend['deck']]['name']} card")
+    s.pending = None
+    s.last_card = {"id": card["id"], "for": p.id}
+    return [{"type": "card_drawn", "player": p.id, "id": card["id"]}] + _apply_card(s, p, card["effect"])
+
+
+def _apply_card(s: GameState, p: Player, eff: dict) -> list[dict]:
+    kind = eff["kind"]
+    if kind == "advance":
+        return _begin_move(s, p, eff["to"])
+    if kind == "advance_nearest":
+        to = rules.nearest(p.position, eff["type"])
+        flags = {k: eff[k] for k in ("rent_multiplier", "utility_multiplier") if k in eff}
+        return _begin_move(s, p, to, **flags)
+    if kind == "back":
+        return _begin_move(s, p, (p.position - eff["spaces"]) % rules.NUM_SQUARES, no_salary=True)
+    if kind == "go_to_jail":
+        return _send_to_jail(s, p)
+    if kind == "collect":
+        p.balance += eff["amount"]
+        return [{"type": "paid", "from": BANK, "to": p.id, "amount": eff["amount"], "reason": "card"}] + _end_turn(s)
+    if kind == "pay":
+        return _request_payment(s, _payment(p.id, BANK, eff["amount"], "card"))
+    others = [o for o in s.players if o.id != p.id and not o.bankrupt]
+    if kind == "collect_from_each":
+        s.payment_queue = [_payment(o.id, p.id, eff["amount"], "card") for o in others]
+        return _next_payment(s)
+    if kind == "pay_each":
+        s.payment_queue = [_payment(p.id, o.id, eff["amount"], "card") for o in others]
+        return _next_payment(s)
+    if kind == "jail_free":
+        p.jail_free_cards += 1
+        return [{"type": "got_jail_key", "player": p.id}] + _end_turn(s)
+    raise EngineError(f"unknown card effect: {kind}")
+
+
+# --- decisions (buy, or pay to leave the tower) ---------------------------------
 
 def _decide(s: GameState, pid: str, yes: bool, square: int | None = None) -> list[dict]:
     _require_phase(s, Phase.WAITING_FOR_DECISION)
     pend = s.pending
     if pid != pend["player"]:
         raise EngineError(f"it's {s.player(pend['player']).name}'s decision")
-    if square is not None and square != pend["square"]:
-        raise EngineError("that's not the place on offer")
     p = s.player(pid)
     s.pending = None
-    events = [{"type": "decided", "player": pid, "square": pend["square"], "answer": "yes" if yes else "no"}]
+    answer = "yes" if yes else "no"
+
+    if pend["type"] == "jail":
+        events = [{"type": "decided", "player": pid, "about": "jail", "answer": answer}]
+        if yes:
+            return events + _request_payment(s, _payment(pid, BANK, pend["price"], "jail_fine", then="release"))
+        p.jail_turns += 1
+        return events + [{"type": "stayed_in_jail", "player": pid}] + _end_turn(s)
+
+    if square is not None and square != pend["square"]:
+        s.pending = pend
+        raise EngineError("that's not the place on offer")
+    events = [{"type": "decided", "player": pid, "about": "buy", "square": pend["square"], "answer": answer}]
     if not yes:
         return events + _end_turn(s)
-    return events + _request_payment(s, p, BANK, pend["price"], "buy", square=pend["square"])
+    return events + _request_payment(s, _payment(pid, BANK, pend["price"], "buy", square=pend["square"]))
 
 
 def _buy(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
@@ -353,15 +444,22 @@ def _decision(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dic
 
 
 # --- payments -----------------------------------------------------------------
+#
+# Every payment is a dict made by _payment() and goes through _request_payment().
+# "then" says what happens after it settles: "end_turn" (default) or "release"
+# (paid the tower fine; the same player now rolls). Several payments in a row
+# (e.g. "collect 10 from each player") wait in state.payment_queue.
 
-def _request_payment(s: GameState, payer: Player, payee: str, amount: int,
-                     reason: str, **extra) -> list[dict]:
-    """Every payment is created here. Only Grandma approves hers (card tap)."""
-    pay = {"kind": "payment", "payer": payer.id, "payee": payee, "amount": amount, "reason": reason, **extra}
-    if payer.kind == "in_person" and payer.balance >= amount:
+def _payment(payer: str, payee: str, amount: int, reason: str, **extra) -> dict:
+    return {"kind": "payment", "payer": payer, "payee": payee, "amount": amount, "reason": reason, **extra}
+
+
+def _request_payment(s: GameState, pay: dict) -> list[dict]:
+    payer = s.player(pay["payer"])
+    if payer.kind == "in_person" and payer.balance >= pay["amount"]:
         s.phase = Phase.WAITING_FOR_PAYMENT
         s.pending = pay
-        return [{"type": "payment_requested", **{k: v for k, v in pay.items() if k != "kind"}}]
+        return [{"type": "payment_requested", **{k: v for k, v in pay.items() if k not in ("kind", "then")}}]
     # Remote payments are approved automatically; so is a payment nobody can
     # cover (bankruptcy is automatic for everyone, Grandma included).
     return _settle(s, pay)
@@ -384,7 +482,27 @@ def _settle(s: GameState, pay: dict) -> list[dict]:
     if pay["reason"] == "buy":
         payer.properties.append(pay["square"])
         events.append({"type": "bought", "player": payer.id, "square": pay["square"]})
-    return events + _end_turn(s)
+    return events + _after_payment(s, pay)
+
+
+def _after_payment(s: GameState, pay: dict) -> list[dict]:
+    if s.payment_queue:
+        return _next_payment(s)
+    if pay.get("then") == "release" and not s.player(pay["payer"]).bankrupt:
+        p = s.player(pay["payer"])
+        p.in_jail, p.jail_turns = False, 0
+        s.phase = Phase.WAITING_FOR_ROLL
+        return [{"type": "released", "player": p.id}]
+    return _end_turn(s)
+
+
+def _next_payment(s: GameState) -> list[dict]:
+    # Drop payments involving anyone who went bankrupt earlier in the queue.
+    gone = {p.id for p in s.players if p.bankrupt}
+    s.payment_queue = [q for q in s.payment_queue if q["payer"] not in gone and q["payee"] not in gone]
+    if not s.payment_queue:
+        return _end_turn(s)
+    return _request_payment(s, s.payment_queue.pop(0))
 
 
 def _bankrupt(s: GameState, payer: Player, payee: Player | None, pay: dict) -> list[dict]:
@@ -394,6 +512,7 @@ def _bankrupt(s: GameState, payer: Player, payee: Player | None, pay: dict) -> l
         payee.balance += given
     payer.balance = 0
     payer.bankrupt = True
+    payer.in_jail = False
     payer.properties.clear()
     events = [
         {"type": "paid", "from": payer.id, "to": pay["payee"], "amount": given, "reason": pay["reason"]},
@@ -403,8 +522,9 @@ def _bankrupt(s: GameState, payer: Player, payee: Player | None, pay: dict) -> l
     if len(alive) == 1:
         s.phase = Phase.GAME_OVER
         s.winner = alive[0].id
+        s.payment_queue = []
         return events + [{"type": "game_over", "winner": s.winner}]
-    return events + _end_turn(s)
+    return events + _after_payment(s, pay)
 
 
 def _paying_player(s: GameState, actor: str) -> Player:
@@ -441,9 +561,33 @@ def _end_turn(s: GameState) -> list[dict]:
     s.current = nxt
     s.turn += 1
     s.pending = None
+    return [{"type": "turn_ended", "player": ended}] + _start_turn(s)
+
+
+def _start_turn(s: GameState) -> list[dict]:
+    """Begin the current player's turn. A player in Rapunzel's Tower uses a key
+    if they have one; otherwise they're offered to pay the fine, and on their
+    third turn inside they must pay it. (Camera reads give totals only, so
+    there's no rolling doubles to escape.)"""
+    p = s.current_player
     s.phase = Phase.WAITING_FOR_ROLL
-    return [{"type": "turn_ended", "player": ended},
-            {"type": "turn_started", "player": s.current_player.id}]
+    events = [{"type": "turn_started", "player": p.id}]
+    if not p.in_jail:
+        return events
+    if p.jail_free_cards:
+        p.jail_free_cards -= 1
+        p.in_jail, p.jail_turns = False, 0
+        return events + [{"type": "used_jail_key", "player": p.id}]
+    fine = rules.board()["jail_fine"]
+    if p.jail_turns >= 2:
+        return events + [{"type": "must_pay_fine", "player": p.id, "amount": fine}] + \
+            _request_payment(s, _payment(p.id, BANK, fine, "jail_fine", then="release"))
+    if p.balance < fine:
+        p.jail_turns += 1
+        return events + [{"type": "stayed_in_jail", "player": p.id}] + _end_turn(s)
+    s.phase = Phase.WAITING_FOR_DECISION
+    s.pending = {"kind": "decision", "type": "jail", "player": p.id, "price": fine}
+    return events + [{"type": "jail_offer", "player": p.id, "price": fine}]
 
 
 _HANDLERS: dict[str, Handler] = {
@@ -458,9 +602,7 @@ _HANDLERS: dict[str, Handler] = {
     "buy": _buy,
     "decline": _decline,
     "decision": _decision,
+    "card": _card,
     "player_card": _player_card,
     "confirm_payment": _confirm_payment,
 }
-
-# Actions the protocol already defines; implemented in milestone 4.
-_NOT_YET = {"card"}

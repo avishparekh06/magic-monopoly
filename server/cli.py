@@ -15,7 +15,7 @@ import random
 
 from .adapters.mirror import TemplateMirror
 from .engine import SYSTEM, EngineError, GameState, Phase, apply_action, new_game
-from .rules.monopoly import square
+from .rules.monopoly import cards, square
 
 mirror = TemplateMirror()
 
@@ -28,7 +28,8 @@ def show(state: GameState, events: list[dict]) -> None:
 
 
 def status(state: GameState) -> None:
-    parts = [f"{p.name} 🪙{p.balance} @ {square(p.position)['name']}" + (" (out)" if p.bankrupt else "")
+    parts = [f"{p.name} 🪙{p.balance} @ {square(p.position)['name']}"
+             + (" (locked in)" if p.in_jail else "") + (" (out)" if p.bankrupt else "")
              for p in state.players]
     print("\n" + " | ".join(parts))
 
@@ -58,10 +59,18 @@ def next_input(state: GameState, rng: random.Random) -> tuple[str, dict]:
         return SYSTEM, {"action": "move_done", "lane": mover.lane, "square": pend["to"]}
     if state.phase == Phase.WAITING_FOR_DECISION:
         who = state.player(pend["player"])
-        yes = ask(f"{who.name}: buy {square(pend['square'])['name']} for {pend['price']}? y/n > ").startswith("y")
+        if pend["type"] == "jail":
+            question = f"{who.name}: pay {pend['price']} to leave the tower? y/n > "
+        else:
+            question = f"{who.name}: buy {square(pend['square'])['name']} for {pend['price']}? y/n > "
+        yes = ask(question).startswith("y")
         if who.kind == "in_person":
             return SYSTEM, {"action": "decision", "player": who.id, "answer": "yes" if yes else "no"}
         return who.id, {"action": "buy" if yes else "decline"}
+    if state.phase == Phase.WAITING_FOR_CARD:
+        deck = [c["id"] for c in cards()["cards"] if c["deck"] == pend["deck"]]
+        raw = ask(f"Card read by the camera ({deck[0]}..{deck[-1]}), Enter = random > ")
+        return SYSTEM, {"action": "card", "id": raw or rng.choice(deck)}
     if state.phase == Phase.WAITING_FOR_PAYMENT:
         raw = ask(f"Whose card is tapped? p1/p2/p3, Enter = {pend['payer']} > ") or pend["payer"]
         return SYSTEM, {"action": "player_card", "player": raw}

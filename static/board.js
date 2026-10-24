@@ -15,7 +15,8 @@ const ICONS = {
   17: "🧚", 20: "🍄", 22: "✨", 25: "👢", 28: "🧶", 30: "🌀", 33: "🧚",
   35: "🧹", 36: "✨", 38: "🐲",
 };
-const STEP_MS = 190;  // time per square when a token walks
+const STEP_MS = 190;       // time per square when a token walks...
+const MAX_WALK_MS = 3000;  // ...but long card moves (up to 39 squares) speed up to fit in ~3 s
 
 export async function loadBoard() {
   return (await fetch("/api/board")).json();
@@ -77,18 +78,21 @@ export function createBoardView(el, boardData) {
     const size = Math.min(w, h) * 0.42;
     const x = cell.offsetLeft + w * (0.23 + 0.27 * (t.lane - 1)) - size / 2;
     const y = cell.offsetTop + h * 0.74 - size / 2;  // low in the square, under the name
-    t.el.style.transition = animate ? `left ${STEP_MS - 20}ms ease-in-out, top ${STEP_MS - 20}ms ease-in-out` : "none";
+    const ms = Math.max(t.stepMs - 20, 0);
+    t.el.style.transition = animate ? `left ${ms}ms ease-in-out, top ${ms}ms ease-in-out` : "none";
     Object.assign(t.el.style, { left: `${x}px`, top: `${y}px`, width: `${size}px`, height: `${size}px`, fontSize: `${size * 0.5}px` });
   }
 
   // Walk forward one square at a time (wrapping past 39), like the real belts.
   function walk(t) {
     if (t.timer) return;  // already walking; it will keep going to the new target
+    const steps = (t.target - t.shown + 40) % 40;
+    t.stepMs = Math.min(STEP_MS, MAX_WALK_MS / steps);
     const stepOnce = () => {
       if (t.shown === t.target) { t.timer = null; return; }
       t.shown = (t.shown + 1) % 40;
       place(t, true);
-      t.timer = setTimeout(stepOnce, STEP_MS);
+      t.timer = setTimeout(stepOnce, t.stepMs);
     };
     stepOnce();
   }
@@ -110,7 +114,7 @@ export function createBoardView(el, boardData) {
         tokEl.textContent = tokenGlyph(p);
         tokEl.title = p.name;
         layer.append(tokEl);
-        t = tokens[p.id] = { el: tokEl, shown: p.position, target: p.position, lane: p.lane, timer: null };
+        t = tokens[p.id] = { el: tokEl, shown: p.position, target: p.position, lane: p.lane, timer: null, stepMs: STEP_MS };
         place(t, false);
       }
       t.el.hidden = p.bankrupt;
@@ -203,15 +207,29 @@ export function statusText(state, boardData, viewer) {
     case "MOVING": return `${name(pend.player)} is on the move to ${place(pend.to)}…`;
     case "WAITING_FOR_DECISION": {
       const who = state.players.find((p) => p.id === pend.player);
+      if (pend.type === "jail") {
+        if (viewer === who.id) return `Pay 🪙${pend.price} to leave Rapunzel's Tower?`;
+        if (who.kind === "in_person") return `${who.name}, pay 🪙${pend.price} to leave the tower? Say yes or no`;
+        return `${who.name} is deciding whether to leave the tower`;
+      }
       if (viewer === who.id) return `Buy ${place(pend.square)} for 🪙${pend.price}?`;
       if (who.kind === "in_person") return `${who.name}, buy ${place(pend.square)} for 🪙${pend.price}? Say yes or no`;
       return `${who.name} is deciding about ${place(pend.square)}`;
     }
     case "WAITING_FOR_PAYMENT": {
-      const what = pend.reason === "buy" ? `for ${place(pend.square)}` : `to ${name(pend.payee)}`;
+      const what = {
+        buy: `for ${place(pend.square)}`,
+        tax: `for the ${place(pend.square)}`,
+        jail_fine: "to leave the tower",
+      }[pend.reason] || `to ${name(pend.payee)}`;
       return `${name(pend.payer)}, tap your card to pay 🪙${pend.amount} ${what}`;
     }
-    case "WAITING_FOR_CARD": return `${state.players[0].name}, please draw a card`;
+    case "WAITING_FOR_CARD": {
+      const deck = pend.deck === "spell" ? "a Spell" : "a Fairy Godmother card";
+      const grandma = state.players[0];
+      if (viewer === pend.for) return `${grandma.name} is drawing ${deck} for you…`;
+      return `${grandma.name}, please draw ${deck} for ${pend.for === grandma.id ? "yourself" : name(pend.for)}`;
+    }
     case "GAME_OVER": return `${name(state.winner)} wins the kingdom! 👑`;
     default: return "";
   }

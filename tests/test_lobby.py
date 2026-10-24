@@ -85,12 +85,10 @@ def test_reconnect_is_a_no_op():
     assert events == []
 
 
-def test_unknown_and_future_actions_rejected():
+def test_unknown_and_early_actions_rejected():
     s = new_game("g", SPECS)
     with pytest.raises(EngineError, match="unknown"):
         apply_action(s, SYSTEM, {"action": "teleport"})
-    with pytest.raises(EngineError, match="isn't implemented"):
-        apply_action(s, SYSTEM, {"action": "card", "id": "spell_01"})
     with pytest.raises(EngineError, match="hasn't started"):
         apply_action(s, "p2", {"action": "roll"})
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from ..engine import BANK, GameState
-from ..rules.monopoly import square
+from ..rules.monopoly import card, square
 
 
 class Mirror(ABC):
@@ -84,27 +84,79 @@ class TemplateMirror(Mirror):
         return f"{self._name(s, e['player'])} can't afford {square(e['square'])['name']} just yet."
 
     def _decided(self, e, s):
-        if e["answer"] == "no":
+        if e["answer"] == "no" and e["about"] == "buy":
             return f"{self._name(s, e['player'])} lets {square(e['square'])['name']} wait for another day."
-        return None  # the payment line says the rest
+        return None  # the payment (or staying-in-the-tower) line says the rest
 
     def _payment_requested(self, e, s):
         payer = self._name(s, e["payer"])
-        if e["reason"] == "buy":
-            what = f"{e['amount']} gold for {square(e['square'])['name']}"
+        reason, amount = e["reason"], e["amount"]
+        if reason == "buy":
+            what = f"{amount} gold for {square(e['square'])['name']}"
+        elif reason == "tax":
+            what = f"the {square(e['square'])['name']} of {amount} gold"
+        elif reason == "jail_fine":
+            what = f"{amount} gold to leave the tower"
         else:
-            what = f"{e['amount']} gold to {self._name(s, e['payee'])}"
+            what = f"{amount} gold to {self._name(s, e['payee'])}"
         return f"{payer}, please tap your card on the reader to pay {what}."
 
     def _paid(self, e, s):
         payer, payee = self._name(s, e["from"]), self._name(s, e["to"])
-        if e["reason"] == "buy":
-            text = f"{payer} bought {square(e['square'])['name']} for {e['amount']} gold!"
-        elif e["reason"] == "rent":
-            text = f"{payer} paid {payee} {e['amount']} gold in rent for {square(e['square'])['name']}."
+        reason, amount = e["reason"], e["amount"]
+        if e["from"] == BANK:
+            text = f"{payee} collects {amount} gold!"
+        elif reason == "buy":
+            text = f"{payer} bought {square(e['square'])['name']} for {amount} gold!"
+        elif reason == "rent":
+            text = f"{payer} paid {payee} {amount} gold in rent for {square(e['square'])['name']}."
+        elif reason == "tax":
+            text = f"{payer} paid the {square(e['square'])['name']} of {amount} gold."
+        elif reason == "jail_fine":
+            text = f"{payer} paid {amount} gold to escape the tower."
         else:
-            text = f"{payer} paid {payee} {e['amount']} gold."
+            text = f"{payer} paid {payee} {amount} gold."
         return text + self._grandma_balance(s, e["from"], e["to"])
+
+    # --- cards ---
+    def _card_requested(self, e, s):
+        grandma = s.players[0]
+        article = "a Spell" if e["deck"] == "spell" else "a Fairy Godmother card"
+        for_whom = "for yourself" if e["player"] == grandma.id else f"for {self._name(s, e['player'])}"
+        return f"{grandma.name}, please draw {article} {for_whom} and lay it on the card spot."
+
+    def _card_drawn(self, e, s):
+        c = card(e["id"])
+        return f"{c['title']}! {c['text']}"
+
+    def _got_jail_key(self, e, s):
+        return f"{self._name(s, e['player'])} tucks the key away for later."
+
+    # --- the tower ---
+    def _cursed(self, e, s):
+        return f"Cursed! {self._name(s, e['player'])} is whisked away to Rapunzel's Tower!"
+
+    def _jailed(self, e, s):
+        return f"{self._name(s, e['player'])} is locked in Rapunzel's Tower."
+
+    def _jail_offer(self, e, s):
+        p = s.player(e["player"])
+        ask = "Just say yes or no." if p.kind == "in_person" else ""
+        return f"{p.name}, would you like to pay {e['price']} gold to leave the tower? {ask}".strip()
+
+    def _stayed_in_jail(self, e, s):
+        return f"{self._name(s, e['player'])} waits in the tower a little longer."
+
+    def _must_pay_fine(self, e, s):
+        return f"{self._name(s, e['player'])} has waited three turns, so it's {e['amount']} gold to leave."
+
+    def _released(self, e, s):
+        p = s.player(e["player"])
+        roll = "roll the dice into the tray" if p.kind == "in_person" else "roll"
+        return f"The tower door creaks open! {p.name}, {roll}."
+
+    def _used_jail_key(self, e, s):
+        return f"{self._name(s, e['player'])} uses the magic key and slips out of the tower!"
 
     def _bankrupt(self, e, s):
         return f"{self._name(s, e['player'])} has run out of gold and bows out of the tale."

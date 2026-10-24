@@ -83,7 +83,7 @@ def test_engine_refuses_to_resolve_before_move_done():
         act(s, "p2", "move_done", lane=1, square=6)           # only the bridge reports moves
     s, events = act(s, SYSTEM, "move_done", lane=1, square=6)
     assert s.phase == Phase.WAITING_FOR_DECISION
-    assert s.pending == {"kind": "decision", "player": "p1", "square": 6, "price": 100}
+    assert s.pending == {"kind": "decision", "type": "buy", "player": "p1", "square": 6, "price": 100}
 
 
 def test_dice_not_visible_keeps_waiting_for_roll():

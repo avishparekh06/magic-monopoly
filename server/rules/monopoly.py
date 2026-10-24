@@ -5,7 +5,7 @@ rule questions about squares (what happens on landing, how much rent is).
 Swapping in a different game (e.g. a simpler cooperative one) means
 writing another module with the same functions.
 
-Milestone 3: buying and rent. Cards, taxes and jail land in M4.
+Engine-facing helpers: square data, rent, and card lookups.
 """
 from __future__ import annotations
 
@@ -64,3 +64,12 @@ def rent(index: int, owner_squares: list[int], dice_total: int) -> int:
         owned = sum(1 for i in owner_squares if square(i)["type"] == "utility")
         return b["utility_multiplier"][owned - 1] * dice_total
     raise ValueError(f"square {index} has no rent")
+
+
+def nearest(position: int, square_type: str) -> int:
+    """The next square of `square_type` going forward from `position`."""
+    for step in range(1, NUM_SQUARES + 1):
+        i = (position + step) % NUM_SQUARES
+        if square(i)["type"] == square_type:
+            return i
+    raise ValueError(f"no {square_type} on the board")

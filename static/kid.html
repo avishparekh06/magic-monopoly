@@ -20,6 +20,9 @@
     .center-title { font-family: Georgia, serif; color: var(--gold); }
     .magic-card { text-align: center; border-radius: var(--radius); padding: 20px; color: #fff; }
     .magic-card .art { font-size: 64px; }
+    .picker summary { cursor: pointer; color: var(--ink-dim); padding: 8px 0; }
+    .picker .cards { display: grid; gap: 8px; margin-top: 8px; }
+    .picker .cards .btn { justify-content: flex-start; text-align: left; font-size: 16px; min-height: 52px; }
     .places { list-style: none; margin: 0; padding: 0; }
     .places li { display: flex; gap: 10px; align-items: center; padding: 6px 0; }
     .places .swatch { width: 14px; height: 14px; border-radius: 4px; flex: none; }
@@ -62,6 +65,7 @@
         </div>
       </div>
 
+      <div id="picker-slot"></div>
       <div id="card-slot"></div>
 
       <div class="panel">
@@ -136,19 +140,27 @@ function render() {
     : myTurn ? "Your turn! ✨" : `${current.name}'s turn`;
 
   document.getElementById("status").textContent = statusText(state, boardData, me);
-  document.getElementById("where").textContent = `You're at ${boardData.squares[mine.position].name}`;
+  document.getElementById("where").textContent = mine.in_jail
+    ? "🗼 You're locked in Rapunzel's Tower"
+    : `You're at ${boardData.squares[mine.position].name}`;
 
   // Buttons only light up when the engine is waiting on *me*.
   const deciding = state.phase === "WAITING_FOR_DECISION" && state.pending?.player === me;
   document.getElementById("roll").disabled = !(myTurn && state.phase === "WAITING_FOR_ROLL");
   document.getElementById("roll").hidden = deciding;
   document.getElementById("decide").hidden = !deciding;
-  if (deciding) {
+  if (deciding && state.pending.type === "jail") {
+    document.getElementById("buy").textContent = `Pay 🪙${state.pending.price} and leave`;
+    document.getElementById("pass").textContent = "Stay in the tower";
+  } else if (deciding) {
     const sq = boardData.squares[state.pending.square];
     document.getElementById("buy").textContent = `Buy ${sq.name} 🪙${sq.price}`;
+    document.getElementById("pass").textContent = "No thanks";
   }
 
-  // Card Grandma drew for me (filled in from milestone 4: state.last_card)
+  renderPicker();
+
+  // The last card Grandma drew for me
   const lc = state.last_card;
   const card = lc && lc.for === me && cardData.cards.find((c) => c.id === lc.id);
   document.getElementById("card-slot").replaceChildren(card ? h("div", {
@@ -161,6 +173,24 @@ function render() {
     return h("li", {}, h("span", { class: "swatch", style: `background:${color}` }), sq.name);
   });
   document.getElementById("places").replaceChildren(...(places.length ? places : [h("li", { class: "muted" }, "Nothing yet — land on a place and buy it!")]));
+}
+
+// "Which card was it?" — only if the camera can't read the card Grandma drew
+// for me. Kept open across redraws so a state push doesn't collapse it.
+let pickerOpen = false;
+function renderPicker() {
+  const slot = document.getElementById("picker-slot");
+  const pend = state.pending;
+  if (state.phase !== "WAITING_FOR_CARD" || pend.for !== me) {
+    pickerOpen = false;
+    return slot.replaceChildren();
+  }
+  const details = h("details", { class: "picker panel", open: pickerOpen },
+    h("summary", {}, "The Mirror can't see the card? Tap the one Grandma read out"),
+    h("div", { class: "cards" }, cardData.cards.filter((c) => c.deck === pend.deck).map((c) =>
+      h("button", { class: "btn secondary", onclick: () => act("card", { id: c.id }) }, `${c.art} ${c.title}`))));
+  details.addEventListener("toggle", () => { pickerOpen = details.open; });
+  slot.replaceChildren(details);
 }
 
 function addLog(text) {
