@@ -1,50 +1,19 @@
-// Cute default avatars, one per seat: Grandma, a frog prince and a baby
-// dragon. Each is an SVG drawn on top of the player's color (the crest
-// background), so it works at any size.
-
-const INK = "#2f2433", SKIN = "#f3cba8", CHEEK = "#ec8f95";
-
+// Original fairy-tale SVG characters for the home landscape and guest crests.
+const INK = '#3b304b';
 const AVATARS = {
-  // Grandma: white bun, round glasses, rosy cheeks, lilac cardigan
-  p1: `
-    <path d="M7 41q13-14 26 0z" fill="#cfa6d8"/>
-    <circle cx="20" cy="7.5" r="5" fill="#ece7f2"/>
-    <ellipse cx="20" cy="18" rx="12.5" ry="10.5" fill="#ece7f2"/>
-    <circle cx="20" cy="23" r="9.5" fill="${SKIN}"/>
-    <path d="M10.5 21q9.5-11 19 0q-4-5.5-9.5-5.5t-9.5 5.5z" fill="#ece7f2"/>
-    <circle cx="16" cy="23.5" r="3" fill="none" stroke="${INK}" stroke-width="1.1"/>
-    <circle cx="24" cy="23.5" r="3" fill="none" stroke="${INK}" stroke-width="1.1"/>
-    <path d="M19 23.5h2" stroke="${INK}" stroke-width="1.1"/>
-    <circle cx="16" cy="23.8" r=".95" fill="${INK}"/><circle cx="24" cy="23.8" r=".95" fill="${INK}"/>
-    <circle cx="13.2" cy="27.6" r="1.8" fill="${CHEEK}" opacity=".75"/><circle cx="26.8" cy="27.6" r="1.8" fill="${CHEEK}" opacity=".75"/>
-    <path d="M17.6 28.6q2.4 2 4.8 0" fill="none" stroke="${INK}" stroke-width="1.1" stroke-linecap="round"/>`,
-
-  // Frog prince: big round eyes and a little gold crown
-  p2: `
-    <ellipse cx="20" cy="27" rx="13.5" ry="10.5" fill="#8cc56b"/>
-    <circle cx="13" cy="18" r="5.2" fill="#8cc56b"/><circle cx="27" cy="18" r="5.2" fill="#8cc56b"/>
-    <circle cx="13" cy="18" r="3.3" fill="#fff"/><circle cx="27" cy="18" r="3.3" fill="#fff"/>
-    <circle cx="13.6" cy="18.6" r="1.7" fill="${INK}"/><circle cx="27.6" cy="18.6" r="1.7" fill="${INK}"/>
-    <circle cx="14.1" cy="17.9" r=".6" fill="#fff"/><circle cx="28.1" cy="17.9" r=".6" fill="#fff"/>
-    <path d="M15 16.5l1-6 2.6 3.2L20 9l1.4 4.7L24 10.5l1 6z" fill="#f2c14e" stroke="#b07d22" stroke-width=".8" stroke-linejoin="round"/>
-    <circle cx="11" cy="27.5" r="2" fill="${CHEEK}" opacity=".7"/><circle cx="29" cy="27.5" r="2" fill="${CHEEK}" opacity=".7"/>
-    <path d="M14.5 28.5q5.5 4.5 11 0" fill="none" stroke="#3d6b3a" stroke-width="1.3" stroke-linecap="round"/>`,
-
-  // Baby dragon: tiny horns, gold spikes, sleepy-happy face
-  p3: `
-    <path d="M12.5 13l-2.5-7 6 4.5zM27.5 13l2.5-7-6 4.5z" fill="#f6e7c8"/>
-    <path d="M16.5 12.5l3.5-5 3.5 5z" fill="#f2c14e"/>
-    <ellipse cx="20" cy="23" rx="12.5" ry="11.5" fill="#9b7fd1"/>
-    <ellipse cx="20" cy="28" rx="7.5" ry="5.2" fill="#c3b0ea"/>
-    <circle cx="17.8" cy="27.2" r=".85" fill="${INK}"/><circle cx="22.2" cy="27.2" r=".85" fill="${INK}"/>
-    <circle cx="14.8" cy="20.5" r="2.3" fill="${INK}"/><circle cx="25.2" cy="20.5" r="2.3" fill="${INK}"/>
-    <circle cx="15.6" cy="19.7" r=".85" fill="#fff"/><circle cx="26" cy="19.7" r=".85" fill="#fff"/>
-    <circle cx="11.3" cy="25" r="1.9" fill="${CHEEK}" opacity=".75"/><circle cx="28.7" cy="25" r="1.9" fill="${CHEEK}" opacity=".75"/>
-    <path d="M18 30.4q2 1.6 4 0" fill="none" stroke="${INK}" stroke-width="1.1" stroke-linecap="round"/>`,
+  p1: `<path d="M7 40q3-18 13-18t13 18" fill="#bc83b5"/><path d="M8 30V16a12 12 0 0 1 24 0v15" fill="#65445d"/><circle cx="20" cy="22" r="10" fill="#efc8a5"/><path d="M10 20q1-14 13-11l8 11q-8-1-11-7-2 6-10 7" fill="#65445d"/><path d="m11 12-1-8 7 5 3-7 4 7 6-5-1 8z" fill="#eac66d" stroke="#a77a39" stroke-width="1"/><circle cx="16" cy="23" r="1.2" fill="${INK}"/><circle cx="24" cy="23" r="1.2" fill="${INK}"/><path d="M17 28q3 3 6 0" fill="none" stroke="#9c5367" stroke-linecap="round"/><circle cx="12.5" cy="26" r="1.8" fill="#e99a9e" opacity=".7"/><circle cx="27.5" cy="26" r="1.8" fill="#e99a9e" opacity=".7"/>`,
+  p2: `<path d="M6 40q1-13 14-13t14 13" fill="#6d8f9e"/><path d="M7 26V15a13 13 0 0 1 26 0v11l-6 6H13z" fill="#c3d1d6" stroke="#536a79"/><path d="M12 17h16v11q-8 9-16 0z" fill="#d2a584"/><path d="M9 16q11-7 22 0l-4-6H13z" fill="#6c8492"/><path d="M20 4q-9-11 1-14 9 2 5 10" fill="#ba6679"/><circle cx="16" cy="23" r="1.2" fill="${INK}"/><circle cx="24" cy="23" r="1.2" fill="${INK}"/><path d="M17 28q3 2 6 0" fill="none" stroke="#875755" stroke-linecap="round"/><path d="M7 27h5m16 0h5" stroke="#536a79"/>`,
+  p3: `<path d="M6 40q3-14 14-14t14 14" fill="#6fae91"/><path d="M8 25q-6-25 12-25 19 0 12 27l-7 5H14z" fill="#453c5c"/><path d="m10 23-6-4 3 9 7 1m16-6 6-4-3 9-7 1" fill="#e0ae90"/><circle cx="20" cy="21" r="10" fill="#e0ae90"/><path d="M9 18q10-2 15-11l7 13q-3-18-13-17-10 1-9 15" fill="#453c5c"/><circle cx="16" cy="22" r="1.2" fill="${INK}"/><circle cx="24" cy="22" r="1.2" fill="${INK}"/><path d="M17 27q3 3 6 0" fill="none" stroke="#9d6175" stroke-linecap="round"/><path d="m17 7 3-5 3 5-3 3z" fill="#e4c374"/><circle cx="12.5" cy="25" r="1.8" fill="#d7839c" opacity=".6"/><circle cx="27.5" cy="25" r="1.8" fill="#d7839c" opacity=".6"/>`,
 };
-
-// SVG markup for a player's avatar, or null for a seat without one.
+export const characterName = pid => ({ p1: 'Princess', p2: 'Knight', p3: 'Fairy' })[pid] || 'Wanderer';
 export function avatarSvg(pid) {
-  const art = AVATARS[pid];
-  return art ? `<svg viewBox="0 0 40 40" aria-hidden="true">${art}</svg>` : null;
+  return AVATARS[pid] ? `<svg viewBox="0 -4 40 44" aria-hidden="true">${AVATARS[pid]}</svg>` : null;
+}
+export function characterSvg(pid) {
+  const body = {
+    p1: `<path d="M29 42q11-7 22 0l5 27 16 39q-32 11-64 0l16-39z" fill="#b97cad"/><path d="M30 43h20l-3 24H33z" fill="#e4bbd1"/><path d="M24 68q16 6 32 0M16 101q24 8 48 0" fill="none" stroke="#e8c783" stroke-width="2"/><path d="m29 45-13 23m35-23 13 23" stroke="#efc8a5" stroke-width="7" stroke-linecap="round"/><path d="M27 113h10m6 0h10" stroke="#a47054" stroke-width="4" stroke-linecap="round"/><path d="m38 50 2-4 2 4-2 3z" fill="#ddba62"/>`,
+    p2: `<path d="M21 44q19-8 38 0l6 52-23-8-27 9z" fill="#78516b"/><path d="M25 43h30l-2 34H27z" fill="#9fb4be"/><path d="M30 76v27m20-27v27" stroke="#697f8d" stroke-width="12"/><path d="M22 108h15m8 0h15" stroke="#564c5e" stroke-width="7" stroke-linecap="round"/><path d="m26 47-9 21m37-21 9 21" stroke="#a9bdc5" stroke-width="9" stroke-linecap="round"/><path d="M7 60h22v18q-11 15-22 0z" fill="#627f99" stroke="#d9bd78" stroke-width="2"/><path d="m18 64 3 8 6 1-5 4 1 7-5-4-5 4 1-7-5-4 6-1z" fill="#e8c783"/><path d="M56 59 68 82" stroke="#dfd9cc" stroke-width="4"/><path d="m59 74 9-5" stroke="#d7b568" stroke-width="3"/>`,
+    p3: `<g fill="#dac6e6" stroke="#a58cb6" opacity=".8"><path d="M34 54Q-3 9 2 52q4 18 27 17Q0 65 10 87q18 10 27-22"/><path d="M46 54Q83 9 78 52q-4 18-27 17 29-4 19 18-18 10-27-22"/></g><path d="M30 43h20l5 24 7 24-13-2-9 7-10-7-12 2 8-24z" fill="#75a98c"/><path d="M33 92v18m15-18v18" stroke="#e0ae90" stroke-width="6"/><path d="m26 111 10 1m10 0 10-1" stroke="#6f7358" stroke-width="4" stroke-linecap="round"/><path d="m30 47-13 18m33-18 13 13" stroke="#e0ae90" stroke-width="6" stroke-linecap="round"/><path d="m59 65 10-33" stroke="#d8bc76" stroke-width="2"/><path d="m69 24 2 5 6 1-5 4 1 6-5-3-5 3 1-6-4-4 6-1z" fill="#efcd7c"/>`,
+  }[pid] || '';
+  return `<svg viewBox="0 0 80 120" aria-hidden="true"><g stroke="${INK}" stroke-width="1.3" stroke-linejoin="round">${body}</g><svg x="15" y="0" width="50" height="50" viewBox="0 -4 40 44">${AVATARS[pid] || ''}</svg></svg>`;
 }

@@ -279,3 +279,30 @@ def test_bankruptcy_skips_turn_and_ends_game():
     s, events = grandma_rolls(s, 6)                            # can't cover 6: no tap, automatic
     assert s.phase == Phase.GAME_OVER and s.winner == "p2"
     assert "payment_requested" not in types(events)
+
+
+@pytest.mark.parametrize('pid', ['p1', 'p2'])
+def test_shared_board_roll_uses_two_server_dice_for_current_player(pid):
+    state = at_turn(started(), pid)
+    updated, events = act(state, SYSTEM, 'board_roll', Dice(2, 3), target=pid, turn=state.turn,
+                          value=12, dice=[6, 6])
+    assert updated.last_dice == [2, 3] and updated.last_roll == 5
+    assert updated.pending['to'] == 5
+    assert events[0] == {'type': 'rolled', 'player': pid, 'value': 5, 'dice': [2, 3]}
+    assert state.last_roll is None and state.phase == Phase.WAITING_FOR_ROLL
+
+
+def test_shared_board_roll_rejects_stale_turns_and_player_impersonation():
+    state = started()
+    for actor, target, turn in [('p2', 'p1', state.turn), (SYSTEM, 'p2', state.turn),
+                                (SYSTEM, 'p1', state.turn - 1), (SYSTEM, 'p1', None)]:
+        with pytest.raises(EngineError):
+            act(state, actor, 'board_roll', Dice(), target=target, turn=turn)
+    moving, _ = act(state, SYSTEM, 'board_roll', Dice(2, 3), target='p1', turn=state.turn)
+    with pytest.raises(EngineError):
+        act(moving, SYSTEM, 'board_roll', Dice(), target='p1', turn=state.turn)
+    offered, _ = finish_move(moving)
+    next_turn, _ = act(offered, 'p1', 'decline')
+    assert next_turn.phase == Phase.WAITING_FOR_ROLL
+    with pytest.raises(EngineError, match='different turn'):
+        act(next_turn, SYSTEM, 'board_roll', Dice(), target='p1', turn=state.turn)

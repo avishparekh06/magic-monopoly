@@ -16,7 +16,7 @@
   --p2: #3fb8ff;
   --p3: #ff6fb5;
   --radius: 16px;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-game);
   color-scheme: dark;
 }
 
@@ -28,7 +28,7 @@ body {
   min-height: 100vh;
   overflow-x: hidden;
 }
-h1, h2, h3 { font-family: Georgia, "Times New Roman", serif; letter-spacing: .02em; margin: 0 0 .5em; }
+h1, h2, h3 { font-family: var(--font-game); letter-spacing: .02em; margin: 0 0 .5em; }
 h1 { color: var(--gold); }
 a { color: var(--gold); }
 [hidden] { display: none !important; }
@@ -111,7 +111,7 @@ input[readonly] { font-size: 14px; color: var(--ink-dim); }
 
 /* Mirror log: newest first */
 .log { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow-y: auto; }
-.log li { padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, .06); font-family: Georgia, serif; line-height: 1.35; }
+.log li { padding: 8px 0; border-bottom: 1px solid rgba(255, 255, 255, .06); font-family: var(--font-game); line-height: 1.35; }
 .log li:first-child { color: var(--gold); }
 
 /* Toast: short-lived message at the bottom of the screen */

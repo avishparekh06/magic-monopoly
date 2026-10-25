@@ -1,0 +1,23 @@
+/* Characters stand in the home page's landscape, with no framed minigame. */
+.home-roaming { position: fixed; z-index: 2; left: 0; bottom: 0; width: 40vw; height: 300px; color: #fff1dc; font-family: var(--font-game); pointer-events: none; }
+.home-roaming[hidden] { display: none !important; }
+.lobby-arena { position: absolute; inset: 0; overflow: hidden; touch-action: none; cursor: var(--wand); pointer-events: auto; border-radius: 5px; }
+.lobby-arena:focus-visible { outline: none; }
+.lobby-arena:focus-visible .is-you .lobby-character-shadow { background: #d6b95c66; box-shadow: 0 0 0 2px #f0d799; }
+.lobby-character { position: absolute; width: 80px; height: 120px; margin-left: -40px; margin-top: -112px; transform: scale(var(--character-scale, 1)); transform-origin: center bottom; pointer-events: none; }
+.lobby-figure { position: absolute; width: 80px; height: 112px; inset: 0; filter: drop-shadow(0 3px 1px #17263a55); }
+.lobby-figure > svg { display: block; width: 100%; height: 100%; }
+.lobby-character-shadow { position: absolute; width: 48px; height: 10px; bottom: 8px; left: 16px; border-radius: 50%; background: #162d3a55; }
+.lobby-character-name { position: absolute; top: 118px; left: 50%; transform: translateX(-50%); color: #fff1dc; text-shadow: 0 2px 3px #17263a; padding: 3px 7px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 14px/1.2 var(--font-game); }
+.lobby-character.is-you .lobby-character-name { color: #ffe4a5; text-decoration: underline; text-underline-offset: 4px; }
+.lobby-play-controls { position: absolute; z-index: 500; bottom: 10px; left: 20px; right: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none; text-shadow: 0 2px 4px #17263a; }
+.lobby-you-label { display: block; color: #ffe5ac; font-size: 15px; }
+.lobby-playground .lobby-instructions { font-size: 12px; line-height: 1.4; margin: 4px 0 0; color: #fff1dc; }
+.lobby-play-controls .btn { pointer-events: auto; padding: 8px 18px; min-height: 40px; font-size: 16px; background: #f8e8c5; border: 1px solid #b48b48; border-radius: 4px; color: #3e2d39; box-shadow: 0 2px 0 #8f633c; cursor: pointer; flex: none; }
+.lobby-play-controls .btn:disabled { opacity: .5; cursor: default; }
+.guest-wait-note { font-size: 17px; line-height: 1.5; text-align: center; }
+@media (max-width: 959px) {
+  .home-roaming { position: relative; width: 100%; height: 225px; margin: -4px 0 24px; background: radial-gradient(ellipse at 50% 80%, #48765caa, #48765c44 48%, transparent 72%); }
+  .lobby-play-controls { left: 10px; right: 10px; bottom: 5px; }
+}
+@media (prefers-reduced-motion: reduce) { .lobby-character, .lobby-figure { animation: none; } }

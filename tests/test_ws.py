@@ -195,3 +195,170 @@ def test_kid_turn_end_to_end_through_stub_bridge(client, game):
         # (any landing square works, so this doesn't depend on the roll).
         moved = recv_until(maya, lambda m: m["type"] == "moved" and m["player"] == "p2")
         assert moved == {"type": "moved", "player": "p2", "from": 0, "to": rolled["value"]}
+
+
+@pytest.mark.parametrize('answer', ['yes', 'no'])
+def test_board_on_screen_buy_choice_uses_pending_player(client, game, answer):
+    """Board buttons decide for the correct player; buying still waits for payment."""
+    with client.websocket_connect(f"/ws/{game['game_id']}?role=board") as board:
+        recv_until(board, is_state)
+        board.send_json({'action': 'start', 'force': True})
+        recv_until(board, lambda m: m['type'] == 'turn_started')
+        board.send_json({'source': 'vision', 'type': 'dice', 'value': 6})
+        recv_until(board, lambda m: m['type'] == 'offer')
+        board.send_json({'action': 'decision', 'player': 'p2', 'answer': answer})
+        assert "Grandma's decision" in recv_until(board, lambda m: m['type'] == 'error')['message']
+        board.send_json({'action': 'decision', 'player': 'p1', 'answer': answer})
+        state = recv_until(board, is_state)['state']
+        if answer == 'yes':
+            assert state['phase'] == 'WAITING_FOR_PAYMENT'
+            assert state['players'][0]['balance'] == 1500
+            assert '6' not in state['owners']
+            board.send_json({'action': 'confirm_payment'})
+            state = recv_until(board, is_state)['state']
+            assert state['owners']['6'] == 'p1'
+            assert state['players'][0]['balance'] == 1400
+        else:
+            assert state['phase'] == 'WAITING_FOR_ROLL'
+            assert state['current_player'] == 'p2'
+            assert '6' not in state['owners']
+        # A second/stale click cannot buy something or charge again.
+        board.send_json({'action': 'decision', 'player': 'p1', 'answer': 'yes'})
+        recv_until(board, lambda m: m['type'] == 'error')
+        # The shared board can also present a remote player's pending choice.
+        board.send_json({'source': 'vision', 'type': 'dice', 'value': 8})
+        recv_until(board, lambda m: m['type'] == 'offer' and m['player'] == 'p2')
+        board.send_json({'action': 'decision', 'player': 'p2', 'answer': 'yes'})
+        state = recv_until(board, is_state)['state']
+        assert state['owners']['8'] == 'p2'
+        assert state['players'][1]['balance'] == 1400
+
+
+def test_lobby_movement_is_shared_temporary_and_seat_bound(client, game):
+    gid = game['game_id']
+    room = client.app.state.rooms.get(gid)
+    with client.websocket_connect(f'/ws/{gid}?role=board') as board, \
+         client.websocket_connect(f'/ws/{gid}?seat={seat_token(game, "p2")}') as maya:
+        recv_until(board, is_state)
+        snapshot = recv_until(maya, lambda m: m['type'] == 'lobby_presence')
+        assert set(snapshot['players']) == {'p1', 'p2', 'p3'}
+        seq, before = room.seq, room.state
+        maya.send_json({'type': 'lobby_move', 'x': .7, 'y': .4, 'jump': True})
+        motion = recv_until(board, lambda m: m['type'] == 'lobby_motion')
+        assert motion == {'type': 'lobby_motion', 'player': 'p2', 'x': .7, 'y': .4, 'jump': 1}
+        assert recv_until(maya, lambda m: m['type'] == 'lobby_motion') == motion
+        assert room.seq == seq and room.state is before
+        assert all(p.position == 0 and p.balance == 1500 for p in room.state.players)
+        maya.send_json({'type': 'lobby_move', 'player': 'p1', 'x': .1, 'y': .2})
+        assert 'only move p2' in recv_until(maya, lambda m: m['type'] == 'error')['message']
+        board.send_json({'type': 'lobby_move', 'x': .2, 'y': .3, 'jump': True})
+        assert recv_until(board, lambda m: m['type'] == 'lobby_motion')['player'] == 'p1'
+        # Late viewers get courtyard positions, without replaying jumps or engine actions.
+        with client.websocket_connect(f'/ws/{gid}?host={game["host_token"]}') as host:
+            snapshot = recv_until(host, lambda m: m['type'] == 'lobby_presence')
+            assert snapshot['players']['p2'] == {'x': .7, 'y': .4, 'jump': 1}
+        board.send_json({'action': 'start', 'force': True})
+        recv_until(board, lambda m: is_state(m) and m['state']['phase'] == 'WAITING_FOR_ROLL')
+        maya.send_json({'type': 'lobby_move', 'x': .8, 'y': .8, 'jump': True})
+        assert 'only available while waiting' in recv_until(maya, lambda m: m['type'] == 'error')['message']
+        assert all(p.position == 0 for p in room.state.players)
+
+
+@pytest.mark.parametrize('position', [
+    {'x': -1, 'y': .5}, {'x': .5, 'y': 1.1}, {'x': '0.2', 'y': .5},
+    {'x': True, 'y': .5}, {'x': None, 'y': .5}, {'x': .5, 'y': .5, 'jump': 'yes'},
+])
+def test_lobby_movement_rejects_invalid_coordinates(client, game, position):
+    with client.websocket_connect(f'/ws/{game["game_id"]}?role=board') as board:
+        recv_until(board, is_state)
+        board.send_json({'type': 'lobby_move', **position})
+        assert 'finite numbers' in recv_until(board, lambda m: m['type'] == 'error')['message']
+        room = client.app.state.rooms.get(game['game_id'])
+        assert room.lobby_positions['p1'] == {'x': .25, 'y': .62, 'jump': 0}
+
+
+def test_host_can_switch_attendance_and_links_without_recreating_game(client):
+    game = client.post('/api/games', json={'players': [
+        {'name': 'Grandma', 'kind': 'in_person'}, {'name': 'Maya', 'kind': 'in_person'}]}).json()
+    gid = game['game_id']
+    assert game['join_links'] == {}
+    with client.websocket_connect(f'/ws/{gid}?host={game["host_token"]}') as host, \
+         client.websocket_connect(f'/ws/{gid}?role=board') as board:
+        recv_until(host, lambda m: m['type'] == 'join_links')
+        recv_until(board, is_state)
+        host.send_json({'action': 'set_attendance', 'target': 'p2', 'kind': 'remote', 'connected': True})
+        state = recv_until(host, is_state)['state']
+        assert state['players'][1]['kind'] == 'remote'
+        assert not state['players'][1]['connected']  # a browser cannot fake readiness
+        link = recv_until(host, lambda m: m['type'] == 'join_links')['join_links']['p2']
+        token = link.rsplit('/', 1)[1]
+        # No join credentials are broadcast to the shared board.
+        board.send_json({'action': 'unknown'})
+        while True:
+            msg = board.receive_json()
+            assert msg['type'] != 'join_links'
+            if msg['type'] == 'error':
+                break
+        with client.websocket_connect(f'/ws/{gid}?seat={token}') as phone:
+            recv_until(phone, is_state)
+            recv_until(host, lambda m: is_state(m) and m['state']['players'][1]['connected'])
+            phone.send_json({'action': 'set_attendance', 'target': 'p2', 'kind': 'in_person'})
+            assert 'only the lobby host' in recv_until(phone, lambda m: m['type'] == 'error')['message']
+            host.send_json({'action': 'set_attendance', 'target': 'p2', 'kind': 'in_person'})
+            assert 'in person' in recv_until(phone, lambda m: m['type'] == 'error')['message']
+            with pytest.raises(WebSocketDisconnect) as closed:
+                phone.receive_json()
+            assert closed.value.code == 4405
+        state = recv_until(host, lambda m: is_state(m) and m['state']['players'][1]['kind'] == 'in_person')['state']
+        assert state['players'][1]['connected']
+        assert recv_until(host, lambda m: m['type'] == 'join_links')['join_links'] == {}
+        with client.websocket_connect(f'/ws/{gid}?seat={token}') as old_link:
+            assert old_link.receive_json()['fatal']
+            with pytest.raises(WebSocketDisconnect) as closed:
+                old_link.receive_json()
+            assert closed.value.code == 4405
+        host.send_json({'action': 'set_attendance', 'target': 'p2', 'kind': 'remote'})
+        recv_until(host, is_state)
+        assert recv_until(host, lambda m: m['type'] == 'join_links')['join_links']['p2'] == link
+        board.send_json({'action': 'set_attendance', 'target': 'p2', 'kind': 'in_person'})
+        assert 'only the lobby host' in recv_until(board, lambda m: m['type'] == 'error')['message']
+
+
+def test_waiting_guests_use_home_and_running_players_use_game(client, game):
+    gid = game['game_id']
+    path = game['join_links']['p2']
+    waiting = client.get(path, follow_redirects=False)
+    assert waiting.status_code == 302
+    assert waiting.headers['cache-control'] == 'no-store'
+    assert waiting.headers['location'] == f'/?game={gid}&seat={seat_token(game, "p2")}'
+    assert game['host_token'] not in waiting.headers['location']
+    home = client.get(waiting.headers['location']).text
+    assert 'home-lobby-scene' in home and 'guest-waiting' in home
+    board = client.get(game['board_url']).text
+    assert 'mountLobbyPlayground' not in board and 'lobby-courtyard' not in board
+    with client.websocket_connect(f'/ws/{gid}?role=board') as board:
+        recv_until(board, is_state)
+        board.send_json({'action': 'start', 'force': True})
+        recv_until(board, lambda m: is_state(m) and m['state']['phase'] == 'WAITING_FOR_ROLL')
+    playing = client.get(path, follow_redirects=False)
+    assert playing.status_code == 200
+    assert 'id="roll"' in playing.text
+    assert 'mountLobbyPlayground' not in playing.text
+
+
+def test_shared_screen_roll_is_broadcast_once_and_uses_authoritative_result(client, game):
+    gid = game['game_id']
+    with client.websocket_connect(f'/ws/{gid}?role=board') as board:
+        recv_until(board, is_state)
+        board.send_json({'action': 'start', 'force': True})
+        state = recv_until(board, lambda m: is_state(m) and m['state']['phase'] == 'WAITING_FOR_ROLL')['state']
+        action = {'action': 'board_roll', 'target': state['current_player'], 'turn': state['turn']}
+        board.send_json(action)
+        roll = recv_until(board, lambda m: m['type'] == 'rolled')
+        assert len(roll['dice']) == 2 and all(1 <= d <= 6 for d in roll['dice'])
+        assert sum(roll['dice']) == roll['value']
+        board.send_json(action)  # a queued duplicate cannot roll the next player's turn
+        recv_until(board, lambda m: m['type'] == 'error')
+        room = client.app.state.rooms.get(gid)
+        assert room.state.last_dice == roll['dice'] and room.state.last_roll == roll['value']
+        assert sum(e['type'] == 'rolled' for e in client.app.state.store.events(gid)) == 1

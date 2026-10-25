@@ -9,14 +9,11 @@
 // up the left side, right along the top and down the right side.
 
 import { tokenGlyph } from "/static/net.js";
+import { DICE_TOSS_MS, DICE_HOLD_MS, TOKEN_STEP_MS, TOKEN_LANDING_MS, MAX_TOKEN_WALK_MS } from '/static/board-motion.js';
+import { boardIcon } from "/static/icons.js";
 
-const ICONS = {
-  0: "🏰", 2: "🧚", 4: "👑", 5: "🧞", 7: "✨", 10: "🗼", 12: "⛲", 15: "🎃",
-  17: "🧚", 20: "🍄", 22: "✨", 25: "👢", 28: "🧶", 30: "🌀", 33: "🧚",
-  35: "🧹", 36: "✨", 38: "🐲",
-};
-const STEP_MS = 190;       // time per square when a token walks...
-const MAX_WALK_MS = 3000;  // ...but long card moves (up to 39 squares) speed up to fit in ~3 s
+
+// Movement timing is shared with the presentation regression checks.
 
 export async function loadBoard() {
   return (await fetch("/api/board")).json();
@@ -52,9 +49,10 @@ export function createBoardView(el, boardData) {
     }
     const body = document.createElement("div");
     body.className = "mm-body";
-    if (ICONS[sq.id]) body.append(span("mm-icon", ICONS[sq.id]));
+    const illustration = boardIcon(sq.id);
+    if (illustration) body.append(illustration);
     body.append(span("mm-name", sq.name));
-    if (sq.price) body.append(span("mm-price", `🪙${sq.price}`));
+    if (sq.price) body.append(span("mm-price", `${sq.price} G`));
     else if (sq.amount) body.append(span("mm-price", `pay ${sq.amount}`));
     cell.append(body);
     el.append(cell);
@@ -70,37 +68,96 @@ export function createBoardView(el, boardData) {
   layer.className = "mm-tokens";
   el.append(layer);
 
+  const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+  const motionChanged = () => el.dispatchEvent(new CustomEvent("board-motion-change", { bubbles: true }));
+  let previousPhase = null;
   const tokens = {};  // player id -> {el, shown, target, lane, timer}
 
+  function holdForDice(player) {
+    const t = tokens[player];
+    if (t && !reducedMotion.matches)
+      t.holdUntil = performance.now() + DICE_TOSS_MS + DICE_HOLD_MS;
+  }
+  // The 3D scene may finish loading after the roll message. Start its hold
+  // from the actual toss, so the first hop never races the dice animation.
+  el.addEventListener('board-dice-start', event => holdForDice(event.detail.player));
+  el.addEventListener('board-dice-wait', event => {
+    const t = tokens[event.detail.player];
+    if (t && !reducedMotion.matches) t.holdUntil = performance.now() + 6000;
+  });
+  el.addEventListener('board-dice-cancel', event => {
+    const t = tokens[event.detail.player];
+    if (t) t.holdUntil = t.rollDeadline || 0;
+  });
+
   function place(t, animate) {
+    t.el.dataset.square = String(t.shown);
+    // Keep animation coordinates meaningful while fullscreen/view changes resize the board.
+    t.el.dataset.layoutWidth = String(el.clientWidth);
+    t.el.dataset.layoutHeight = String(el.clientHeight);
     const cell = cells[t.shown];
     const w = cell.offsetWidth, h = cell.offsetHeight;
     const size = Math.min(w, h) * 0.42;
     const x = cell.offsetLeft + w * (0.23 + 0.27 * (t.lane - 1)) - size / 2;
     const y = cell.offsetTop + h * 0.74 - size / 2;  // low in the square, under the name
-    const ms = Math.max(t.stepMs - 20, 0);
+    const ms = Math.max(t.stepMs - TOKEN_LANDING_MS, 0);
+    if (animate) {
+      t.el.dataset.hopStart = String(performance.now());
+      t.el.dataset.hopDuration = String(ms);
+      t.hop?.cancel();
+      t.hop = t.el.animate([
+        { transform: "translateY(0) scale(1)" },
+        { transform: `translateY(-${Math.max(6, size * .35)}px) scale(1.02)`, offset: .5 },
+        { transform: "translateY(0) scale(1)" },
+      ], { duration: ms, easing: "ease-in-out" });
+    }
     t.el.style.transition = animate ? `left ${ms}ms ease-in-out, top ${ms}ms ease-in-out` : "none";
     Object.assign(t.el.style, { left: `${x}px`, top: `${y}px`, width: `${size}px`, height: `${size}px`, fontSize: `${size * 0.5}px` });
   }
 
-  // Walk forward one square at a time (wrapping past 39), like the real belts.
+  // Queue destinations so a quick card/turn update never cuts a hop short.
   function walk(t) {
-    if (t.timer) return;  // already walking; it will keep going to the new target
-    const steps = (t.target - t.shown + 40) % 40;
-    t.stepMs = Math.min(STEP_MS, MAX_WALK_MS / steps);
+    if (t.timer !== null) return;
+    t.el.dataset.moving = "true";
+    motionChanged();
     const stepOnce = () => {
-      if (t.shown === t.target) { t.timer = null; return; }
-      t.shown = (t.shown + 1) % 40;
-      place(t, true);
-      t.timer = setTimeout(stepOnce, t.stepMs);
+      const wait = t.holdUntil - performance.now();
+      if (wait > 0 && !reducedMotion.matches) {
+        t.timer = setTimeout(stepOnce, wait);
+        return;
+      }
+      if (!t.journey) {
+        t.journey = t.queue.shift();
+        if (!t.journey) {
+          t.timer = null;
+          t.el.dataset.moving = "false";
+          motionChanged();
+          return;
+        }
+        const distance = ((t.journey.to - t.shown) * t.journey.direction + 40) % 40;
+        t.stepMs = Math.min(TOKEN_STEP_MS, MAX_TOKEN_WALK_MS / Math.max(1, distance));
+      }
+      if (reducedMotion.matches) {
+        t.shown = t.journey.to;
+        place(t, false);
+      } else if (t.shown !== t.journey.to) {
+        t.shown = (t.shown + t.journey.direction + 40) % 40;
+        place(t, true);
+        t.timer = setTimeout(stepOnce, t.stepMs);
+        return;
+      }
+      t.journey = null;
+      t.timer = setTimeout(stepOnce, 0);
     };
-    stepOnce();
+    t.timer = setTimeout(stepOnce, 0);
   }
 
   let stalled = false;              // the motor reported a failed move: show tokens where the game has them
   function setStalled(v) { stalled = v; }
 
   function render(state) {
+    const before = previousPhase;
+    previousPhase = state.phase;
     const owners = state.owners || {};
     cells.forEach((cell, i) => {
       const owner = owners[String(i)];
@@ -113,23 +170,31 @@ export function createBoardView(el, boardData) {
       if (!t) {
         const tokEl = document.createElement("div");
         tokEl.className = "mm-token";
+        tokEl.dataset.player = p.id;
         tokEl.style.background = `var(--${p.id})`;
         tokEl.textContent = tokenGlyph(p);
         tokEl.title = p.name;
         layer.append(tokEl);
-        t = tokens[p.id] = { el: tokEl, shown: p.position, target: p.position, lane: p.lane, timer: null, stepMs: STEP_MS };
+        t = tokens[p.id] = { el: tokEl, shown: p.position, target: p.position, lane: p.lane, timer: null, stepMs: TOKEN_STEP_MS, queue: [], journey: null, holdUntil: 0 };
         place(t, false);
       }
       t.el.hidden = p.bankrupt;
       // While the motor is moving this token, walk toward where it's going so
       // the screen moves together with the real board (not after move_done).
       const move = !stalled && state.pending?.kind === "move" && state.pending.player === p.id ? state.pending : null;
-      t.target = move ? move.to : p.position;
-      if (t.shown !== t.target) {
-        if (t.target === p.position && !move) {     // snap back (failed move) or teleport (set by hand)
-          if (t.timer) { clearTimeout(t.timer); t.timer = null; }
-          t.shown = t.target; place(t, false);
-        } else walk(t);
+      const target = move ? move.to : p.position;
+      if ((stalled && t.shown !== p.position) || (target !== t.target && !move && before !== 'MOVING')) {
+        if (t.timer !== null) clearTimeout(t.timer);
+        t.timer = null; t.queue = []; t.journey = null; t.holdUntil = 0; t.rollDeadline = 0;
+        t.hop?.cancel(); t.el.dataset.hopDuration = '0'; t.el.dataset.moving = 'false';
+        t.target = target; t.shown = target; place(t, false); motionChanged();
+      } else if (target !== t.target) {
+        // The server sends MOVING before the rolled event. Establish the hold
+        // here rather than hoping that event arrives within a short timeout.
+        if (move && before === 'WAITING_FOR_ROLL' && Array.isArray(state.last_dice)) holdForDice(p.id);
+        t.target = target;
+        t.queue.push({ to: target, direction: move?.no_salary && !move.to_jail ? -1 : 1 });
+        walk(t);
       }
     }
   }
@@ -140,7 +205,16 @@ export function createBoardView(el, boardData) {
     Object.values(tokens).forEach((t) => place(t, false));
   }).observe(el);
 
-  return { render, center, setStalled };
+  return {
+    render, center, setStalled,
+    hasMotion: () => Object.values(tokens).some(t => t.el.dataset.moving === "true"),
+    onEvent(event) {
+      if (event.type !== "rolled") return;
+      const t = tokens[event.player];
+      if (Array.isArray(event.dice)) { holdForDice(event.player); if (t) t.rollDeadline = t.holdUntil; }
+      else if (t) { t.holdUntil = 0; t.rollDeadline = 0; }
+    },
+  };
 }
 
 function span(cls, text) {
@@ -210,27 +284,31 @@ export function statusText(state, boardData, viewer) {
   switch (state.phase) {
     case "LOBBY": return "";
     case "WAITING_FOR_ROLL":
+      if (viewer === "board") return `${cur.name}'s turn. Choose Roll Dice${cur.kind === "in_person" ? " or roll into the physical tray." : " here, or roll on their phone."}`;
       if (cur.kind === "in_person") return `${cur.name}, roll the dice into the tray`;
       return viewer === cur.id ? "Tap Roll!" : `Waiting for ${cur.name} to roll`;
     case "MOVING": return `${name(pend.player)} is on the move to ${place(pend.to)}…`;
     case "WAITING_FOR_DECISION": {
       const who = state.players.find((p) => p.id === pend.player);
       if (pend.type === "jail") {
-        if (viewer === who.id) return `Pay 🪙${pend.price} to leave Rapunzel's Tower?`;
-        if (who.kind === "in_person") return `${who.name}, pay 🪙${pend.price} to leave the tower? Say yes or no`;
+        if (viewer === who.id) return `Pay ${pend.price} gold to leave Rapunzel's Tower?`;
+        if (who.kind === "in_person") return `${who.name}, pay ${pend.price} gold to leave the tower? Say yes or no`;
         return `${who.name} is deciding whether to leave the tower`;
       }
-      if (viewer === who.id) return `Buy ${place(pend.square)} for 🪙${pend.price}?`;
-      if (who.kind === "in_person") return `${who.name}, buy ${place(pend.square)} for 🪙${pend.price}? Say yes or no`;
+      if (viewer === who.id) return `Buy ${place(pend.square)} for ${pend.price} gold?`;
+      if (who.kind === "in_person") return `${who.name}, buy ${place(pend.square)} for ${pend.price} gold? Say yes or no`;
       return `${who.name} is deciding about ${place(pend.square)}`;
     }
     case "WAITING_FOR_PAYMENT": {
+      // Card payments and tower fines have no square. Do not evaluate a
+      // property lookup for those phases while constructing the prompt.
+      const location = pend.square == null ? null : place(pend.square);
       const what = {
-        buy: `for ${place(pend.square)}`,
-        tax: `for the ${place(pend.square)}`,
+        buy: location ? `for ${location}` : 'for your purchase',
+        tax: location ? `for the ${location}` : 'in tax',
         jail_fine: "to leave the tower",
       }[pend.reason] || `to ${name(pend.payee)}`;
-      return `${name(pend.payer)}, lay your card on the reader to pay 🪙${pend.amount} ${what}`;
+      return `${name(pend.payer)}, lay your card on the reader to pay ${pend.amount} gold ${what}`;
     }
     case "WAITING_FOR_CARD": {
       const deck = pend.deck === "crystal" ? "a Crystal Ball card" : "a Chest of Spells card";
@@ -238,7 +316,7 @@ export function statusText(state, boardData, viewer) {
       if (viewer === pend.for) return `${grandma.name} is drawing ${deck} for you…`;
       return `${grandma.name}, please draw ${deck} for ${pend.for === grandma.id ? "yourself" : name(pend.for)}`;
     }
-    case "GAME_OVER": return `${name(state.winner)} wins the kingdom! 👑`;
+    case "GAME_OVER": return `${name(state.winner)} wins the kingdom!`;
     default: return "";
   }
 }

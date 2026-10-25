@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import random
 import secrets
 import time
@@ -52,14 +53,19 @@ class GameRoom:
         self.seats: dict[str, Socket] = {}       # player id -> its one live socket
         self.viewers: dict[Socket, str] = {}     # host / board sockets -> role
         self._tasks: set[asyncio.Task] = set()
+        # Ephemeral courtyard presence: never part of rules, saves, or turn history.
+        self.lobby_positions = {p.id: {"x": .25 + i * .25, "y": .62, "jump": 0}
+                                for i, p in enumerate(state.players)}
+        self._lobby_sent: dict[str, float] = {}
+        self._lobby_jumped: dict[str, float] = {}
 
     @classmethod
     async def create(cls, specs: list[dict], adapters: Adapters,
-                     seed: int | None = None, store: Store | None = None) -> "GameRoom":
+                     seed: int | None = None, store: Store | None = None, owner_id: str | None = None) -> "GameRoom":
         game_id = secrets.token_urlsafe(6)
         room = cls(new_game(game_id, specs), adapters, random.Random(seed), store)
         if store:
-            store.create_game(game_id, specs, seed, room.host_token, room.seat_tokens, to_public(room.state))
+            store.create_game(game_id, specs, seed, room.host_token, room.seat_tokens, to_public(room.state), owner_id=owner_id)
         await room._start_adapters()
         return room
 
@@ -92,7 +98,8 @@ class GameRoom:
         return self.state.game_id
 
     def join_links(self) -> dict[str, str]:
-        return {pid: f"/game/{self.game_id}/join/{tok}" for tok, pid in self.seat_tokens.items()}
+        return {pid: f"/game/{self.game_id}/join/{tok}" for tok, pid in self.seat_tokens.items()
+                if self.state.player(pid).kind == "remote"}
 
     # --- connections -----------------------------------------------------
 
@@ -114,6 +121,12 @@ class GameRoom:
         if not events:  # seat was already marked connected (takeover), so no broadcast happened
             await self._safe_send(ws, {"type": "state", "state": to_public(self.state)})
 
+        await self._send_lobby(ws)
+
+    async def _send_lobby(self, ws: Socket) -> None:
+        if self.state.phase == Phase.LOBBY:
+            await self._safe_send(ws, {"type": "lobby_presence", "players": self.lobby_positions})
+
     async def connect_viewer(self, role: str, ws: Socket) -> None:
         self.viewers[ws] = role
         await self._safe_send(ws, {"type": "hello", "you": None, "role": role})
@@ -123,6 +136,9 @@ class GameRoom:
             player = next((p for p in self.state.players if p.lane == lane), None)
             await self._safe_send(ws, {"type": "belt_position", "lane": lane, "square": sq,
                                        "game_square": player.position if player else None, "source": "belt"})
+        await self._send_lobby(ws)
+        if role == "host":
+            await self._safe_send(ws, {"type": "join_links", "join_links": self.join_links()})
 
     async def disconnect(self, ws: Socket) -> None:
         self.viewers.pop(ws, None)
@@ -137,15 +153,42 @@ class GameRoom:
     async def dispatch(self, actor: str, action: dict) -> list[dict]:
         """Apply an action and broadcast the result. Raises EngineError if illegal."""
         async with self.lock:
-            self.state, events = apply_action(self.state, actor, action, self.rng)
-            self.seq += 1
-            self.updated_at = time.time()
+            attendance = action.get("action") == "set_attendance"
+            if attendance:
+                pid = action.get("target")
+                action = {"action": "set_attendance", "target": pid, "kind": action.get("kind"),
+                          "connected": isinstance(pid, str) and pid in self.seats}
+            next_state, events = apply_action(self.state, actor, action, self.rng)
+            next_tokens = dict(self.seat_tokens)
+            if attendance and next_state.player(action["target"]).kind == "remote":
+                if action["target"] not in next_tokens.values():
+                    next_tokens[secrets.token_urlsafe(9)] = action["target"]
+            seq = self.seq + 1
             if self.store and action.get("action") != "set_connected":   # presence is not game history
-                self.store.append(self.game_id, self.seq, actor, action, events, to_public(self.state))
-            if events:
+                if attendance:
+                    # Persist the roster, access link and state in the same transaction.
+                    self.store.append(self.game_id, seq, actor, action, events, to_public(next_state), seat_tokens=next_tokens)
+                else:
+                    self.store.append(self.game_id, seq, actor, action, events, to_public(next_state))
+            self.state, self.seat_tokens, self.seq = next_state, next_tokens, seq
+            self.updated_at = time.time()
+            if attendance and self.state.player(action["target"]).kind == "in_person":
+                old = self.seats.pop(action["target"], None)
+                if old:
+                    await self._safe_send(old, {"type": "error", "message": "Your seat is now attending in person.", "fatal": True})
+                    try:
+                        await old.close(code=4405)
+                    except Exception:
+                        pass
+            if events or attendance:
                 await self.broadcast({"type": "state", "state": to_public(self.state)})
                 for ev in events:
                     await self.broadcast(ev)
+            if attendance:
+                # Join credentials belong only to the authenticated lobby host.
+                for ws, role in list(self.viewers.items()):
+                    if role == "host":
+                        await self._safe_send(ws, {"type": "join_links", "join_links": self.join_links()})
         await self._react(events)
         return events
 
@@ -194,6 +237,11 @@ class GameRoom:
 
     async def handle_message(self, ws: Socket, actor: str, role: str, msg: dict) -> None:
         try:
+            if msg.get("type") == "lobby_move":
+                await self._move_lobby(ws, actor, role, msg)
+                return
+            if msg.get("action") == "set_attendance" and role != "host":
+                raise EngineError("only the lobby host can change attendance")
             source = msg.get("source")
             if source is not None:
                 if role != "board":
@@ -295,6 +343,31 @@ class GameRoom:
     async def scene(self, text: str) -> None:
         """What the Mirror sees at the table, for the players who are not there."""
         await self.broadcast({"type": "mirror", "kind": "scene", "text": text})
+    async def _move_lobby(self, ws: Socket, actor: str, role: str, msg: dict) -> None:
+        async with self.lock:
+            if self.state.phase != Phase.LOBBY:
+                raise EngineError("courtyard movement is only available while waiting in the lobby")
+            pid = self.state.players[0].id if actor == SYSTEM else actor
+            if (role == "seat" and self.seats.get(pid) is not ws) or (role != "seat" and ws not in self.viewers):
+                raise EngineError("this lobby connection is no longer active")
+            if msg.get("player", pid) != pid:
+                raise EngineError(f"you can only move {pid}'s lobby character")
+            x, y, jump = msg.get("x"), msg.get("y"), msg.get("jump", False)
+            if (type(x) not in (int, float) or type(y) not in (int, float)
+                    or not math.isfinite(x) or not math.isfinite(y)
+                    or not 0 <= x <= 1 or not 0 <= y <= 1 or type(jump) is not bool):
+                raise EngineError("lobby coordinates must be finite numbers from 0 to 1; jump must be true or false")
+            now = time.monotonic()
+            do_jump = jump and now - self._lobby_jumped.get(pid, -math.inf) >= .4
+            if not do_jump and now - self._lobby_sent.get(pid, -math.inf) < .05:
+                return
+            self._lobby_sent[pid] = now
+            previous = self.lobby_positions[pid]
+            position = {"x": x, "y": y, "jump": previous["jump"] + int(do_jump)}
+            self.lobby_positions[pid] = position
+            if do_jump:
+                self._lobby_jumped[pid] = now
+            await self.broadcast({"type": "lobby_motion", "player": pid, **position})
 
     # --- sending -----------------------------------------------------------
 

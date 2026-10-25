@@ -103,3 +103,35 @@ def test_public_state_is_json_and_has_no_tokens():
     text = json.dumps(d)
     assert d["phase"] == "LOBBY" and d["current_player"] == "p1"
     assert "token" not in text
+
+
+def test_attendance_can_change_without_recreating_players():
+    original = new_game('g', SPECS)
+    updated, events = apply_action(original, SYSTEM, {'action': 'set_attendance', 'target': 'p2', 'kind': 'in_person'})
+    assert original.player('p2').kind == 'remote'
+    assert updated.player('p2').kind == 'in_person' and updated.player('p2').connected
+    assert events == [{'type': 'attendance_changed', 'player': 'p2', 'kind': 'in_person'}]
+    updated, _ = apply_action(updated, SYSTEM, {'action': 'set_attendance', 'target': 'p2', 'kind': 'remote'})
+    assert not updated.player('p2').connected
+    assert [(p.id, p.lane, p.name, p.balance, p.position) for p in original.players] == [
+        (p.id, p.lane, p.name, p.balance, p.position) for p in updated.players]
+    with pytest.raises(EngineError, match='Maya'):
+        apply_action(updated, SYSTEM, {'action': 'start'})
+
+
+@pytest.mark.parametrize('actor,target,kind', [
+    ('p2', 'p2', 'in_person'), (SYSTEM, 'p1', 'remote'),
+    (SYSTEM, 'p9', 'in_person'), (SYSTEM, 'p2', 'invalid'),
+])
+def test_invalid_attendance_changes_leave_state_untouched(actor, target, kind):
+    state = new_game('g', SPECS)
+    snapshot = to_public(state)
+    with pytest.raises(EngineError):
+        apply_action(state, actor, {'action': 'set_attendance', 'target': target, 'kind': kind})
+    assert to_public(state) == snapshot
+
+
+def test_attendance_is_locked_after_start():
+    state, _ = apply_action(new_game('g', SPECS), SYSTEM, {'action': 'start', 'force': True})
+    with pytest.raises(EngineError, match='before the game starts'):
+        apply_action(state, SYSTEM, {'action': 'set_attendance', 'target': 'p2', 'kind': 'in_person'})

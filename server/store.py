@@ -11,6 +11,7 @@ Resume = load the last snapshot. Stats = fold over the events.
 from __future__ import annotations
 
 import json
+from collections import Counter
 import sqlite3
 import time
 from pathlib import Path
@@ -44,7 +45,10 @@ class Store:
         self.path = str(path)
         self.db = sqlite3.connect(self.path, check_same_thread=False)
         self.db.row_factory = sqlite3.Row
+        self.db.execute("PRAGMA foreign_keys=ON")
         self.db.executescript(SCHEMA)
+        from .accounts import Accounts
+        self.accounts = Accounts(self)
 
     def close(self) -> None:
         self.db.close()
@@ -52,7 +56,7 @@ class Store:
     # --- games -------------------------------------------------------------
 
     def create_game(self, game_id: str, specs: list[dict], seed: int | None,
-                    host_token: str, seat_tokens: dict[str, str], state: dict) -> None:
+                    host_token: str, seat_tokens: dict[str, str], state: dict, *, owner_id: str | None = None) -> None:
         now = time.time()
         with self.db:
             self.db.execute(
@@ -62,8 +66,12 @@ class Store:
             self.db.execute(
                 "INSERT INTO actions (game_id, seq, ts, actor, action, events, state) VALUES (?, 0, ?, 'system', ?, '[]', ?)",
                 (game_id, now, json.dumps({"action": "new_game"}), json.dumps(state)))
+            if owner_id:
+                self.db.execute('INSERT INTO game_owners VALUES (?, ?)', (game_id, owner_id))
+                self.db.execute('INSERT INTO game_accounts VALUES (?, ?, ?)', (game_id, state['players'][0]['id'], owner_id))
 
-    def append(self, game_id: str, seq: int, actor: str, action: dict, events: list[dict], state: dict) -> None:
+    def append(self, game_id: str, seq: int, actor: str, action: dict, events: list[dict], state: dict,
+               *, seat_tokens: dict[str, str] | None = None) -> None:
         now = time.time()
         status = "over" if state.get("phase") == "GAME_OVER" else "active"
         with self.db:
@@ -71,6 +79,10 @@ class Store:
                 "INSERT INTO actions (game_id, seq, ts, actor, action, events, state) VALUES (?, ?, ?, ?, ?, ?, ?)",
                 (game_id, seq, now, actor, json.dumps(action), json.dumps(events), json.dumps(state)))
             self.db.execute("UPDATE games SET updated_at = ?, status = ? WHERE game_id = ?", (now, status, game_id))
+            if seat_tokens is not None:
+                specs = [{"name": p["name"], "kind": p["kind"]} for p in state["players"]]
+                self.db.execute("UPDATE games SET specs = ?, seat_tokens = ? WHERE game_id = ?",
+                                (json.dumps(specs), json.dumps(seat_tokens), game_id))
 
     def games(self, status: str | None = None) -> list[dict]:
         """Newest first. Each: game_id, created_at, updated_at, specs, seed, host_token, seat_tokens, status, seq, state."""
@@ -91,7 +103,23 @@ class Store:
         return out
 
     def game(self, game_id: str) -> dict | None:
-        return next((g for g in self.games() if g["game_id"] == game_id), None)
+        row = self.db.execute("SELECT g.*, a.seq, a.state FROM games g JOIN actions a ON a.game_id=g.game_id "
+                              "WHERE g.game_id=? AND a.seq=(SELECT MAX(seq) FROM actions WHERE game_id=g.game_id)", (game_id,)).fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        for key in ('specs', 'seat_tokens', 'state'):
+            result[key] = json.loads(result[key])
+        return result
+
+    @staticmethod
+    def top_properties(counts) -> list[dict]:
+        if not counts:
+            return []
+        from .rules.monopoly import square
+        top = max(counts.values())
+        return [{'square': int(index), 'name': square(int(index))['name'], 'count': count}
+                for index, count in sorted(counts.items(), key=lambda item: int(item[0])) if count == top]
 
     # --- history -----------------------------------------------------------
 
@@ -112,10 +140,11 @@ class Store:
                              "properties": len(p["properties"]), "bankrupt": p["bankrupt"],
                              "turns": 0, "rolls": [], "rent_paid": 0, "rent_received": 0,
                              "bought": 0, "spent_on_property": 0, "salary": 0, "cards_drawn": 0,
-                             "taxes": 0, "jailed": 0}
+                             "taxes": 0, "jailed": 0, "property_purchases": {}, "placement": None}
                    for p in state.get("players", [])}
         squares_landed: dict[str, int] = {}
         n_turns = 0
+        eliminated = []
         for ev in self.events(game_id):
             t, p = ev.get("type"), players.get(ev.get("player") or "")
             if t == "turn_started" and p:
@@ -138,15 +167,27 @@ class Store:
                     payer["taxes"] += amt
             elif t == "bought" and p:
                 p["bought"] += 1
+                key = str(ev['square'])
+                p['property_purchases'][key] = p['property_purchases'].get(key, 0) + 1
+            elif t == "bankrupt" and p and p['id'] not in eliminated:
+                eliminated.append(p['id'])
             elif t == "salary" and p:
                 p["salary"] += ev["amount"]
             elif t == "card_drawn" and p:
                 p["cards_drawn"] += 1
             elif t == "jailed" and p:
                 p["jailed"] += 1
+        for index, pid in enumerate(eliminated):
+            players[pid]['placement'] = len(players) - index
+        if state.get('phase') == 'GAME_OVER' and state.get('winner') in players:
+            players[state['winner']]['placement'] = 1
+        all_purchases = Counter()
         for p in players.values():
+            all_purchases.update(p['property_purchases'])
+            p['most_bought_properties'] = self.top_properties(p['property_purchases'])
             rolls = p.pop("rolls")
             p["roll_count"] = len(rolls)
+            p["roll_total"] = sum(rolls)
             p["avg_roll"] = round(sum(rolls) / len(rolls), 2) if rolls else None
             p["best_roll"] = max(rolls) if rolls else None
         richest = max(players.values(), key=lambda p: p["balance"], default=None)
@@ -159,4 +200,5 @@ class Store:
             "richest": richest["id"] if richest else None,
             "most_landed_square": int(top_square[0]) if top_square else None,
             "players": list(players.values()),
+            "most_bought_properties": self.top_properties(all_purchases),
         }

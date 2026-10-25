@@ -115,7 +115,7 @@
     },
     {
       "id": 4,
-      "name": "King's Tithe",
+      "name": "Rumpelstiltskin's Bargain",
       "type": "tax",
       "amount": 200
     },
@@ -233,7 +233,7 @@
     },
     {
       "id": 20,
-      "name": "Fairy Ring",
+      "name": "The Hundred-Year Nap",
       "type": "free_parking"
     },
     {
@@ -292,7 +292,7 @@
     },
     {
       "id": 28,
-      "name": "Wishing Well Water Works",
+      "name": "Wishing Well",
       "type": "utility",
       "price": 150,
       "tale": "The Frog Prince"
@@ -307,7 +307,7 @@
     },
     {
       "id": 30,
-      "name": "Cursed!",
+      "name": "Caught in the Witch's Garden",
       "type": "go_to_jail"
     },
     {
@@ -334,7 +334,7 @@
     },
     {
       "id": 34,
-      "name": "Jolly Roger",
+      "name": "Captain Hook’s Ship",
       "type": "property",
       "group": "green",
       "price": 320,
@@ -364,7 +364,7 @@
     },
     {
       "id": 38,
-      "name": "Dragon's Toll",
+      "name": "Huff and Puff",
       "type": "tax",
       "amount": 100
     },

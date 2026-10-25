@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -22,6 +22,7 @@ from .engine import SYSTEM, EngineError
 from .rooms import GameRoom
 from .rules.monopoly import board, cards
 from .store import Store
+from .account_routes import COOKIE, install_account_routes, same_origin
 from .tunnel import Tunnel
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -149,6 +150,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     app = FastAPI(title="Magic Mirror Monopoly", lifespan=lifespan)
     app.state.rooms = rooms
     app.state.store = store
+    install_account_routes(app, store, rooms, is_local)
     if bridge == "arduino":
         # Avish's motor endpoints (/board/*, /move, /stop, /pos), unchanged. His /vision/events
         # only logged; ours below feeds the engine, so his is left out.
@@ -183,6 +185,11 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
 
     @app.get("/game/{game_id}/join/{seat_token}")
     async def kid_page(game_id: str, seat_token: str):
+        room = rooms.get(game_id)
+        if room and room.state.phase.value == "LOBBY":
+            pid = room.seat_tokens.get(seat_token)
+            if pid and room.state.player(pid).kind == "remote":
+                return RedirectResponse(f"/?game={game_id}&seat={seat_token}", status_code=302, headers={"Cache-Control": "no-store"})
         return page("kid.html")
 
     @app.get("/board/{game_id}")
@@ -191,10 +198,12 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
 
     # --- API ---
     @app.post("/api/games")
-    async def create_game(body: CreateGame):
+    async def create_game(body: CreateGame, request: Request):
+        same_origin(request)
+        account = store.accounts.current(request.cookies.get(COOKIE))
         try:
             room = await GameRoom.create([p.model_dump() for p in body.players],
-                                         adapters(), seed, store)
+                                         adapters(), seed, store, owner_id=account["id"] if account else None)
         except EngineError as e:
             raise HTTPException(400, str(e))
         rooms[room.game_id] = room
@@ -368,6 +377,8 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             pid = room.seat_tokens.get(seat)
             if pid is None:
                 return await reject("that join link isn't valid", 4403)
+            if room.state.player(pid).kind != "remote":
+                return await reject("This player is attending in person. Ask the host to switch the seat to virtual to use this link.", 4405)
             actor, kind = pid, "seat"
             await room.connect_seat(pid, ws)
         elif host is not None:

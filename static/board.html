@@ -3,32 +3,39 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preload" href="/static/fonts/planewalker/regular.otf" as="font" type="font/otf" crossorigin>
+  <link rel="stylesheet" href="/static/typography.css">
   <title>Magic Mirror — Board</title>
   <link rel="stylesheet" href="/static/style.css">
-  <style>
-    .layout { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 16px; padding: 16px; max-width: 1400px; margin: 0 auto; }
-    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
-    #board { max-width: calc(100vh - 32px); margin: 0 auto; }
-    .center-title { font-family: Georgia, serif; color: var(--gold); font-size: 1.6em; }
-    .center-phase { font-size: .9em; }
-    .dice { font-size: 2.4em; letter-spacing: .1em; }
-    .players { list-style: none; margin: 0; padding: 0; }
-    .players li { display: flex; align-items: center; gap: 10px; padding: 10px; border-radius: 12px; }
-    .players li.turn { background: var(--sky-3); outline: 2px solid var(--gold); }
-    .players .who { flex: 1; min-width: 0; }
-    .players .where { font-size: 13px; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .players .bal { font-weight: 700; font-size: 18px; }
-    .dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-    details.dev summary { cursor: pointer; font-weight: 600; color: var(--ink-dim); }
-    details.dev h4 { margin: 16px 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--ink-dim); }
-    details.dev select, details.dev input { min-height: 40px; font-size: 15px; }
-    #raw { max-height: 200px; overflow: auto; font-size: 11px; background: #0006; padding: 8px; border-radius: 8px; white-space: pre-wrap; }
-  </style>
+  <link rel="stylesheet" href="/static/fairytale.css">
+  <link rel="stylesheet" href="/static/board-theme.css">
+  <link rel="stylesheet" href="/static/session-hub.css">
+  <link rel="stylesheet" href="/static/property-cards.css">
 </head>
-<body>
-  <span class="conn pill" id="conn">…</span>
+<body class="board-page">
+  <header class="board-masthead">
+    <div class="board-brand">
+      <p class="board-eyebrow">Magic Mirror presents</p>
+      <h1 class="banner">MONOPOLY</h1>
+      <p class="byline">Every turn, another page</p>
+    </div>
+    <div class="board-heading-note"><span class="board-chapter">The storybook board</span>
+      <a class="btn small board-home" href="/" aria-label="Back to homepage">← Home</a>
+      <span class="conn pill" id="conn" role="status">…</span>
+    </div>
+  </header>
   <div class="layout">
-    <main><div id="board"></div></main>
+    <main class="board-stage" aria-label="Game board">
+      <div class="board-view-toolbar">
+        <div class="board-view-switch" role="group" aria-label="Board view">
+          <button type="button" class="btn small" id="view-follow" aria-pressed="true" aria-controls="board-viewport">Follow token</button>
+          <button type="button" class="btn small secondary" id="view-full" aria-pressed="false" aria-controls="board-viewport">Full board</button>
+        </div>
+        <span id="board-view-location" class="board-view-location">All 40 spaces</span>
+      </div>
+      <div id="board-viewport" class="board-viewport" data-view="full"><div id="board"></div></div>
+      <p id="board-view-status" class="board-caption" role="status"></p>
+    </main>
 
     <aside>
       <div class="panel">
@@ -36,23 +43,24 @@
         <ul class="players" id="players"></ul>
       </div>
 
-      <div class="panel">
-        <div class="row" style="justify-content: space-between; margin-bottom: 8px">
-          <h2 style="margin: 0">🪞 The Mirror</h2>
-          <button class="btn small" id="voice-btn">🔊 Wake the Mirror</button>
-          <button class="btn small secondary" id="mic-btn" title="Listen for yes / no through Muse Voice Transcribe">🎤 Ears off</button>
+      <div class="panel mirror-panel">
+        <div class="mirror-header">
+          <h2 style="margin: 0">The Mirror</h2>
+          <div class="mirror-controls"><button class="btn small" id="voice-btn">Wake the Mirror</button>
+          <button class="btn small secondary" id="mic-btn" title="Listen for yes / no through Muse Voice Transcribe">Microphone off</button></div>
         </div>
         <div class="muted" id="mic-status" style="font-size:.85em; min-height:1.2em"></div>
         <ul class="log" id="log"></ul>
       </div>
 
       <details class="panel" id="chronicles">
-        <summary><h2 style="display:inline">📜 Chronicles</h2></summary>
+        <summary><h2 style="display:inline">Chronicles</h2></summary>
         <div id="stats" class="muted">No history yet.</div>
+        <button class="btn small secondary" type="button" id="board-session-stats">Full game history &amp; stats</button>
       </details>
 
       <details class="dev panel" id="dev">
-        <summary>🛠️ Dev panel (stands in for camera, mic, motors)</summary>
+        <summary>Dev panel (stands in for camera, mic, motors)</summary>
 
         <h4>Game</h4>
         <div class="row">
@@ -102,13 +110,22 @@
   </div>
 
 <script type="module">
+import { mountScene } from "/static/scene.js";
+mountScene();
+</script>
+<script type="module">
 import { connect, toast, h, tokenDot } from "/static/net.js";
 import { loadBoard, createBoardView, statusText } from "/static/board.js";
+import { mountBoardCamera } from "/static/board-camera.js";
+import { mountBoardActions } from "/static/board-actions.js";
 
 const gameId = location.pathname.split("/")[2];
-const boardData = await loadBoard();
+const [boardData, cardData] = await Promise.all([loadBoard(), fetch("/api/cards").then(r => r.json())]);
 const board = createBoardView(document.getElementById("board"), boardData);
+const camera = mountBoardCamera(document.getElementById("board"), boardData, gameId);
+const actions = mountBoardActions(document.getElementById("board-viewport"), boardData, cardData, message => net.send(message));
 let state = null;
+document.getElementById("board-session-stats").onclick = () => actions.openStats();
 
 // ---- Mirror voice ---------------------------------------------------------
 // Browsers only allow speech after someone has clicked the page, so the
@@ -116,7 +133,7 @@ let state = null;
 let speaking = false;
 document.getElementById("voice-btn").onclick = (e) => {
   speaking = !speaking;
-  e.target.textContent = speaking ? "🔊 Mirror is awake" : "🔊 Wake the Mirror";
+  e.target.textContent = speaking ? "Mirror is awake" : "Wake the Mirror";
   if (speaking) say("The Mirror is awake.");
   else speechSynthesis.cancel();
 };
@@ -137,7 +154,7 @@ const mic = { on: false, ctx: null, src: null, proc: null, stream: null, busy: f
 const micStatus = (t) => { document.getElementById("mic-status").textContent = t; };
 
 document.getElementById("mic-btn").onclick = async (e) => {
-  if (mic.on) { stopMic(); e.target.textContent = "🎤 Ears off"; micStatus(""); return; }
+  if (mic.on) { stopMic(); e.target.textContent = "Microphone off"; micStatus(""); return; }
   try {
     mic.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
   } catch { toast("Microphone permission was refused.", "error"); return; }
@@ -147,7 +164,7 @@ document.getElementById("mic-btn").onclick = async (e) => {
   mic.src.connect(mic.proc); mic.proc.connect(mic.ctx.destination);
   mic.proc.onaudioprocess = onAudio;
   mic.on = true;
-  e.target.textContent = "🎤 Ears on";
+  e.target.textContent = "Microphone on";
   micStatus("Listening when someone has to decide.");
   maybeListen();
 };
@@ -163,7 +180,7 @@ function maybeListen() {
     state.players.find((p) => p.id === state.pending.player)?.kind === "in_person";
   if (mic.on && deciding && !mic.busy && !clip) {
     clip = { frames: [], started: performance.now(), lastLoud: null, heardSpeech: false };
-    micStatus("🎤 Listening… say yes or no");
+    micStatus("Listening… say yes or no");
   }
   if (!deciding && clip) { clip = null; micStatus(mic.on ? "Listening when someone has to decide." : ""); }
 }
@@ -181,14 +198,14 @@ function onAudio(ev) {
   else if (tooLong) { clip.frames = []; clip.started = now; }   // nothing said yet: keep waiting
 }
 async function sendClip(c, rate) {
-  mic.busy = true; micStatus("🪞 Muse is listening…");
+  mic.busy = true; micStatus("Listening…");
   try {
     const wav = encodeWav(downsample(concat(c.frames), rate, 16000), 16000);
     const r = await fetch(`/voice/clip?game=${gameId}`, { method: "POST", headers: { "content-type": "audio/wav" }, body: wav });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) { micStatus(`Muse error: ${d.detail || r.status}`); }
     else if (!d.ok) { micStatus(d.reason || "Nothing to decide."); }
-    else if (d.answer) { micStatus(`Heard “${d.transcript}” → ${d.answer}`); addLog(`🎤 “${d.transcript}”`); }
+    else if (d.answer) { micStatus(`Heard “${d.transcript}” → ${d.answer}`); addLog(` “${d.transcript}”`); }
     else { micStatus(`Heard “${d.transcript || "…"}” but not a yes or no. Try again.`); }
   } catch (e) { micStatus(`Mic error: ${e.message}`); }
   mic.busy = false;
@@ -233,10 +250,13 @@ const net = connect(`/ws/${gameId}?role=board`, {
     if (m.type === "debug_sync") { debugSync = m.on; render(); }
     if (m.type === "move_failed") showStall(m.reason);
     if (m.type === "move" || m.type === "moved" || m.type === "move_cancelled") clearStall();
-    if (m.type === "mirror") { addLog((m.kind === "say" ? "📱 " : m.kind === "scene" ? "👁 " : "") + m.text); say(m.text); }
+    board.onEvent(m);
+    actions.event(m);
+    camera.onEvent(m);
+    if (m.type === "mirror") { addLog(m.text); say(m.text); }
   },
-  onError: (m) => toast(m, "error"),
-  onStatus: (s) => { document.getElementById("conn").textContent = { online: "● live", offline: "○ reconnecting", connecting: "…", closed: "✕" }[s]; },
+  onError: (m) => { actions.error(m); toast(m, "error"); },
+  onStatus: (s) => { actions.connection(s); document.getElementById("conn").textContent = { online: "● live", offline: "○ reconnecting", connecting: "…", closed: "" }[s]; },
   onClosed: () => document.body.append(h("div", { class: "notice" }, h("div", { class: "panel" },
     h("h2", {}, "This game doesn't exist"), h("p", { class: "muted" }, "The server may have restarted. Create a new game."),
     h("a", { class: "btn", href: "/", style: "display:inline-grid;place-items:center" }, "New game")))),
@@ -256,8 +276,8 @@ function refreshStats() {
         ...st.players.map((p) => h("div", { style: "margin-bottom:6px" },
           h("strong", {}, p.name), p.bankrupt ? " (out)" : "",
           h("div", { class: "muted", style: "font-size:.85em" },
-            `${p.turns} turns · avg roll ${p.avg_roll ?? "—"} · ${p.bought} places (🪙${p.spent_on_property}) · ` +
-            `rent paid 🪙${p.rent_paid} / earned 🪙${p.rent_received} · salary 🪙${p.salary} · ${p.cards_drawn} cards` +
+            `${p.turns} turns · avg roll ${p.avg_roll ?? "—"} · ${p.bought} places (${p.spent_on_property} gold) · ` +
+            `rent paid ${p.rent_paid} gold / earned ${p.rent_received} gold · salary ${p.salary} gold · ${p.cards_drawn} cards` +
             (p.jailed ? ` · locked up ${p.jailed}×` : "")))));
     } catch { /* stats are optional */ }
   }, 400);
@@ -292,20 +312,22 @@ function clearStall() {
 // ---- rendering ------------------------------------------------------------
 function render() {
   board.render(state);
+  camera.updateState(state);
+  actions.update(state);
   if (state.phase !== "LOBBY") refreshStats();
   // Board center
   const c = board.center;
   if (state.phase === "LOBBY") {
     const waiting = state.players.filter((p) => !p.connected).map((p) => p.name);
     c.replaceChildren(
-      h("div", { class: "center-title" }, "🪞 Magic Mirror"),
+      h("div", { class: "center-title" }, "Magic Mirror"),
       h("div", { class: "center-phase" }, waiting.length ? `Waiting for ${waiting.join(" and ")}…` : "Everyone is here!"),
       h("button", { class: "btn", disabled: waiting.length > 0, onclick: () => net.send({ action: "start" }) }, "Start the game"));
   } else {
     const roll = state.last_roll;
     c.replaceChildren(
-      h("div", { class: "center-title" }, "🪞 Magic Mirror"),
-      roll ? h("div", { class: "dice" }, state.last_dice ? `🎲 ${state.last_dice.join(" + ")} = ${roll}` : `🎲 ${roll}`) : "",
+      h("div", { class: "center-title" }, "Magic Mirror"),
+      roll ? h("div", { class: "dice" }, `Roll: ${roll}`) : "",
       h("div", { class: "center-phase" }, statusText(state, boardData, "board")));
   }
 
@@ -321,7 +343,7 @@ function render() {
       belt[p.lane] ? h("span", { class: "pill", title: `physical token (${belt[p.lane].source})`,
         style: `background: var(--${belt[p.lane].square === p.position ? "ok" : "wait"}); color:#111; font-size:.8em` },
         `belt ${belt[p.lane].square}`) : "",
-      h("span", { class: "bal" }, `🪙${p.balance}`),
+      h("span", { class: "bal" }, `${p.balance} G`),
       h("span", { class: "dot", title: p.connected ? "connected" : "not connected", style: `background: var(--${p.connected ? "ok" : "wait"})` }))));
 
   // Dev panel: one "tap" button per player card
@@ -366,11 +388,10 @@ function render() {
 const diceSel = document.getElementById("dice");
 for (let v = 2; v <= 12; v++) diceSel.append(h("option", { value: v, selected: v === 7 }, String(v)));
 
-const cardData = await (await fetch("/api/cards")).json();
 const cardSel = document.getElementById("card");
 for (const [deck, info] of Object.entries(cardData.decks)) {
   cardSel.append(h("optgroup", { label: info.name },
-    cardData.cards.filter((c) => c.deck === deck).map((c) => h("option", { value: c.id }, `${c.art} ${c.id} — ${c.title}`))));
+    cardData.cards.filter((c) => c.deck === deck).map((c) => h("option", { value: c.id }, `${c.id} — ${c.title}`))));
 }
 
 const ACTS = {

@@ -3,44 +3,58 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preload" href="/static/fonts/planewalker/regular.otf" as="font" type="font/otf" crossorigin>
+  <link rel="stylesheet" href="/static/typography.css">
   <title>Monopoly</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=League+Spartan:wght@700&family=Pirata+One&display=swap">
   <link rel="stylesheet" href="/static/fairytale.css">
+  <link rel="stylesheet" href="/static/lobby-playground.css">
+  <link rel="stylesheet" href="/static/session-hub.css">
 </head>
 <body>
   <main class="page">
-    <!-- The Monopoly banner, with a fairy leaning on it -->
+    <!-- A tiny fairy hovers beside the upper-right corner of the banner. -->
     <header class="title">
       <div class="logo">
-        <svg class="fairy" viewBox="0 0 120 110" aria-hidden="true">
+        <svg class="fairy" viewBox="0 0 120 140" aria-hidden="true">
+          <defs>
+            <linearGradient id="logo-fairy-wing" x1="0" y1="0" x2="1" y2="1">
+              <stop stop-color="#f5ffff"/><stop offset=".5" stop-color="#c8eee8"/><stop offset="1" stop-color="#e5d9ff"/>
+            </linearGradient>
+          </defs>
           <g class="wing wing-l">
-            <ellipse cx="36" cy="50" rx="22" ry="30" transform="rotate(-32 36 50)"/>
-            <ellipse cx="40" cy="82" rx="13" ry="17" transform="rotate(24 40 82)"/>
+            <path d="M57 79C29 66 12 27 29 31S54 57 57 79ZM55 80C31 66 19 88 35 97S52 92 55 80Z"/>
+            <path class="wing-vein" d="M56 77Q41 52 29 38M52 83Q36 79 30 87"/>
           </g>
           <g class="wing wing-r">
-            <ellipse cx="84" cy="50" rx="22" ry="30" transform="rotate(32 84 50)"/>
-            <ellipse cx="80" cy="82" rx="13" ry="17" transform="rotate(-24 80 82)"/>
+            <path d="M64 79C92 64 108 26 92 31S68 58 64 79ZM67 80C89 64 101 87 86 97S69 91 67 80Z"/>
+            <path class="wing-vein" d="M66 77Q80 52 92 38M70 83Q85 78 92 87"/>
           </g>
-          <ellipse class="hair" cx="60" cy="56" rx="19" ry="21"/>
-          <circle class="hair" cx="60" cy="36" r="7"/>
-          <path class="dress" d="M42 106q2-28 18-31q16 3 18 31z"/>
-          <path class="skin arm" d="M49 80q-10 10-12 22" />
-          <circle class="skin" cx="37" cy="103" r="4.5"/>
-          <path class="skin arm" d="M71 80q10 0 15-11"/>
+          <path class="skin leg" d="M55 108C54 115 53 120 54 127L59 128C58 121 60 114 61 109Z"/>
+          <path class="skin leg" d="M63 109C66 115 67 120 65 127L70 129C74 121 71 114 68 108Z"/>
+          <path class="shoe" d="M53 125C55 124 58 125 60 129L63 132Q61 136 57 132Q53 129 53 125ZM65 125Q69 124 71 128L70 133Q68 137 65 133Q63 131 65 125Z"/>
+          <circle class="pom" cx="59.5" cy="131.5" r="2.1"/><circle class="pom" cx="68.5" cy="132" r="2.1"/>
+          <path class="skin arm" d="M53 79q-9 13-17 6M69 79q11 5 18-9"/>
+          <path class="skin" d="M56 67h9v14h-9z"/>
+          <path class="dress" d="M52 77q8 6 16-1l2 14q9 12 5 23l-12-5-10 8-10-7q10-15 9-32z"/>
+          <path class="dress-vein" d="M61 84q2 13-8 25M62 89q4 9 10 16"/>
           <g class="head">
-            <circle class="skin" cx="60" cy="57" r="14"/>
-            <path class="hair" d="M46 56q14-21 28 0q-5-8-14-8t-14 8z"/>
-            <path class="tiara" d="M52 45l2.5-6 3 3.5 2.5-5 2.5 5 3-3.5 2.5 6z"/>
-            <circle class="eye" cx="55" cy="59" r="1.8"/><circle class="eye" cx="65" cy="59" r="1.8"/>
-            <circle class="shine" cx="55.7" cy="58.3" r=".6"/><circle class="shine" cx="65.7" cy="58.3" r=".6"/>
-            <circle class="cheek" cx="50.5" cy="63" r="2.4"/><circle class="cheek" cx="69.5" cy="63" r="2.4"/>
-            <path class="smile" d="M57 64q3 2.6 6 0"/>
+            <ellipse class="hair" cx="60" cy="50" rx="16" ry="18"/>
+            <circle class="hair" cx="63" cy="31" r="8"/>
+            <path class="hair-detail" d="M59 25q9-4 10 4M52 40q-4 8-2 15"/>
+            <path class="skin" d="m49 51-7-2 3 8 6 1m19-7 8-3-3 9-6 1"/>
+            <circle class="skin" cx="60" cy="54" r="12"/>
+            <path class="hair" d="M47 52q-1-17 16-16 13 2 11 18l-7-7q-9 8-18 2z"/>
+            <path class="lash" d="m52 54-2-1m16 1 2-2"/>
+            <ellipse class="eye" cx="54" cy="55.5" rx="1.5" ry="2"/>
+            <ellipse class="eye" cx="65" cy="55.5" rx="1.5" ry="2"/>
+            <circle class="shine" cx="54.5" cy="54.7" r=".6"/><circle class="shine" cx="65.5" cy="54.7" r=".6"/>
+            <ellipse class="cheek" cx="50.5" cy="60" rx="2.2" ry="1.4"/>
+            <ellipse class="cheek" cx="69" cy="60" rx="2.2" ry="1.4"/>
+            <path class="smile" d="M56 62q4 3 7-1"/>
           </g>
-          <path class="wand" d="M86 69L100 44"/>
-          <circle class="skin" cx="86" cy="69" r="4.5"/>
-          <path class="wand-star" d="M101 30l2.6 6.6 7 .9-5.3 4.6 1.6 6.9-5.9-3.7-5.9 3.7 1.6-6.9-5.3-4.6 7-.9z"/>
+          <path class="wand" d="m87 71 9-25"/>
+          <path class="wand-star" d="m97 37 2 5 5 1-4 3 1 5-4-3-5 3 1-5-4-3 6-1z"/>
+          <g class="fairy-dust"><circle cx="28" cy="111" r="1.3"/><circle cx="37" cy="133" r="1.6"/><circle cx="89" cy="112" r="1"/></g>
         </svg>
         <h1 class="banner">MONOPOLY</h1>
         <p class="byline">Fairy Tale Edition</p>
@@ -50,8 +64,27 @@
       </div>
     </header>
 
+    <div id="home-lobby-scene"></div>
+
+    <section id="guest-waiting" class="tag" hidden>
+      <h2 id="guest-hello">Welcome to the story</h2>
+      <p class="guest-wait-note" id="guest-wait-note">Connecting to your waiting room…</p>
+      <ul class="guests" id="guest-list"></ul>
+      <button class="btn ink small" id="guest-account" type="button">Save my stats to an account</button>
+      <button class="btn ink small" id="guest-stats" type="button">My overall stats</button>
+      <a class="btn ink small" href="/">Back to home</a>
+    </section>
+
+    <section id="home-menu" class="tag" hidden>
+      <h2>Your next chapter</h2>
+      <p class="home-menu-note">Start a new tale or pick up a saved game.</p>
+      <button id="home-play" class="btn wood" type="button">Start Game</button>
+      <button id="home-history" class="btn ink" type="button">Game history &amp; stats</button>
+      <p id="home-account-note" class="home-menu-note">Play as a guest, or sign in from History & stats.</p>
+    </section>
+
     <!-- Step 1: who's playing -->
-    <form id="create" class="tag">
+    <form id="create" class="tag" hidden>
       <h2>Who's playing?</h2>
       <label for="grandma">At the board, in person</label>
       <input id="grandma" value="Grandma" maxlength="20" required>
@@ -60,6 +93,7 @@
 
       <p id="form-error" class="error-text" hidden></p>
       <button class="btn wood" type="submit">Create the game</button>
+      <button class="btn ink small" type="button" id="back-to-menu">Back</button>
     </form>
 
     <!-- Games saved on this laptop: resume or review them -->
@@ -73,7 +107,7 @@
       <div class="rod"></div>
       <div class="sheet">
         <h2>The guest list</h2>
-        <p class="muted center">Send each grandchild their link. It takes them straight to their seat.</p>
+        <p class="muted center">Choose In person or Virtual for each guest. You can change this until the game starts. Share a join link with virtual players.</p>
         <ul class="guests" id="guests"></ul>
         <div class="board-row">
           <span class="who"><span class="name">Board laptop</span><span class="role">the screen next to Grandma's board</span></span>
@@ -84,10 +118,6 @@
         </div>
         <p id="lobby-note" class="note muted"></p>
         <button id="start" class="btn wood" disabled>Start the game</button>
-        <div id="started" class="started" hidden>
-          <h2>The tale has begun!</h2>
-          <p class="muted">You can close this page.</p>
-        </div>
       </div>
       <div class="rod"></div>
     </section>
@@ -95,6 +125,8 @@
 
 <script src="/static/qrcode.min.js"></script>
 <script type="module">
+import { mountSessionHub } from "/static/session-hub.js";
+import { mountLobbyPlayground } from "/static/lobby-playground.js";
 import { connect, toast, h } from "/static/net.js";
 import { mountScene } from "/static/scene.js";
 import { avatarSvg } from "/static/avatars.js";
@@ -185,27 +217,42 @@ function qr(url) {
   return el;
 }
 
-// Previous games (saved on this laptop): resume or review them.
-fetch("/api/games").then((r) => r.json()).then((games) => {
-  if (!games.length) return;
-  const list = document.getElementById("previous-list");
-  for (const g of games) {
-    const names = g.players.map((p) => `${p.name} (${p.balance} gold)`).join(" · ");
-    const when = new Date(g.updated_at * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
-    const status = g.status === "over" ? `finished · ${g.players.find((p) => p.id === g.winner)?.name ?? "?"} won`
-                 : `turn ${g.turn} · ${g.phase.toLowerCase().replaceAll("_", " ")}`;
-    list.append(h("div", { class: "past" },
-      h("div", { class: "name" }, names),
-      h("div", { class: "role" }, `${when} · ${status}`),
-      h("div", { class: "acts" },
-        g.status !== "over" && g.host_url && h("a", { class: "btn ink small fill", href: g.host_url }, "Resume"),
-        h("a", { class: "btn ink small", href: g.board_url }, g.status === "over" ? "Chronicles" : "Board"))));
-  }
-  document.getElementById("previous").hidden = !document.getElementById("lobby").hidden;
-}).catch(() => {});
+// The home play picker owns saved-session browsing.
+const hub = mountSessionHub({ onNewGame: account => {
+  document.getElementById("home-menu").hidden = true;
+  document.getElementById("create").hidden = false;
+  if (account) document.getElementById("grandma").value = Array.from(account.display_name).slice(0, 20).join("");
+  document.getElementById("grandma").focus();
+} });
+document.getElementById("home-play").onclick = () => hub.openPlay();
+document.getElementById("home-history").onclick = () => hub.openHistory();
+document.getElementById("guest-stats").onclick = () => hub.openProfile();
+document.getElementById("back-to-menu").onclick = () => {
+  document.getElementById("create").hidden = true;
+  document.getElementById("home-menu").hidden = false;
+};
+window.addEventListener("accountchange", event => {
+  const account = event.detail;
+  document.getElementById("home-account-note").textContent = account ? `Playing as ${account.display_name}. Your results are saved to this account.` : "Play as a guest, or sign in from History & stats.";
+  if (lastLobbyState) refreshSeatAccounts(lastLobbyState.game_id);
+});
 
 let links = {};  // player id -> full join URL
+let lobbyNet = null, lobbyOnline = false, lastLobbyState = null;
+const attendancePending = new Map();
+let seatAccounts = {};
+const playground = mountLobbyPlayground(document.getElementById("home-lobby-scene"), message => lobbyNet?.send(message));
+// Local home-screen preview; no game actions or network messages until joining.
+if (!new URLSearchParams(location.search).has("seat")) {
+  playground.connection("online");
+  playground.update({ game_id: "home-preview", phase: "LOBBY", players: [
+    { id: "p1", name: "Princess", connected: true },
+    { id: "p2", name: "Knight", connected: true },
+    { id: "p3", name: "Fairy", connected: true },
+  ] });
+}
 async function showLobby(game) {
+  document.getElementById("home-menu").hidden = true;
   document.getElementById("create").hidden = true;
   document.getElementById("previous").hidden = true;
   document.getElementById("lobby").hidden = false;
@@ -220,13 +267,37 @@ async function showLobby(game) {
     boardQr.hidden = !boardQr.hidden;
   };
 
-  // One socket as the host: receives live state and may press Start.
+  // Open the board only after the server confirms the game has started.
+  let entering = false;
   const net = connect(`/ws/${game.game_id}?host=${game.host_token}`, {
-    onState: renderLobby,
-    onError: (m) => toast(m, "error"),
-    onClosed: () => toast("This game no longer exists. Create a new one.", "error"),
+    onState: state => {
+      refreshSeatAccounts(game.game_id);
+      playground.update(state);
+      if (state.phase !== "LOBBY") {
+        if (!entering) { entering = true; location.replace(game.board_url); }
+        return;
+      }
+      renderLobby(state);
+    },
+    onMessage: message => {
+      playground.event(message);
+      if (message.type === "join_links") {
+        const updated = Object.fromEntries(Object.entries(message.join_links).map(([pid, path]) => [pid, base + path]));
+        for (const pid of Object.keys(links)) if (updated[pid] !== links[pid]) { delete qrEls[pid]; qrOpen.delete(pid); }
+        links = updated;
+        if (lastLobbyState) renderLobby(lastLobbyState);
+      }
+    },
+    onStatus: status => {
+      lobbyOnline = status === "online"; playground.connection(status);
+      if (!lobbyOnline) attendancePending.clear();
+      if (lastLobbyState) renderLobby(lastLobbyState);
+    },
+    onError: (m) => { attendancePending.clear(); if (lastLobbyState) renderLobby(lastLobbyState); toast(m, "error"); },
+    onClosed: () => { playground.connection("closed"); toast("This game no longer exists. Create a new one.", "error"); },
   });
-  document.getElementById("start").onclick = () => net.send({ action: "start" });
+  lobbyNet = net;
+  document.getElementById("start").onclick = e => { e.currentTarget.disabled = true; net.send({ action: "start" }); };
 }
 
 // QR codes are shown on request, so the list stays short. The list is redrawn
@@ -235,7 +306,7 @@ const qrOpen = new Set();
 const qrEls = {};
 function linkButtons(p) {
   const url = links[p.id];
-  if (!url) return null;
+  if (!url || p.kind !== "remote") return null;
   return h("span", { class: "acts" },
     h("button", { class: "btn ink small", type: "button", onclick: () => copy(url) }, "Copy link"),
     navigator.share && h("button", {
@@ -249,7 +320,7 @@ function linkButtons(p) {
 }
 
 function qrSlot(p) {
-  if (!links[p.id]) return null;
+  if (!links[p.id] || p.kind !== "remote") return null;
   qrEls[p.id] ??= qr(links[p.id]);
   return h("div", { class: "qr-slot", hidden: !qrOpen.has(p.id) },
     qrEls[p.id], h("span", { class: "role" }, "Scan with the phone's camera"));
@@ -257,7 +328,24 @@ function qrSlot(p) {
 
 // Who was already shown as arrived; anyone new gets a little pop.
 let arrived = null;
+function attendanceSelect(p, state) {
+  if (p.id === state.players[0].id) return h("span", { class: "role" }, "Board host · in person");
+  if (state.phase !== "LOBBY") return h("span", { class: "role" }, p.kind === "in_person" ? "In person" : "Virtual");
+  return h("select", {
+    class: "guest-attendance", "data-player": p.id, "aria-label": `Attendance for ${p.name}`,
+    disabled: !lobbyOnline || attendancePending.has(p.id),
+    onchange: e => {
+      attendancePending.set(p.id, e.target.value); e.target.disabled = true;
+      document.getElementById("start").disabled = true;
+      lobbyNet.send({ action: "set_attendance", target: p.id, kind: e.target.value });
+    }
+  }, h("option", { value: "in_person", selected: p.kind === "in_person" }, "In person"),
+     h("option", { value: "remote", selected: p.kind === "remote" }, "Virtual"));
+}
+
 function renderLobby(state) {
+  lastLobbyState = state;
+  for (const p of state.players) if (attendancePending.get(p.id) === p.kind) attendancePending.delete(p.id);
   const fresh = arrived ? state.players.filter((p) => p.connected && !arrived.has(p.id)).map((p) => p.id) : [];
   arrived = new Set(state.players.filter((p) => p.connected).map((p) => p.id));
   const inLobby = state.phase === "LOBBY";
@@ -267,7 +355,11 @@ function renderLobby(state) {
       crest(p, fresh.includes(p.id) ? "pop" : ""),
       h("span", { class: "who" },
         h("span", { class: "name" }, p.name),
-        h("span", { class: "role" }, p.kind === "in_person" ? "at the board" : "on a phone")),
+        attendanceSelect(p, state),
+        seatAccounts[p.id] ? h("span", { class: "role account-seat-label" }, `Account: ${seatAccounts[p.id].username}`) : h("button", {
+          class: "btn ink small", type: "button", onclick: () => hub.linkSeat(state.game_id, p.id,
+            { host: new URLSearchParams(location.search).get("host") }, () => refreshSeatAccounts(state.game_id))
+        }, "Link account for stats")),
       // Links stay available after they arrive, in case they drop off.
       inLobby && linkButtons(p),
       p.connected ? h("span", { class: "status here" }, "Arrived") : h("span", { class: "status away" }, "On the way"),
@@ -276,16 +368,73 @@ function renderLobby(state) {
   const waiting = state.players.filter((p) => !p.connected).map((p) => p.name);
   const start = document.getElementById("start");
   start.hidden = !inLobby;
-  start.disabled = waiting.length > 0;
+  start.disabled = !lobbyOnline || attendancePending.size > 0 || waiting.length > 0;
   document.getElementById("lobby-note").textContent =
     inLobby ? (waiting.length ? `Waiting for ${waiting.join(" and ")}…` : "Everyone's here!") : "";
-  document.getElementById("started").hidden = inLobby;
+}
+
+async function refreshSeatAccounts(gameId) {
+  try {
+    const params = new URLSearchParams(location.search);
+    const query = new URLSearchParams();
+    if (params.get('host')) query.set('host', params.get('host'));
+    if (params.get('seat')) query.set('seat', params.get('seat'));
+    const res = await fetch(`/api/games/${gameId}/accounts?${query}`);
+    if (!res.ok) return;
+    seatAccounts = (await res.json()).players;
+    if (lastLobbyState?.game_id === gameId) renderLobby(lastLobbyState);
+  } catch { /* Accounts do not block starting a guest game. */ }
+}
+
+// Virtual guests wait on the same home landscape; only hosts see editing controls.
+function showGuestHome(gameId, seatToken) {
+  document.getElementById("home-menu").hidden = true;
+  document.getElementById("create").hidden = true;
+  document.getElementById("previous").hidden = true;
+  document.getElementById("lobby").hidden = true;
+  document.getElementById("guest-waiting").hidden = false;
+  let me = null, entering = false;
+  lobbyNet = connect(`/ws/${gameId}?seat=${seatToken}`, {
+    onHello: message => { me = message.you; },
+    onState: state => {
+      playground.update(state, me);
+      if (state.phase !== "LOBBY") {
+        if (!entering) { entering = true; location.replace(`/game/${gameId}/join/${seatToken}`); }
+        return;
+      }
+      const mine = state.players.find(p => p.id === me);
+      document.getElementById("guest-account").onclick = () => hub.linkSeat(gameId, me, { seat: seatToken }, () => {
+        document.getElementById("guest-account").textContent = "Stats account linked · Manage account";
+      });
+      document.getElementById("guest-hello").textContent = `Welcome, ${mine?.name || "wanderer"}`;
+      document.getElementById("guest-wait-note").textContent = `${state.players[0].name} will start the game when everyone is ready. Wander and jump while you wait.`;
+      document.getElementById("guest-list").replaceChildren(...state.players.map(p => h("li", {},
+        crest(p), h("span", { class: "who" }, h("span", { class: "name" }, p.name)),
+        h("span", { class: `status ${p.connected ? "here" : "away"}` }, p.connected ? "Arrived" : "On the way"))));
+    },
+    onMessage: message => playground.event(message),
+    onStatus: status => playground.connection(status),
+    onError: message => toast(message, "error"),
+    onClosed: reason => {
+      if (entering) return;
+      document.getElementById("guest-wait-note").textContent = {
+        in_person: "You’re now playing in person. Use the shared board, or ask the host to switch you back to Virtual.",
+        taken_over: "Your seat is open on another device. Reopen your join link to play here instead.",
+        bad_link: "This join link is invalid. Ask the host for your current link.",
+        no_game: "This game is unavailable. Ask the host for a new invitation."
+      }[reason] || "Disconnected. Reopen your join link to reconnect.";
+    }
+  });
 }
 
 // ---- On load: returning to an existing lobby? ---------------------------
-
 const params = new URLSearchParams(location.search);
-if (params.get("game") && params.get("host")) {
+if (!params.get("game")) document.getElementById("home-menu").hidden = false;
+if (params.get("history")) hub.openHistory();
+if (params.get("profile")) hub.openProfile();
+if (params.get("game") && params.get("seat")) {
+  showGuestHome(params.get("game"), params.get("seat"));
+} else if (params.get("game") && params.get("host")) {
   const res = await fetch(`/api/games/${params.get("game")}/links?host=${params.get("host")}`);
   if (res.ok) showLobby(await res.json());
   else { history.replaceState(null, "", "/"); toast("That game is gone (server restarted?). Make a new one.", "error"); }

@@ -165,6 +165,11 @@ def from_public(d: dict) -> GameState:
     data = {k: v for k, v in d.items() if k in fields}
     data["players"] = [Player(**p) for p in d["players"]]
     data["phase"] = Phase(d["phase"])
+    # Saved games from before the printed-card update may be waiting on an old deck name.
+    if data.get("pending") and data["pending"].get("kind") == "card":
+        pending = dict(data["pending"])
+        pending["deck"] = {"spell": "crystal", "fairy": "chest"}.get(pending["deck"], pending["deck"])
+        data["pending"] = pending
     return GameState(**data)
 
 
@@ -207,6 +212,24 @@ def _set_connected(s: GameState, actor: str, a: dict, rng: random.Random) -> lis
         return []
     p.connected = connected
     return [{"type": "player_connected" if connected else "player_disconnected", "player": p.id}]
+
+
+def _set_attendance(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
+    _require_system(actor)
+    if s.phase != Phase.LOBBY:
+        raise EngineError("attendance can only be changed before the game starts")
+    p = s.player(a.get("target", ""))
+    kind = a.get("kind")
+    if kind not in PLAYER_KINDS:
+        raise EngineError(f"unknown player kind: {kind}")
+    if p.id == s.players[0].id and kind != "in_person":
+        raise EngineError("the board host must stay in person")
+    if p.kind == kind:
+        return []
+    p.kind = kind
+    # The room derives connection presence; browser input cannot claim it.
+    p.connected = kind == "in_person" or bool(a.get("connected", False))
+    return [{"type": "attendance_changed", "player": p.id, "kind": kind}]
 
 
 def _start(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
@@ -259,6 +282,17 @@ def _roll(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
     p = _require_turn(s, actor)
     if p.kind == "in_person":
         raise EngineError(f"{p.name} rolls the real dice into the tray")
+    d1, d2 = rng.randint(1, 6), rng.randint(1, 6)
+    return _start_move(s, p, d1 + d2, [d1, d2])
+
+
+def _board_roll(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
+    """Shared-screen digital dice; the server owns the random result and turn."""
+    _require_system(actor)
+    _require_phase(s, Phase.WAITING_FOR_ROLL)
+    p = s.current_player
+    if a.get("target") != p.id or type(a.get("turn")) is not int or a.get("turn") != s.turn:
+        raise EngineError("that roll belongs to a different turn; use the current Roll Dice button")
     d1, d2 = rng.randint(1, 6), rng.randint(1, 6)
     return _start_move(s, p, d1 + d2, [d1, d2])
 
@@ -653,8 +687,10 @@ _HANDLERS: dict[str, Handler] = {
     "set_connected": _set_connected,
     "set_position": _set_position,
     "land": _land,
+    "set_attendance": _set_attendance,
     "start": _start,
     "roll": _roll,
+    "board_roll": _board_roll,
     "dice": _dice,
     "dice_not_visible": _dice_not_visible,
     "move_done": _move_done,

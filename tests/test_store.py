@@ -121,3 +121,49 @@ def test_default_memory_db_keeps_nothing():
         c.post("/api/games", json={"players": PLAYERS})
     with TestClient(create_app(sim=True)) as c:
         assert c.get("/api/games").json() == []
+
+
+def test_attendance_and_new_join_link_survive_restarts(tmp_path):
+    db = tmp_path / 'attendance.db'
+    with TestClient(create_app(sim=True, db_path=db)) as c:
+        game = c.post('/api/games', json={'players': [
+            {'name': 'Grandma', 'kind': 'in_person'}, {'name': 'Maya', 'kind': 'in_person'}]}).json()
+        gid = game['game_id']
+        host_path = f'/ws/{gid}?host={game["host_token"]}'
+        with c.websocket_connect(host_path) as host:
+            recv_until(host, lambda m: m['type'] == 'join_links')
+            host.send_json({'action': 'set_attendance', 'target': 'p2', 'kind': 'remote'})
+            state_where(host, lambda s: s['players'][1]['kind'] == 'remote')
+            link = recv_until(host, lambda m: m['type'] == 'join_links')['join_links']['p2']
+    with TestClient(create_app(sim=True, db_path=db)) as c:
+        assert c.get(f'/api/games/{gid}/links', params={'host': game['host_token']}).json()['join_links']['p2'] == link
+        with c.websocket_connect(host_path) as host:
+            state = state_where(host, lambda s: s['phase'] == 'LOBBY')
+            assert state['players'][1]['kind'] == 'remote' and not state['players'][1]['connected']
+            host.send_json({'action': 'set_attendance', 'target': 'p2', 'kind': 'in_person'})
+            state_where(host, lambda s: s['players'][1]['kind'] == 'in_person')
+    with TestClient(create_app(sim=True, db_path=db)) as c:
+        assert c.get(f'/api/games/{gid}/links', params={'host': game['host_token']}).json()['join_links'] == {}
+        with c.websocket_connect(host_path) as host:
+            state = state_where(host, lambda s: s['phase'] == 'LOBBY')
+            assert state['players'][1]['kind'] == 'in_person' and state['players'][1]['connected']
+            assert all(p['balance'] == 1500 and p['position'] == 0 for p in state['players'])
+            host.send_json({'action': 'set_attendance', 'target': 'p2', 'kind': 'remote'})
+            state_where(host, lambda s: s['players'][1]['kind'] == 'remote')
+            assert recv_until(host, lambda m: m['type'] == 'join_links' and 'p2' in m['join_links'])['join_links']['p2'] == link
+            assert c.app.state.store.game(gid)['specs'][1]['kind'] == 'remote'
+
+
+@pytest.mark.parametrize("old,new,card_id", [("spell", "crystal", "crystal_08"), ("fairy", "chest", "chest_02")])
+def test_restore_legacy_pending_card_deck(old, new, card_id):
+    from server.engine import SYSTEM, Phase, apply_action, from_public, new_game, to_public
+    state = new_game("legacy", PLAYERS)
+    snapshot = to_public(state)
+    snapshot["phase"] = "WAITING_FOR_CARD"
+    snapshot["pending"] = {"kind": "card", "deck": old, "for": "p1"}
+    restored = from_public(snapshot)
+    assert restored.pending["deck"] == new
+    assert snapshot["pending"]["deck"] == old
+    updated, events = apply_action(restored, SYSTEM, {"action": "card", "id": card_id})
+    assert updated.phase != Phase.WAITING_FOR_CARD
+    assert any(event["type"] == "card_drawn" for event in events)

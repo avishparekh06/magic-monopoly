@@ -3,23 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preload" href="/static/fonts/planewalker/regular.otf" as="font" type="font/otf" crossorigin>
+  <link rel="stylesheet" href="/static/typography.css">
   <title>Magic Mirror — Play with Grandma</title>
   <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/session-hub.css">
+  <link rel="stylesheet" href="/static/property-cards.css">
   <style>
     header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
     header .token-dot { width: 52px; height: 52px; font-size: 24px; }
-    header .me { flex: 1; min-width: 0; font-family: Georgia, serif; font-size: 24px; }
+    header .me { flex: 1; min-width: 0; font-family: var(--font-game); font-size: 24px; }
     header .bal { font-size: 30px; font-weight: 800; color: var(--gold); }
-    .banner { text-align: center; font-family: Georgia, serif; font-size: 24px; padding: 14px; border-radius: var(--radius); background: var(--sky-2); margin-bottom: 16px; }
+    .banner { text-align: center; font-family: var(--font-game); font-size: 24px; padding: 14px; border-radius: var(--radius); background: var(--sky-2); margin-bottom: 16px; }
     .banner.mine { background: var(--gold); color: var(--gold-ink); animation: pulse 1.4s ease-in-out infinite; }
     @keyframes pulse { 50% { transform: scale(1.02); } }
     .actions { display: grid; gap: 12px; margin: 16px 0; }
     .actions .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     .status { text-align: center; font-size: 18px; margin: -6px 0 14px; color: var(--ink-dim); min-height: 1.3em; }
     .where { text-align: center; margin: 8px 0 0; font-size: 18px; }
-    .center-title { font-family: Georgia, serif; color: var(--gold); }
+    .center-title { font-family: var(--font-game); color: var(--gold); }
     .magic-card { text-align: center; border-radius: var(--radius); padding: 20px; color: #fff; }
-    .magic-card .art { font-size: 64px; }
     .picker summary { cursor: pointer; color: var(--ink-dim); padding: 8px 0; }
     .picker .cards { display: grid; gap: 8px; margin-top: 8px; }
     .picker .cards .btn { justify-content: flex-start; text-align: left; font-size: 16px; min-height: 52px; }
@@ -27,7 +30,7 @@
     .places li { display: flex; gap: 10px; align-items: center; padding: 6px 0; }
     .places .swatch { width: 14px; height: 14px; border-radius: 4px; flex: none; }
     .lobby-hero { text-align: center; padding: 24px 0; }
-    .lobby-hero .big { font-size: 64px; }
+    .lobby-hero .big { font-family: var(--font-game); font-size: 30px; color: var(--gold); }
   </style>
 </head>
 <body>
@@ -42,7 +45,7 @@
     <!-- Lobby -->
     <section id="lobby" hidden>
       <div class="lobby-hero">
-        <div class="big">🪞✨</div>
+        <div class="big">Magic Mirror</div>
         <h1 id="hello"></h1>
         <p class="muted">Waiting for everyone to arrive at Grandma's table…</p>
       </div>
@@ -58,34 +61,37 @@
       <p class="where" id="where"></p>
 
       <div class="actions">
-        <button class="btn huge" id="roll">🎲 Roll</button>
+        <button class="btn huge" id="roll">Roll</button>
         <div class="pair" id="decide" hidden>
           <button class="btn huge" id="buy">Buy!</button>
           <button class="btn huge secondary" id="pass">No thanks</button>
         </div>
       </div>
 
+      <button class="btn secondary" id="phone-session-stats" type="button">Game history &amp; stats</button>
       <div id="picker-slot"></div>
       <div id="card-slot"></div>
 
-      <div class="panel">
-        <h3>🏡 My places</h3>
-        <ul class="places" id="places"></ul>
+      <div class="panel property-collection">
+        <h3>My cards</h3>
+        <div id="places"></div>
       </div>
 
       <div class="panel">
-        <h3>🪞 The Mirror says…</h3>
+        <h3>The Mirror says…</h3>
         <div class="pair" style="margin:8px 0">
           <input id="say" class="grow" maxlength="160" placeholder="Say something to the table…" autocomplete="off">
           <button class="btn" id="say-btn" type="button">Say it</button>
         </div>
-        <button class="btn small secondary" id="speak-btn" type="button">🔊 Read the Mirror aloud</button>
+        <button class="btn small secondary" id="speak-btn" type="button">Read the Mirror aloud</button>
         <ul class="log" id="log"></ul>
       </div>
     </section>
   </div>
 
 <script type="module">
+import { renderPropertyCards } from '/static/property-cards.js';
+import { mountSessionHub } from "/static/session-hub.js";
 import { connect, toast, h, seatList, tokenDot } from "/static/net.js";
 import { loadBoard, createBoardView, statusText } from "/static/board.js";
 
@@ -95,8 +101,11 @@ const boardData = await loadBoard();
 const board = createBoardView(document.getElementById("board"), boardData);
 const cardData = await (await fetch("/api/cards")).json();
 
+
 let me = null;      // "p2" or "p3", told by the server in "hello"
 let state = null;
+const sessionHub = mountSessionHub();
+document.getElementById("phone-session-stats").onclick = () => sessionHub.openGame(gameId, { seat: seatToken, player: me });
 
 // The phone's voice in the room: the Mirror repeats it aloud at the table.
 let speaking = false;
@@ -118,9 +127,9 @@ document.addEventListener("DOMContentLoaded", () => {
 const net = connect(`/ws/${gameId}?seat=${seatToken}`, {
   onHello: (m) => { me = m.you; },
   onState: (s) => { state = s; render(); },
-  onMessage: (m) => { if (m.type === "mirror") { addLog((m.kind === "scene" ? "👁 " : "") + m.text); speak(m.text); } },
+  onMessage: (m) => { board.onEvent(m); if (m.type === "mirror") { addLog(m.text); speak(m.text); } },
   onError: (m) => toast(m, "error"),
-  onStatus: (s) => { document.getElementById("conn").textContent = { online: "● live", offline: "○ reconnecting", connecting: "…", closed: "✕" }[s]; },
+  onStatus: (s) => { document.getElementById("conn").textContent = { online: "● live", offline: "○ reconnecting", connecting: "…", closed: "" }[s]; },
   onClosed: showNotice,
 });
 
@@ -128,6 +137,8 @@ const act = (action, extra = {}) => net.send({ player: me, action, ...extra });
 document.getElementById("roll").onclick = () => act("roll");
 document.getElementById("buy").onclick = () => act("buy", { square: state.pending?.square });
 document.getElementById("pass").onclick = () => act("decline");
+
+document.getElementById("board").addEventListener("board-motion-change", () => { if (state) render(); });
 
 function render() {
   if (!me) return;
@@ -139,44 +150,46 @@ function render() {
   document.getElementById("header").hidden = false;
   document.getElementById("me-dot").replaceChildren(tokenDot(mine));
   document.getElementById("me-name").textContent = mine.name;
-  document.getElementById("me-bal").textContent = `🪙${mine.balance}`;
+  document.getElementById("me-bal").textContent = `${mine.balance} G`;
 
   document.getElementById("lobby").hidden = !inLobby;
   document.getElementById("game").hidden = inLobby;
 
   if (inLobby) {
+    location.replace(`/?game=${gameId}&seat=${seatToken}`);
     document.getElementById("hello").textContent = `Hi ${mine.name}!`;
     document.getElementById("lobby-seats").replaceChildren(seatList(state));
     return;
   }
 
   board.render(state);
-  board.center.replaceChildren(h("div", { class: "center-title" }, "🪞"),
-    state.last_roll ? h("div", {}, state.last_dice ? `🎲 ${state.last_dice.join(" + ")}` : `🎲 ${state.last_roll}`) : "");
+  board.center.replaceChildren(h("div", { class: "center-title" }, "Magic Mirror"),
+    state.last_roll ? h("div", {}, `Roll: ${state.last_roll}`) : "");
 
   const myTurn = state.current_player === me;
   const banner = document.getElementById("banner");
   banner.className = `banner${myTurn ? " mine" : ""}`;
   banner.textContent = state.phase === "GAME_OVER"
-    ? (state.winner === me ? "You won! 👑" : "The tale is told!")
-    : myTurn ? "Your turn! ✨" : `${current.name}'s turn`;
+    ? (state.winner === me ? "You won! " : "The tale is told!")
+    : myTurn ? "Your turn! " : `${current.name}'s turn`;
 
   document.getElementById("status").textContent = statusText(state, boardData, me);
   document.getElementById("where").textContent = mine.in_jail
-    ? "🗼 You're locked in Rapunzel's Tower"
+    ? " You're locked in Rapunzel's Tower"
     : `You're at ${boardData.squares[mine.position].name}`;
 
   // Buttons only light up when the engine is waiting on *me*.
-  const deciding = state.phase === "WAITING_FOR_DECISION" && state.pending?.player === me;
-  document.getElementById("roll").disabled = !(myTurn && state.phase === "WAITING_FOR_ROLL");
+  const moving = board.hasMotion();
+  const deciding = !moving && state.phase === "WAITING_FOR_DECISION" && state.pending?.player === me;
+  document.getElementById("roll").disabled = !(myTurn && state.phase === "WAITING_FOR_ROLL" && !moving);
   document.getElementById("roll").hidden = deciding;
   document.getElementById("decide").hidden = !deciding;
   if (deciding && state.pending.type === "jail") {
-    document.getElementById("buy").textContent = `Pay 🪙${state.pending.price} and leave`;
+    document.getElementById("buy").textContent = `Pay ${state.pending.price} gold and leave`;
     document.getElementById("pass").textContent = "Stay in the tower";
   } else if (deciding) {
     const sq = boardData.squares[state.pending.square];
-    document.getElementById("buy").textContent = `Buy ${sq.name} 🪙${sq.price}`;
+    document.getElementById("buy").textContent = `Buy ${sq.name} ${sq.price} gold`;
     document.getElementById("pass").textContent = "No thanks";
   }
 
@@ -187,14 +200,12 @@ function render() {
   const card = lc && lc.for === me && cardData.cards.find((c) => c.id === lc.id);
   document.getElementById("card-slot").replaceChildren(card ? h("div", {
     class: "magic-card panel", style: `background: ${cardData.decks[card.deck].color}`,
-  }, h("div", { class: "art" }, card.art), h("h2", {}, card.title), h("p", {}, card.text)) : "");
+  }, h("h2", {}, card.title), h("p", {}, card.text)) : "");
 
-  const places = mine.properties.map((i) => {
-    const sq = boardData.squares[i];
-    const color = sq.group ? boardData.groups[sq.group].color : "var(--ink-dim)";
-    return h("li", {}, h("span", { class: "swatch", style: `background:${color}` }), sq.name);
-  });
-  document.getElementById("places").replaceChildren(...(places.length ? places : [h("li", { class: "muted" }, "Nothing yet — land on a place and buy it!")]));
+  const places = document.getElementById("places");
+  const openSquare = places.querySelector('.property-deed[open]')?.dataset.square;
+  const showMoney = places.querySelector('.player-money')?.open ?? true;
+  places.replaceChildren(renderPropertyCards(boardData, mine, { openSquare, showMoney }));
 }
 
 // "Which card was it?" — only if the camera can't read the card Grandma drew
@@ -203,14 +214,14 @@ let pickerOpen = false;
 function renderPicker() {
   const slot = document.getElementById("picker-slot");
   const pend = state.pending;
-  if (state.phase !== "WAITING_FOR_CARD" || pend.for !== me) {
+  if (board.hasMotion() || state.phase !== "WAITING_FOR_CARD" || pend.for !== me) {
     pickerOpen = false;
     return slot.replaceChildren();
   }
   const details = h("details", { class: "picker panel", open: pickerOpen },
     h("summary", {}, "The Mirror can't see the card? Tap the one Grandma read out"),
     h("div", { class: "cards" }, cardData.cards.filter((c) => c.deck === pend.deck).map((c) =>
-      h("button", { class: "btn secondary", onclick: () => act("card", { id: c.id }) }, `${c.art} ${c.title}`))));
+      h("button", { class: "btn secondary", onclick: () => act("card", { id: c.id }) }, c.title))));
   details.addEventListener("toggle", () => { pickerOpen = details.open; });
   slot.replaceChildren(details);
 }
@@ -224,6 +235,7 @@ function addLog(text) {
 function showNotice(reason) {
   const text = {
     taken_over: ["You're playing on another device", "This seat moved to another phone or tab."],
+    in_person: ["You’re playing in person", "The host switched this seat to in person. Use the shared board. To play virtually, ask the host to change your attendance and reopen your join link."],
     bad_link: ["This link doesn't work", "Ask for a new link in the family chat."],
     no_game: ["This game has ended", "Ask for a link to the new game."],
   }[reason] || ["Disconnected", ""];

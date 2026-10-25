@@ -1,0 +1,104 @@
+.home-menu-note { font-size: 17px; line-height: 1.5; text-align: center; }
+#home-menu { display: grid; gap: 14px; }
+#home-menu[hidden] { display: none; }
+#home-menu > .btn { width: 100%; }
+#home-menu > .btn.ink { min-height: 48px; justify-content: center; }
+.session-hub { width: min(820px, calc(100% - 28px)); max-height: calc(100dvh - 32px); margin: auto; padding: 23px; border: 2px solid #bc914c; border-radius: 8px; background: #fff0d2; color: #3d2c27; box-shadow: 0 15px 60px #0008; font: 17px/1.45 var(--font-game); overscroll-behavior: contain; }
+.session-hub::backdrop { background: #0b1935cc; }
+.session-hub .hub-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin: 0 0 18px; }
+.session-hub h2 { color: #62445e; font: 29px/1.2 var(--font-game); margin: 0; overflow-wrap: anywhere; }
+.session-hub h3 { color: #62445e; font: 22px/1.3 var(--font-game); margin: 17px 0 8px; overflow-wrap: anywhere; }
+.session-hub p { margin: 9px 0; }
+.session-hub .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 39px; padding: 8px 13px; border: 1px solid #a77a48; border-radius: 4px; background: #b98251; box-shadow: 0 2px 0 #81512c; color: #35251b; text-decoration: none; font: 16px/1.3 var(--font-game); white-space: normal; cursor: pointer; }
+.session-hub .btn.secondary { background: #fff7e5; }
+.session-hub .btn:disabled { opacity: .55; cursor: default; }
+.session-hub .btn[hidden] { display: none; }
+.hub-actions { display: flex; flex-wrap: wrap; gap: 9px; margin: 12px 0 20px; }
+.hub-subtle { font-size: 14px; color: #75634f; line-height: 1.5; }
+.hub-session-list { display: grid; gap: 15px; }
+.hub-session, .hub-player-stats { padding: 16px; border: 1px solid #ceb68a; border-radius: 6px; background: #fff8e8; margin: 14px 0; }
+.hub-session h3, .hub-player-stats h3 { margin-top: 0; }
+.hub-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); gap: 10px; margin: 16px 0; }
+.hub-metric { display: flex; flex-direction: column; min-width: 0; padding: 12px; border: 1px solid #d5c09b; border-radius: 5px; background: #f7e7c8; }
+.hub-metric > span { font-size: 14px; color: #75634f; }
+.hub-metric strong { display: block; font-size: 25px; color: #62445e; margin: 5px 0; overflow-wrap: anywhere; }
+.hub-metric small { font-size: 12px; }
+.hub-favorite { border-left: 4px solid #a17a40; padding: 2px 14px; margin: 23px 0; }
+.hub-favorite h3 { margin-top: 0; }
+.hub-form { display: grid; gap: 14px; max-width: 500px; margin: 20px 0; }
+.hub-form label { display: grid; gap: 5px; font-size: 16px; color: #3d2c27; }
+.hub-form input:not([type="checkbox"]) { width: 100%; min-height: 42px; box-sizing: border-box; padding: 9px; border: 1px solid #bda379; border-radius: 4px; background: #fffaf0; color: #3d2c27; font: 18px var(--font-game); }
+.hub-form .hub-check { display: flex; align-items: center; gap: 9px; }
+.hub-form .hub-check input { width: 18px; height: 18px; }
+.hub-form label[hidden] { display: none; }
+.hub-error { color: #9b304c; font-size: 15px; }
+.hub-timeline { list-style: none; margin: 0; padding: 0; }
+.hub-timeline li { display: grid; gap: 5px; padding: 11px 0 11px 14px; border-left: 2px solid #c5aa79; border-bottom: 1px solid #ddcbac; }
+.hub-timeline time { color: #75634f; font-size: 12px; }
+.account-seat-label { margin-top: 5px; }
+.guests .who > .btn { margin-top: 6px; font-size: 13px; }
+@media (max-width: 550px) { .session-hub { padding: 15px; font-size: 16px; } .session-hub h2 { font-size: 25px; } .hub-metrics { grid-template-columns: repeat(2, minmax(0,1fr)); } .hub-session, .hub-player-stats { padding: 12px; } }
+.hub-subtle, .hub-player-stats p, .hub-session p, .hub-timeline span { overflow-wrap: anywhere; }
+
+/* One library, two views. Rows open details; secondary controls stay inside. */
+.session-hub .hub-header { position: sticky; top: -23px; z-index: 2; background: #fff0d2; padding: 5px 0 12px; border-bottom: 1px solid #d8bf94; align-items: flex-start; }
+.hub-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.session-hub .hub-back { min-height: 30px; padding: 4px 9px; font-size: 14px; }
+.hub-tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #ba965d; margin-bottom: 18px; gap: 8px; }
+.hub-tabs button { border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 12px 7px; background: transparent; color: #75634f; font: 19px/1.3 var(--font-game); cursor: pointer; }
+.hub-tabs button[aria-selected="true"] { color: #54374f; border-bottom-color: #98662f; font-weight: 700; }
+.hub-list-toolbar, .hub-filters { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.hub-list-toolbar { margin-bottom: 12px; }
+.hub-filters select { appearance: auto; width: auto; box-sizing: border-box; max-width: 100%; min-height: 38px; border: 1px solid #c5a575; border-radius: 4px; background: #fff8e8; color: #543f36; padding: 7px 9px; font: 15px/1.3 var(--font-game); }
+.hub-session-list { gap: 9px; }
+.hub-session { padding: 0; border: 0; margin: 0; background: none; }
+.hub-session-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; width: 100%; box-sizing: border-box; border: 1px solid #ceb68a; border-radius: 6px; padding: 14px 16px; background: #fff8e8; color: #3d2c27; font: 16px/1.4 var(--font-game); text-decoration: none; text-align: left; cursor: pointer; }
+.hub-session-row:hover { border-color: #9c7440; background: #f8e9cc; }
+.hub-session-main, .hub-session-end { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.hub-session-main > strong { font-size: 20px; color: #62445e; overflow-wrap: anywhere; }
+.hub-session-end { flex-shrink: 0; align-items: flex-end; }
+.hub-status { border: 1px solid #9dac93; background: #edf0dc; color: #475640; border-radius: 4px; padding: 3px 7px; font-size: 12px; white-space: nowrap; }
+.hub-status.finished { color: #655372; background: #eee5ef; border-color: #c6aec6; }
+.hub-row-action { font-size: 14px; color: #785124; text-decoration: underline; text-underline-offset: 3px; }
+.hub-session-result { overflow-wrap: anywhere; }
+.hub-play-start { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding-bottom: 18px; border-bottom: 1px solid #d7bd8e; }
+.hub-play-start h3 { margin-top: 0; }
+.hub-play-start .btn { flex-shrink: 0; }
+.hub-empty { padding: 16px 0; }
+.hub-empty h3 { margin-top: 0; }
+.session-hub .hub-text-button { border: 0; box-shadow: none; background: transparent; color: #69475c; padding: 5px 0; text-decoration: underline; text-underline-offset: 3px; margin: 10px 0; }
+.hub-empty .hub-text-button { display: block; }
+.hub-profile-name, .hub-game-names { color: #62445e; font-size: 23px; overflow-wrap: anywhere; }
+.hub-highlights { grid-template-columns: repeat(4, minmax(0,1fr)); }
+.hub-highlights .hub-metric { border: 0; border-top: 2px solid #b79052; border-radius: 0; background: #f6e5c3; }
+.hub-details { border-top: 1px solid #d7bd8e; padding: 13px 0; margin-top: 12px; }
+.hub-details > summary { cursor: pointer; color: #62445e; font-size: 17px; padding: 4px 0; }
+.hub-game-summary { padding-bottom: 17px; border-bottom: 1px solid #d7bd8e; }
+.hub-game-summary .btn { margin-top: 8px; }
+.hub-player-stats { padding: 0; margin: 9px 0; }
+.hub-player-stats > summary { display: flex; align-items: center; gap: 12px; padding: 13px 15px; cursor: pointer; }
+.hub-player-stats > summary::-webkit-details-marker { display: none; }
+.hub-player-stats > summary::after { content: '+'; font-size: 23px; color: #785124; }
+.hub-player-stats[open] > summary::after { content: '−'; }
+.hub-player-name, .hub-player-score { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.hub-player-name { flex: 1; overflow-wrap: anywhere; }
+.hub-player-name > strong { color: #62445e; font-size: 20px; }
+.hub-player-score { align-items: flex-end; text-align: right; }
+.hub-player-breakdown { padding: 0 15px 12px; }
+.hub-player-breakdown .hub-metrics { margin-top: 3px; }
+.hub-session-row:focus-visible, .hub-tabs button:focus-visible, .hub-player-stats > summary:focus-visible, .hub-details > summary:focus-visible { outline: 3px solid #805477; outline-offset: 3px; }
+@media (max-width: 550px) {
+  .session-hub .hub-header { top: -15px; }
+  .hub-highlights { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .hub-session-row { padding: 12px; gap: 9px; }
+  .hub-session-main > strong { font-size: 18px; }
+  .hub-session-result { font-size: 14px; }
+  .hub-session-end { max-width: 95px; }
+  .hub-list-toolbar { align-items: flex-start; }
+  .hub-filters { gap: 6px; }
+  .hub-filters select { font-size: 14px; padding: 7px; }
+  .hub-player-stats > summary { padding: 12px; gap: 8px; }
+  .hub-player-name > strong { font-size: 18px; }
+  .hub-player-score { max-width: 44%; }
+  .hub-play-start { align-items: flex-start; }
+}

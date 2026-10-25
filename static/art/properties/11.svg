@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 200" fill="none">
+        <rect width="320" height="200" fill="#d7dfda"/><circle cx="252" cy="42" r="22" fill="#f1deb0" opacity=".8"/>
+        <path d="M0 143Q72 91 164 129 258 89 320 130v70H0Z" fill="#91ac8d"/>
+        <path d="M0 163q98-40 185-9 77-14 135 4v42H0Z" fill="#72977b"/>
+        <ellipse cx="161" cy="176" rx="105" ry="12" fill="#244f47" opacity=".14"/>
+        <g transform="translate(104 174) scale(0.88)"><path d="M-16 0v-100h32V0Z" fill="#67617c"/><path d="M7-100h9V0H7Z" fill="#baac8e"/><path d="M-26-96 0-147 26-96Z" fill="#4d3c68"/><path d="M0-147 9-96h17Z" fill="#704a62"/><path d="M-5-77a5 5 0 0 1 10 0v15H-5Z" fill="#f6d58c"/><path d="M0-146v-14l19 5-19 6" fill="#ab5673" stroke="#8b6143"/></g><g transform="translate(220 173) scale(0.9)"><path d="M-16 0v-100h32V0Z" fill="#67617c"/><path d="M7-100h9V0H7Z" fill="#baac8e"/><path d="M-26-96 0-147 26-96Z" fill="#4d3c68"/><path d="M0-147 9-96h17Z" fill="#704a62"/><path d="M-5-77a5 5 0 0 1 10 0v15H-5Z" fill="#f6d58c"/><path d="M0-146v-14l19 5-19 6" fill="#ab5673" stroke="#8b6143"/></g><g transform="translate(163 176) scale(1.12)">
+    <path d="M-48 0v-67h78V0Z" fill="#67617c"/><path d="M30-67 53-79V-9L30 0Z" fill="#baac8e"/>
+    <path d="m-58-65 49-48 49 48Z" fill="#4d3c68"/><path d="M-9-113 15-126 63-79 40-65Z" fill="#704a62"/>
+    <path d="M-46-65h74" stroke="#7d644f" stroke-width="3"/>
+    <path d="M-16 0v-31a10 10 0 0 1 20 0V0Z" fill="#765440"/><circle cx="-1" cy="-16" r="1.5" fill="#e7be64"/>
+    <g fill="#f4d88e" stroke="#aa9870" stroke-width="2"><path d="M-36-52h14v17h-14Z"/><path d="M7-52h14v17H7Z"/></g>
+    <path d="M-29-52v17M-36-44h14M14-52v17M7-44h14" stroke="#b29166"/>
+    </g><g transform="translate(167 127) scale(0.7)"><path d="M-16 0v-100h32V0Z" fill="#67617c"/><path d="M7-100h9V0H7Z" fill="#baac8e"/><path d="M-26-96 0-147 26-96Z" fill="#4d3c68"/><path d="M0-147 9-96h17Z" fill="#704a62"/><path d="M-5-77a5 5 0 0 1 10 0v15H-5Z" fill="#f6d58c"/><path d="M0-146v-14l19 5-19 6" fill="#ab5673" stroke="#8b6143"/></g><path d="m77 177 16-30-15-12 28-26M229 178l13-28-17-13 21-29" fill="none" stroke="#354d40" stroke-width="8"/><path d="M153 140h22v26h-22Z" fill="#9cae72"/>
+        </svg>

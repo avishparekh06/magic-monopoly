@@ -63,9 +63,159 @@ Then:
 5. **Hear the Mirror.** On the board page click **🔊 Wake the Mirror** once. Browsers only allow speech after a
    click; after that every Mirror line is spoken.
 
+### Accounts, saved games and history
+
+The home **Start Game** button opens **New game** and **Continue playing**.
+Continue restores the selected session's roster, money, properties and turn; it
+does not create a new session. Finished games remain available in **Game history
+& stats**. Waiting lobbies can be continued to edit guests before starting. The
+lobby's Start button still opens the selected board directly.
+
+Home has two main actions: **Start Game** and **Game history & stats**. Inside
+history, use **Games** for saved sessions and **Overall stats** for your personal
+record. Each game row opens its results and one Continue action. The list filter
+and collection stay selected when you go back. Extra numbers, account controls
+and the dated activity log expand on demand.
+
+Use **History & stats → Overall stats → Sign in / Create an account** for a persistent player identity. New host seats
+link to the signed-in account automatically; each other guest can use **Link account
+for stats**. In-person players can enter their own account details without signing
+the host out. Virtual players can link from the home waiting screen or their game
+stats. An account can occupy only one seat per game. Old anonymous sessions remain
+available and can be explicitly linked; names alone never merge identities.
+
+**Overall stats** shows games played and completed, wins, win rate, average finish,
+property purchases, most commonly purchased properties (including ties), rent and
+dice statistics. Purchases count recorded buy events, not landings or inherited
+ownership. Average finish uses known winner/elimination results from completed
+games only. Games with unknown ranks stay out of that average, and games without
+a recorded winner stay out of win rate. Ongoing play contributes real purchases
+and money activity but never an invented final placing. Hosted-only sessions are
+resumable without counting as personal games.
+
+Each session has expandable player summaries and a dated **Game activity** log. Open it from home, from
+**Players & stats → Game history & stats** in fullscreen, from Chronicles, or from the phone
+game's history button. Account sign-in and linked statistics survive server restarts.
+All data stays on this game server's SQLite database; this is not a cloud-sync service.
+Passwords use salted scrypt hashes and device sessions use hashed opaque tokens
+in the database with HttpOnly cookies. The account tables are added automatically
+to existing databases without replacing their saved games. There is no email or
+password-recovery service configured.
+
+The UI reference is the official
+[MONOPOLY PLUS Xbox guide](https://dlassets-ssl.xboxlive.com/public/content/47c7cac4-8b21-4dbb-b7e4-e5a4fb758e23/GameManual/9bb779bf-af6b-45e4-9a54-12c636ede994/en-CA/index.html),
+which documents leaderboards. Property-frequency and average-finish dashboards
+are specific to this project and use its actual saved event history.
+
+### Changing attendance
+
+Before starting, use the **In person / Virtual** dropdown beside each
+guest in the host lobby. Virtual seats receive join links and must connect before
+the normal Start button becomes ready; in-person guests use the shared board and
+need no phone. Switching a connected guest to in person closes their phone controls
+with an explanation. Switching back to virtual reuses their join link. Choices and
+links survive server restarts without changing player names, lanes, or balances.
+The first seat is the board host and stays in person; attendance is locked after
+the game starts. From the homepage, use **Start Game → Continue lobby** for a saved waiting game
+to return to its guest list.
+
+### Home-screen waiting
+
+The home landscape includes a princess, a knight, and a fairy, using original SVG
+art that matches the guest crests. It has no separate courtyard card or minigame
+frame. On desktop the characters stand in the grass beside the setup form; on
+phones they appear below the title. A local preview is available before creating
+a game. Move the cursor or drag to walk; click, tap **Jump**, or press Space to hop.
+Arrow keys and WASD also move a focused character.
+
+After creating a lobby, the host controls the princess and virtual guests control
+the knight or fairy for their seat. Connected guests replace the local preview
+and movement is shared. Join links take waiting guests to this home view; when the
+host starts, the host page opens the board directly and virtual guests automatically enter their phone game controls. The
+roaming scene is absent from both the board and phone game pages. Attendance
+editing and join links remain in the host's guest list. Temporary roaming positions
+never change balances, board positions, dice or saved game history.
+
+### Board view
+
+The board toolbar has a **3D on / 3D off** toggle, including in fullscreen. It
+remembers the choice in this browser. Off shows the flat full board, skips initial
+WebGL loading and pauses an already-loaded renderer; game actions and token
+movement continue. Turning it on restores the selected 3D camera view.
+`node tests/browser/render-toggle.mjs` verifies switching, persistence, renderer
+shutdown, movement, fullscreen, mobile fit and graphics-error fallback.
+
+The board page also has **Follow token** and **Full board** buttons. The lobby shows all 40 spaces;
+when the game starts, Follow token opens a 3D miniature fairy-tale world with buildings,
+towers, trees, raised spaces, and three-dimensional pieces. Its cinematic camera follows
+the existing walking-token animation, then follows the next active player. Drag or use the
+left/right arrow keys on the view to look around; click Follow token again to recenter.
+Full board pulls the camera back to show all 40 spaces in the same 3D world. The selected view is remembered for that
+game in this browser. The overview fits the board on wide and portrait screens. If WebGL is unavailable, the flat map and all game controls still work.
+Three.js 0.180.0 is served locally from `static/vendor/three/` with its MIT license; the 3D
+view makes no CDN requests and does not change the game engine.
+
+Board place names follow the 0–39 layout in `design/Game design.pdf`, cross-checked against
+`design/All Cards.pdf`. Prices, rents, positions, card effects, and physical markers are unchanged.
+
+**Players & stats** and the player strip open an illustrated collection of owned
+cards. All 28 properties, workshops and utilities have original SVG artwork based
+on the places in the design PDFs, styled to match the miniature board. Cards are
+ordered by color/tale, stay at a compact card size even for a single property,
+show collection progress and ownership-based rent, and reveal details on selection.
+**Show money** displays the selected player’s current gold as illustrated note
+stacks using the design’s 500/100/50/20/10/5/1 denominations. The notes are a visual
+breakdown of the balance, not a stored bill inventory or a new payment control.
+The display updates when balances change and works inside fullscreen. The phone's **My cards** uses the same collection. Held escape
+cards show their saved count; individual escape-card identities are not stored.
+Browsing never changes game state or adds building/mortgage rules. Regenerate
+illustrations with `python3 scripts/property_art.py`; prices and rent stay in live
+board data. With the server running, `node tests/browser/property-cards.mjs` checks
+artwork coverage, rent calculations, collection browsing, mobile and fullscreen.
+
+Landed properties open an on-board deed with **Buy** and **No thanks** choices. Tower-release
+choices and payment instructions also appear inside the board. In-person purchases still
+wait for the player-card reader; **Card reader not available?** exposes the existing manual
+confirmation fallback. A drawn card's title and text appear when its physical card is read.
+In simulation, the on-board card picker lists only the required deck; it does not draw or
+apply a random card automatically. A physical-dice total can also be entered in simulation.
+
+Use **Fullscreen** inside the game view to expand only the board and these controls.
+**Exit fullscreen** (or Escape) restores the page, and **Full board / Follow token** remains
+available while fullscreen. Fullscreen availability depends on browser support.
+
+The board also keeps a compact player balance strip inside fullscreen. Select a player
+or use **Players** to browse owned places and their normal rent (including completed
+color sets, workshops, and utility multipliers). This view is read-only. A new turn or
+required action closes it so the game prompt is visible again. Escape closes the
+property view before leaving fullscreen.
+
+Use **M** for the board map/follow toggle and **R** to reset the camera; shortcuts do
+not run while typing, using form controls, or browsing properties. **Reset view** is
+also available on wide screens. The UI reference is the official
+[MONOPOLY PLUS Xbox game help](https://dlassets-ssl.xboxlive.com/public/content/47c7cac4-8b21-4dbb-b7e4-e5a4fb758e23/GameManual/9bb779bf-af6b-45e4-9a54-12c636ede994/en-CA/index.html),
+which provides separate board-map and property-browsing controls. Game rules remain
+those implemented by this project.
+
+### On-screen dice
+
+The shared board has a large **Roll Dice** button for the current player, including
+in fullscreen. The server rolls two dice and validates the player and turn before
+moving the token; clients cannot supply the result. Repeated clicks and stale-turn
+requests are rejected. The existing phone Roll button and physical dice input remain
+available.
+
+Digital rolls toss two rounded, pip-marked 3D dice onto a nearby clear board space.
+A brief camera shot shows the toss and exact resulting faces, then returns to the
+selected camera mode. Prompts wait for the toss to settle. The animation is visual
+and does not delay physical motors or change the server's game state. Reduced-motion
+mode settles the dice immediately. Without WebGL, simple animated dice show the same
+server result. Physical camera reads currently provide only a total; the UI reports
+that total without inventing individual dice values.
+
 ### Playing Grandma's turn with the dev panel
 
-Grandma never uses a screen. In simulation the **🛠️ Dev panel** on the board page (bottom of the right column)
+For physical play, Grandma can use real dice and voice. In simulation the **🛠️ Dev panel** on the board page (bottom of the right column)
 stands in for the camera, microphone and motors:
 
 | Real world | Dev panel |
@@ -80,8 +230,8 @@ stands in for the camera, microphone and motors:
 Kids play from their app: **🎲 Roll**, **Buy** / **No thanks**, and the tower choice. If the camera can't read a
 card drawn for them, their app shows a "which card was it?" list.
 
-Useful starting rolls for Grandma from Castle Gate: **6** = Royal Ballroom (buy it), **7** = Crystal Ball (card),
-**4** = King's Tithe (tax), **10** = Rapunzel's Tower (just visiting).
+Useful starting rolls for Grandma from Once Upon a Time: **6** = Stepmother's Manor (buy it), **7** = Crystal Ball (card),
+**4** = Rumpelstiltskin's Bargain (tax), **10** = Rapunzel's Tower (just visiting).
 
 ### Text-only demo (no browser)
 
@@ -268,6 +418,16 @@ pytest -q tests           # game server only
 pytest -q vision/tests    # camera reader only
 ```
 
+For history/stats navigation, account flows, continuation, mobile sizing and
+fullscreen, run `.venv/bin/python tests/browser/check_navigation.py`. This uses
+Chrome and Node with a disposable database/server on port 8001 (choose another
+with `--port`). It leaves existing games untouched. Set `CHROME_BIN` if Chrome
+is installed outside the default macOS location. With the local server running,
+`node tests/browser/dice-presentation.mjs` checks dice/movement sequencing, and
+`node tests/browser/token-camera.mjs` checks stable camera height, smooth corner
+following, no dice cutaways or idle recentering, a fixed overview, and visible
+dice from all 40 spaces in landscape and portrait. Both use isolated display fixtures.
+
 ---
 
 ## 7. Troubleshooting
@@ -278,8 +438,12 @@ pytest -q vision/tests    # camera reader only
 | Motor commands fail or time out | Close the Arduino IDE Serial Monitor (only one program can use the port), check the 12 V supply, restart the server. |
 | A token runs the wrong way | Swap `LOW`/`HIGH` in `startMove` in the `.ino` and re-upload (see `CLAUDE.md`). |
 | Every distance is ~16× off | Microstep jumpers are installed; change `MICROSTEP` in `arduino/control.py` (see `CLAUDE.md`). |
-| "This game doesn't exist" / "This game has ended" | Games live in memory; restarting the server ends them. Create a new game. |
+| "This game doesn't exist" / "This game has ended" | Open **Start Game → Continue playing**. Check that the server uses the same saved database (`--db`); a missing or deleted database cannot restore an old game. |
 | A phone can't open the join link | Same Wi-Fi? Try a phone hotspot (section 5). Allow Python through the macOS firewall. |
 | No sound from the Mirror | Click **🔊 Wake the Mirror** on the board page, and check the laptop's volume. |
 | Buttons show "not your turn" / "nobody needs to pay right now" | That's the game refusing an action it isn't waiting for; read the board page's status line for what it wants. |
 | `Address already in use` | Another server is on port 8000. Stop it, or use `--port 8001`. |
+
+The game embeds **Planewalker** by Neale Davidson / Pixel Sagas for its interface
+and canvas board labels. Regular, bold, italic, and bold-italic faces are served
+locally from `static/fonts/planewalker/`; the original font license is included there.
