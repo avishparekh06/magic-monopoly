@@ -124,6 +124,15 @@ export function narratorVoice() {
 // line is usually ready by the time the one before it finishes.
 const lines = [];
 let current = null, playing = false;   // current: { audio, done } for the clip being played
+// The board's mic listens to onNarration so it never records the Mirror's own voice.
+const narrationListeners = new Set();
+export const onNarration = (cb) => narrationListeners.add(cb);
+export const isNarrating = () => playing;
+function setPlaying(on) {
+  if (playing === on) return;
+  playing = on;
+  narrationListeners.forEach((cb) => cb(on));
+}
 export function narrate(text) {
   const clip = fetch(`/tts?text=${encodeURIComponent(text)}`)
     .then((r) => (r.ok ? r.blob() : null)).catch(() => null);
@@ -137,8 +146,8 @@ export function stopNarration() {
 }
 async function playNext() {
   const line = lines.shift();
-  if (!line) { playing = false; return; }
-  playing = true;
+  if (!line) { setPlaying(false); return; }
+  setPlaying(true);
   const blob = await line.clip;
   // The browser voice is only for lines the server has no ElevenLabs audio for (no key, or it failed).
   // A clip that will not play is skipped, never repeated in the browser voice.

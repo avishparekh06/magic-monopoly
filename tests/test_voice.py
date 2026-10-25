@@ -125,3 +125,76 @@ def test_dev_panel_answers_work_with_muse_voice():
             board.send_json({"source": "voice", "text": "no thanks"})
             s = state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL")
             assert s["current_player"] == "p2" and s["players"][0]["properties"] == []
+
+
+def test_parse_answer_first_word_and_negation():
+    assert parse_answer("yes, no problem") == "yes"
+    assert parse_answer("I don't want to buy it") == "no"
+    assert parse_answer("not now") == "no"
+    assert parse_answer("please") is None
+    assert parse_answer("I'll take it") is None          # left to Spark
+
+
+class FakeMuseWithSpark(FakeMuse):
+    """Transcribe answers with `transcript`; chat completions (Spark) answers with `verdict`."""
+
+    def __init__(self, transcript, verdict):
+        super().__init__(transcript)
+        self.verdict = verdict
+
+    def transport(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            self.requests.append(request)
+            if request.url.path.endswith("/chat/completions"):
+                return httpx.Response(200, json={"choices": [{"finish_reason": "stop",
+                                                              "message": {"content": self.verdict}}]})
+            return httpx.Response(200, json={"sessionId": "s1", "transcript": self.transcript,
+                                             "audioDurationMs": 500, "turns": []})
+        return httpx.MockTransport(handler)
+
+
+def offered(c, board):
+    recv_until(board, lambda m: m["type"] == "state")
+    board.send_json({"action": "start", "force": True})
+    state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL")
+    board.send_json({"source": "vision", "type": "dice", "value": 3})       # Gingerbread House, 60 gold
+    return state_where(board, lambda s: s["phase"] == "WAITING_FOR_DECISION")
+
+
+def test_spark_reads_an_answer_the_word_list_cannot():
+    fake = FakeMuseWithSpark("I'll take it", "Yes")
+    with TestClient(create_app(sim=True, move_delay=0, seed=1,
+                               voice_factory=lambda: MuseVoice(api_key="k", transport=fake.transport()))) as c:
+        game = c.post("/api/games", json={"players": PLAYERS}).json()
+        with c.websocket_connect(f"/ws/{game['game_id']}?role=board") as board:
+            offered(c, board)
+            r = c.post("/voice/clip", content=wav_bytes()).json()
+            assert r["answer"] == "yes"
+            spark = [q for q in fake.requests if q.url.path.endswith("/chat/completions")]
+            assert len(spark) == 1 and b"Gingerbread House" in spark[0].read()
+            s = state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL")
+            assert s["players"][0]["properties"] == [3]      # Gingerbread House is square 3
+
+
+def test_clear_answer_skips_spark():
+    fake = FakeMuseWithSpark("no thanks", "yes")
+    with TestClient(create_app(sim=True, move_delay=0, seed=1,
+                               voice_factory=lambda: MuseVoice(api_key="k", transport=fake.transport()))) as c:
+        game = c.post("/api/games", json={"players": PLAYERS}).json()
+        with c.websocket_connect(f"/ws/{game['game_id']}?role=board") as board:
+            offered(c, board)
+            assert c.post("/voice/clip", content=wav_bytes()).json()["answer"] == "no"
+            assert not [q for q in fake.requests if q.url.path.endswith("/chat/completions")]
+
+
+def test_unclear_answer_is_asked_again_aloud():
+    fake = FakeMuseWithSpark("hmm let me think", "unclear")
+    with TestClient(create_app(sim=True, move_delay=0, seed=1,
+                               voice_factory=lambda: MuseVoice(api_key="k", transport=fake.transport()))) as c:
+        game = c.post("/api/games", json={"players": PLAYERS}).json()
+        with c.websocket_connect(f"/ws/{game['game_id']}?role=board") as board:
+            offered(c, board)
+            assert c.post("/voice/clip", content=wav_bytes()).json()["answer"] is None
+            m = recv_until(board, lambda m: m["type"] == "mirror" and "didn't catch" in m.get("text", ""))
+            assert "Gingerbread House" in m["text"] and m["text"].endswith("Yes or no?")
+            assert c.get(f"/api/games/{game['game_id']}/stats").json()["phase"] == "WAITING_FOR_DECISION"

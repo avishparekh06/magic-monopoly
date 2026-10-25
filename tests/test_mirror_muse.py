@@ -79,3 +79,13 @@ def test_phone_say_is_spoken_at_the_table_and_scene_is_broadcast():
             assert r.status_code == 200
             m = recv_until(board, lambda m: m["type"] == "mirror" and m.get("kind") == "scene")
             assert "teacup" in m["text"]
+
+
+def test_offer_says_price_balance_and_asks_yes_or_no():
+    import asyncio
+    s = started_state()
+    p = s.players[0]
+    line = asyncio.run(TemplateMirror().line({"type": "offer", "player": p.id, "square": 9, "price": 120}, s))
+    assert line.startswith(f"{p.name}, you have the option to purchase ")
+    assert "for 120 gold" in line and f"Your balance is {p.balance} gold." in line
+    assert line.endswith("Would you like to purchase this property? Yes or no?")

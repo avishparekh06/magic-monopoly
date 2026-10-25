@@ -156,7 +156,7 @@ import { mountScene } from "/static/scene.js";
 mountScene();
 </script>
 <script type="module">
-import { connect, toast, h, narrate, stopNarration } from "/static/net.js";
+import { connect, toast, h, narrate, stopNarration, onNarration, isNarrating } from "/static/net.js";
 import { characterSvg } from "/static/avatars.js";
 import { loadBoard, createBoardView } from "/static/board.js";
 import { mountBoardCamera } from "/static/board-camera.js";
@@ -206,7 +206,7 @@ function say(text) {
 // mic in short clips (stop at ~0.8 s of silence or 4 s), encode 16 kHz mono
 // 16-bit WAV, and POST to /voice/clip. The server sends it to Muse Voice
 // Transcribe and turns the transcript into the decision.
-const mic = { on: false, ctx: null, src: null, proc: null, stream: null, busy: false, armed: false };
+const mic = { on: false, ctx: null, src: null, proc: null, stream: null, busy: false, armed: false, quietUntil: 0 };
 const micStatus = (t) => { document.getElementById("mic-status").textContent = t; };
 
 document.getElementById("mic-btn").onclick = async (e) => {
@@ -235,7 +235,10 @@ let clip = null;
 function maybeListen() {
   const deciding = state && state.phase === "WAITING_FOR_DECISION" && state.pending?.kind === "decision" &&
     state.players.find((p) => p.id === state.pending.player)?.kind === "in_person";
-  if (mic.on && deciding && !mic.busy && !clip) {
+  // Never record while the Mirror is talking (or just after): it would hear its own "yes or no?".
+  const mirrorTalking = isNarrating() || performance.now() < mic.quietUntil;
+  if (mic.on && deciding && mirrorTalking && !mic.busy) micStatus("Waiting for the Mirror to finish…");
+  if (mic.on && deciding && !mirrorTalking && !mic.busy && !clip) {
     clip = { frames: [], started: performance.now(), lastLoud: null, heardSpeech: false };
     micStatus("Listening… say yes or no");
   }
@@ -247,6 +250,11 @@ function maybeListen() {
   if (!needsMic && mirrorFab.classList.contains("needs-mic") && !mic.on) micStatus("");
   mirrorFab.classList.toggle("needs-mic", needsMic);
 }
+onNarration((talking) => {
+  if (talking) { clip = null; maybeListen(); return; }   // drop anything recorded under the Mirror's voice
+  mic.quietUntil = performance.now() + 400;               // let the room's echo die down
+  setTimeout(maybeListen, 450);
+});
 function onAudio(ev) {
   if (!clip) return;
   const data = ev.inputBuffer.getChannelData(0);

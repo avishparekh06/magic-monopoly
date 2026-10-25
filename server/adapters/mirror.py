@@ -78,7 +78,21 @@ class TemplateMirror(Mirror):
     def _offer(self, e, s):
         p = s.player(e["player"])
         place = square(e["square"])["name"]
-        return f"Buy {place} for {e['price']} gold?"
+        return (f"{p.name}, you have the option to purchase {place} for {e['price']} gold. "
+                f"Your balance is {p.balance} gold. Would you like to purchase this property? Yes or no?")
+
+    def question(self, s) -> str | None:
+        """The yes/no on the table right now, short, for asking again and for reading an unclear answer."""
+        pend = s.pending or {}
+        if pend.get("kind") != "decision":
+            return None
+        if pend["type"] == "jail":
+            return f"Would you like to pay {pend['price']} gold to leave the tower? Yes or no?"
+        return f"Would you like to purchase {square(pend['square'])['name']} for {pend['price']} gold? Yes or no?"
+
+    def ask_again(self, s) -> str | None:
+        q = self.question(s)
+        return q and f"{s.player(s.pending['player']).name}, I didn't catch that. {q}"
 
     def _cant_afford(self, e, s):
         return f"{self._name(s, e['player'])} can't afford {square(e['square'])['name']} just yet."

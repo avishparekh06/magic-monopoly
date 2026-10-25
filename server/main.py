@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .adapters import BRIDGES, MIRRORS, VOICES, make_adapters
+from .adapters.mirror import TemplateMirror
 from .engine import SYSTEM, EngineError
 from .rooms import GameRoom
 from .rules.monopoly import board, cards
@@ -443,11 +444,17 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         wav = await request.body()
         if len(wav) < 1000:
             raise HTTPException(422, "clip too short")
+        question = TemplateMirror().question(room.state) or ""
         try:
-            heard = await v.hear(wav, pend["player"])
+            heard = await v.hear(wav, pend["player"], question)
         except Exception as e:
             log.warning("voice transcription failed: %s", e)
             raise HTTPException(502, f"transcription failed: {e}")
+        if heard.get("transcript") and not heard.get("answer") and room.state.phase.value == "WAITING_FOR_DECISION":
+            # Something was said but it was neither a clear yes nor no: the Mirror asks again, aloud.
+            again = TemplateMirror().ask_again(room.state)
+            if again:
+                await room.broadcast({"type": "mirror", "text": again})
         return {"ok": True, "game": room.game_id, **heard}
 
     # --- the Mirror's voice: ElevenLabs audio for a line the server broadcast ---
