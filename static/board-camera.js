@@ -9,8 +9,9 @@ export function mountBoardCamera(board, boardData, gameId) {
   const caption = document.getElementById("board-view-status");
   const key = `magic-monopoly:board-view:${gameId}`;
   const renderKey = "magic-monopoly:board-3d";
-  let threeD = true;
-  try { threeD = localStorage.getItem(renderKey) !== "off"; } catch { }
+  // Flat 2D board by default; the 3D storybook world is opt-in (remembered per browser).
+  let threeD = false;
+  try { threeD = localStorage.getItem(renderKey) === "on"; } catch { }
   let mode = "follow", state = null, movement = null, releaseTimer = null, frame = null;
   try { if (localStorage.getItem(key) === "full") mode = "full"; } catch { }
 

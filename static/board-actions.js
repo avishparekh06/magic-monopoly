@@ -13,7 +13,7 @@ export function mountBoardActions(viewport, board, cards, send) {
   const errorEl = h('p', { class: 'game-action-error', role: 'alert', hidden: true });
   const fullscreen = h('button', { id: 'game-fullscreen', class: 'btn small secondary', type: 'button', 'aria-pressed': 'false' }, 'Fullscreen');
   const view = h('button', { id: 'game-map-toggle', class: 'btn small secondary', type: 'button' }, 'Full board');
-  const threeD = h('button', { id: 'game-3d-toggle', class: 'btn small secondary', type: 'button', 'aria-label': '3D board', 'aria-pressed': 'true', onclick: () => viewport.dispatchEvent(new CustomEvent('board-render-toggle')) }, '3D on');
+  const threeD = h('button', { id: 'game-3d-toggle', class: 'btn small secondary', type: 'button', 'aria-label': '3D board', 'aria-pressed': 'false', onclick: () => viewport.dispatchEvent(new CustomEvent('board-render-toggle')) }, '3D off');
   const library = mountSessionHub({ parent: viewport });
   const players = mountBoardPlayers(viewport, board, () => library.openGame(state.game_id));
   const browse = h('button', { id: 'game-players', class: 'btn small secondary', type: 'button', onclick: () => players.open(), title: 'Players, owned properties, game history and stats' }, 'Players & stats');
