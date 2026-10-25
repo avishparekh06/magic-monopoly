@@ -339,3 +339,16 @@ def test_a_virtual_player_must_scan_the_qr_code_before_taking_a_turn():
 def test_the_demo_players_are_one_real_dice_roller_and_one_virtual_player():
     kinds = {d["name"]: d["kind"] for d in DEMO_PLAYERS}
     assert kinds == {"Player 1": "in_person", "Player 2": "remote"}
+
+
+def test_the_camera_follows_the_demo_game_not_an_older_saved_one():
+    from server.engine import Phase
+    from tests.test_ws import PLAYERS
+    with TestClient(two_lane_app(FakeBench())) as c:
+        demo = demo_room(c)
+        other = c.post("/api/games", json={"players": PLAYERS}).json()["game_id"]
+        room2 = c.app.state.rooms[other]
+        room2.state.phase = Phase.WAITING_FOR_ROLL          # a running game that is newer than the demo game
+        room2.updated_at = time.time() + 100
+        mode = c.get("/vision/mode").json()
+        assert mode["game"] == demo.game_id and mode["mode"] == "dice"

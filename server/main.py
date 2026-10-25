@@ -424,6 +424,8 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
                 raise HTTPException(404, "no such game")
             return room
         live = [r for r in rooms.values() if r.state.phase.value not in ("LOBBY", "GAME_OVER")]
+        if demo_on:     # only this run's demo game: old saved games must not steal the camera or its dice reads
+            live = [r for r in live if r.require_joined] or live
         if not live:
             return None
         return max(live, key=lambda r: (r.has_board(), r.updated_at))   # prefer the room the laptop shows
