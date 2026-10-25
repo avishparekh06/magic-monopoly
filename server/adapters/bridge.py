@@ -23,6 +23,9 @@ class MoveBridge(ABC):
     async def move(self, lane: int, frm: int, to: int) -> dict:
         """Move the token in `lane` forward from `frm` to `to`; return when finished."""
 
+    async def reset(self, lanes: list[int]) -> None:
+        """A game just started with every token on the start square. Default: nothing to do."""
+
     async def restore(self, positions: dict[int, int]) -> None:
         """A saved game was resumed: {lane: square} is where each token belongs.
 
@@ -76,3 +79,72 @@ class ArduinoBridge(MoveBridge):
             except Exception as e:
                 return {"type": "move_failed", "lane": lane, "reason": str(e)}
             return {"type": "move_done", "lane": lane, "square": result["to"]["square"]}
+
+
+class HttpBeltBridge(MoveBridge):
+    """Drives tokens through the belt tool's HTTP API (arduino/server.py running anywhere:
+    this laptop on another port, or the teammate's machine that has the Arduino).
+
+    Lane N is axis N-1. POST /board/goto?square=<to>&direction=forward&axis=<lane-1> blocks
+    until the motor has finished and answers {"to": {"square": ...}, "moved": ...}.
+    409 means someone is jogging that token by hand: wait and retry. Anything else is move_failed.
+    Lanes beyond `lanes` (only track 1 is built today) go to the fallback (stub) bridge.
+    """
+
+    def __init__(self, base_url: str, lanes: int = 1, fallback: MoveBridge | None = None,
+                 busy_wait: float = 60.0, move_timeout: float = 120.0, transport=None):
+        self.base_url = base_url.rstrip("/")
+        self.lanes = lanes
+        self.fallback = fallback or StubBridge(0.5)
+        self.busy_wait = busy_wait
+        self.move_timeout = move_timeout
+        self._transport = transport
+
+    def _client(self):
+        import httpx
+        return httpx.AsyncClient(base_url=self.base_url, timeout=self.move_timeout, transport=self._transport)
+
+    async def move(self, lane: int, frm: int, to: int) -> dict:
+        if lane > self.lanes:
+            return await self.fallback.move(lane, frm, to)
+        axis = lane - 1
+        waited = 0.0
+        async with self._client() as c:
+            while True:
+                try:
+                    r = await c.post("/board/goto", params={"square": to, "direction": "forward", "axis": axis})
+                except Exception as e:
+                    return {"type": "move_failed", "lane": lane, "reason": f"belt server unreachable: {e}"}
+                if r.status_code == 409 and waited < self.busy_wait:
+                    await asyncio.sleep(0.3)
+                    waited += 0.3
+                    continue
+                if r.status_code != 200:
+                    detail = r.json().get("detail", r.text) if r.headers.get("content-type", "").startswith("application/json") else r.text
+                    return {"type": "move_failed", "lane": lane, "reason": str(detail)[:160]}
+                square = r.json().get("to", {}).get("square", to)
+                log.info("belt lane %d: %d -> %d (axis %d)", lane, frm, square, axis)
+                return {"type": "move_done", "lane": lane, "square": square}
+
+    async def reset(self, lanes: list[int]) -> None:
+        """A game just started: every token was placed on Once Upon a Time by hand, so tell the belt
+        tool each tracked square is 0 (no motor move)."""
+        async with self._client() as c:
+            for lane in lanes:
+                if lane <= self.lanes:
+                    try:
+                        await c.post("/board/set", params={"square": 0, "axis": lane - 1})
+                    except Exception as e:
+                        log.warning("belt lane %d: could not reset tracked square: %s", lane, e)
+
+    async def restore(self, positions: dict[int, int]) -> None:
+        """Resumed game: align the belt tool's tracked squares with the game, so the next move goes
+        the right distance, assuming the operator put the tokens back where the board page shows them."""
+        log.info("resume: put tokens at %s (lane: square), then the belt tool is told those squares", positions)
+        async with self._client() as c:
+            for lane, square in positions.items():
+                if lane <= self.lanes:
+                    try:
+                        await c.post("/board/set", params={"square": square, "axis": lane - 1})
+                    except Exception as e:
+                        log.warning("belt lane %d: could not set tracked square: %s", lane, e)

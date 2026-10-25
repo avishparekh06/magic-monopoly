@@ -98,7 +98,8 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
                db_path: str | Path | None = ":memory:", bridge: str = "stub",
                public: str | None = None, tunnel_port: int | None = None,
                voice: str = "stub", voice_factory=None, mirror: str = "template",
-               mirror_factory=None) -> FastAPI:
+               mirror_factory=None, belt_url: str | None = None, belt_lanes: int = 1,
+               bridge_factory=None) -> FastAPI:
     """db_path: SQLite file that games are saved to and resumed from on startup.
     ":memory:" (the default, used by tests) keeps nothing across restarts.
     bridge: "stub" fakes moves; "arduino" drives lane 1 through arduino/server.py.
@@ -110,8 +111,11 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     rooms: dict[str, GameRoom] = {}
 
     def adapters():
-        a = make_adapters(sim, move_delay, bridge, voice if voice_factory is None else "stub",
-                          mirror if mirror_factory is None else "template")
+        a = make_adapters(sim, move_delay, bridge if bridge_factory is None else "stub",
+                          voice if voice_factory is None else "stub",
+                          mirror if mirror_factory is None else "template", belt_url, belt_lanes)
+        if bridge_factory is not None:
+            a.bridge = bridge_factory()
         if voice_factory is not None:
             a.voice = voice_factory()
         if mirror_factory is not None:
@@ -148,7 +152,8 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         from .hardware import motor_routes
         app.router.routes.extend(r for r in motor_routes() if getattr(r, "path", None) != "/vision/events")
 
-    if not sim or (voice == "muse" and voice_factory is None) or (mirror == "muse" and mirror_factory is None):
+    if not sim or (voice == "muse" and voice_factory is None) or (mirror == "muse" and mirror_factory is None) \
+            or (bridge == "http" and bridge_factory is None):
         adapters()  # fail at startup, not at first game, if a real adapter is missing (e.g. no MUSE_API_KEY)
 
     def page(name: str) -> FileResponse:
@@ -380,8 +385,13 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--seed", type=int, default=None, help="seed the dice for repeatable games")
     parser.add_argument("--bridge", choices=BRIDGES, default="stub",
-                        help="stub: fake moves; arduino: Grandma's lane through arduino/server.py "
-                             "(set DRY_RUN=1 without an Arduino), other lanes stubbed")
+                        help="stub: fake moves; arduino: lane 1 through arduino/server.py loaded in this process "
+                             "(set DRY_RUN=1 without an Arduino); http: POST moves to a running arduino/server.py "
+                             "(--belt-url), lanes above --belt-lanes stubbed")
+    parser.add_argument("--belt-url", default=None,
+                        help="with --bridge http: where arduino/server.py is running, e.g. http://192.168.1.20:8001")
+    parser.add_argument("--belt-lanes", type=int, default=1,
+                        help="how many lanes the belt tool really drives (lanes above this are simulated)")
     parser.add_argument("--voice", choices=VOICES, default="stub",
                         help="stub: yes/no from the dev panel; muse: Meta Muse Voice Transcribe on clips from the board "
                              "page's microphone (needs MUSE_API_KEY)")
@@ -394,7 +404,8 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
     load_dotenv()
     uvicorn.run(create_app(sim=args.sim, seed=args.seed, db_path=args.db, bridge=args.bridge, public=args.public,
-                           tunnel_port=args.port if args.tunnel else None, voice=args.voice, mirror=args.mirror),
+                           tunnel_port=args.port if args.tunnel else None, voice=args.voice, mirror=args.mirror,
+                           belt_url=args.belt_url, belt_lanes=args.belt_lanes),
                 host=args.host, port=args.port)
 
 

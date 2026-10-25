@@ -154,6 +154,10 @@ class GameRoom:
                 line = None
             if line:
                 await self.broadcast({"type": "mirror", "text": line})
+            if ev.get("type") == "game_started":   # tokens were placed on the start square by hand
+                task = asyncio.create_task(self.adapters.bridge.reset([p.lane for p in self.state.players]))
+                self._tasks.add(task)
+                task.add_done_callback(self._tasks.discard)
             if ev.get("type") == "move":   # emitted by the engine from milestone 3
                 task = asyncio.create_task(self._run_move(ev))
                 self._tasks.add(task)
