@@ -51,9 +51,16 @@ export async function mountDemoPanel() {
       btn("+50", act(() => post(`/jog/nudge${q("&steps=50")}`), "Nudged forward 50 steps"), "secondary"),
       homeBtn));
 
+  const muse = h("input", { type: "checkbox", checked: !!config.muse });
+  muse.onchange = async () => {
+    say(muse.checked ? "Turning Muse on…" : "Turning Muse off…");
+    try { await post(`/api/muse?on=${muse.checked}`); say(muse.checked ? "Muse is on" : "Muse is off"); }
+    catch (e) { muse.checked = !muse.checked; say(e.message, true); }
+  };
+
   document.body.append(h("aside", {
     style: "position:fixed;left:12px;bottom:12px;z-index:50;max-width:320px;padding:12px;border-radius:10px;" +
       "background:rgba(255,248,230,.96);color:#2b2118;box-shadow:0 4px 18px rgba(0,0,0,.3)" },
     h("h4", { style: "margin:0 0 6px" }, "Demo mode"), jog,
-    status));
+    h("label", { style: "display:flex;align-items:center;gap:6px;margin-top:8px" }, muse, "Muse AI"), status));
 }

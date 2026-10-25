@@ -167,6 +167,7 @@ import { mountBoardActions } from "/static/board-actions.js?v=pinned-fullscreen-
 
 const gameId = location.pathname.split("/")[2];
 import("/static/demo-invite.js").then(m => fetch("/api/config").then(r => r.json()).then(c => c.demo && m.mountInvites(gameId))).catch(() => {});
+import("/static/demo-controls.js").then(m => m.mountDemoControls(gameId)).catch(() => {});
 const [boardData, cardData, config] = await Promise.all([loadBoard(), fetch("/api/cards").then(r => r.json()),
   fetch("/api/config").then(r => r.json()).catch(() => ({ dev: false }))]);
 // The dev panel is a popup behind a corner button, and only exists with --dev.

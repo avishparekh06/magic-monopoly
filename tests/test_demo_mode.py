@@ -256,3 +256,65 @@ def test_a_played_demo_game_is_replayed_fresh_after_a_restart(tmp_path):
         with open_board(c, fresh):
             wait_for(lambda: [p.position for p in fresh.state.players] == [6, 3])
         assert c.get(f"/board/{new_id}", follow_redirects=False).status_code == 200
+
+
+def two_lane_app(bench, **kw):
+    return create_app(sim=True, move_delay=0, dev=True, bridge="http", lane_axes={1: 0, 2: 2},
+                      bridge_factory=lambda: HttpBeltBridge("http://bench", lanes=0, axes={1: 0, 2: 2},
+                                                            fallback=StubBridge(0), transport=bench.transport()), **kw)
+
+
+def test_muse_can_be_switched_on_and_off(monkeypatch):
+    from server.adapters.mirror import MuseMirror, TemplateMirror
+    from server.adapters.voice import MuseVoice, StubVoice
+    app = create_app(sim=True, move_delay=0, dev=True, virtual_axis=0)
+    with TestClient(app) as c:
+        room = demo_room(c)
+        assert c.get("/api/config").json()["muse"] is False and isinstance(room.adapters.voice, StubVoice)
+        monkeypatch.delenv("MUSE_API_KEY", raising=False)
+        monkeypatch.delenv("MODEL_API_KEY", raising=False)
+        assert c.post("/api/muse", params={"on": "true"}).status_code == 400            # no key: nothing changes
+        assert c.get("/api/config").json()["muse"] is False
+        monkeypatch.setenv("MUSE_API_KEY", "k")
+        assert c.post("/api/muse", params={"on": "true"}).json() == {"muse": True}
+        cfg = c.get("/api/config").json()
+        assert cfg["muse"] is True and cfg["voice"] == "muse"
+        assert isinstance(room.adapters.voice, MuseVoice) and isinstance(room.adapters.mirror, MuseMirror)
+        assert c.post("/api/muse", params={"on": "false"}).json() == {"muse": False}
+        assert type(room.adapters.mirror) is TemplateMirror and isinstance(room.adapters.voice, StubVoice)
+    with TestClient(create_app(sim=True, move_delay=0)) as c:
+        assert c.post("/api/muse", params={"on": "true"}).status_code == 404            # not in demo mode
+
+
+def test_arrows_nudge_a_token_forward_and_back():
+    bench = FakeBench()
+    with TestClient(two_lane_app(bench)) as c:
+        room = demo_room(c)
+        with open_board(c, room):
+            wait_for(lambda: [p.position for p in room.state.players] == [6, 3])
+            bench.calls.clear()
+            r = c.post("/api/demo/step", params={"game": room.game_id, "player": "p1", "squares": 1})
+            assert r.json() == {"player": "p1", "square": 7} and room.state.player("p1").position == 7
+            assert c.post("/api/demo/step", params={"game": room.game_id, "player": "p1", "squares": -1}).status_code == 200
+            assert room.state.player("p1").position == 6
+            assert [(q["axis"], q["square"]) for p, q in bench.calls if p == "/board/goto"] == [("0", "7"), ("0", "6")]
+            assert c.post("/api/demo/step", params={"game": room.game_id, "player": "p2", "squares": -1}).json()["square"] == 2
+            assert c.post("/api/demo/step", params={"game": room.game_id, "player": "p1", "squares": 5}).status_code == 422
+            assert c.post("/api/demo/step", params={"game": room.game_id, "player": "p9", "squares": 1}).status_code == 422
+
+
+def test_reset_drives_the_tokens_home_and_starts_a_fresh_demo():
+    bench = FakeBench()
+    with TestClient(two_lane_app(bench)) as c:
+        old = demo_room(c)
+        with open_board(c, old):
+            wait_for(lambda: [p.position for p in old.state.players] == [6, 3])
+        bench.calls.clear()
+        r = c.post("/api/demo/reset", params={"game": old.game_id}).json()
+        assert r["game_id"] != old.game_id and r["board_url"] == f"/board/{r['game_id']}"
+        assert [(q["axis"], q["square"]) for p, q in bench.calls if p == "/board/goto"] == [("0", "5"), ("2", "1")]
+        fresh = c.app.state.rooms[r["game_id"]]
+        assert is_fresh_demo(fresh.state) and fresh.forced_rolls == {"p2": [(1, 1), (1, 1)]}
+        assert old.game_id not in c.app.state.rooms
+        status = {g["game_id"]: g["status"] for g in c.get("/api/games").json()}
+        assert status[old.game_id] == "abandoned" and status[r["game_id"]] == "active"

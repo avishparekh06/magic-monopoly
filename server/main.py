@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .adapters import BRIDGES, MIRRORS, VOICES, make_adapters
+from .adapters import BRIDGES, MIRRORS, VOICES, make_adapters, make_mirror, make_voice
 from .adapters.mirror import TemplateMirror
 from .demo import DEMO_FIRST_PLAYER, DEMO_FORCED_ROLLS, DEMO_MOVES, DEMO_PLAYERS, is_demo_game, is_fresh_demo
 from .engine import SYSTEM, EngineError, new_game, to_public
@@ -126,13 +126,15 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     dev: show the board page's dev panel (manual dice, cards, voice, payments, motors).
     camera_cmd: start this command (vision/live.py --post) as a child once the server is up, stop it with the server."""
     tts.use(speech == "elevenlabs")
-    TemplateMirror.hears_all = voice == "muse"      # the Mirror tells every player to answer aloud
+    # Muse can be switched on and off while the server runs (the demo controls' toggle); the flags give the start value.
+    muse = {"mirror": mirror == "muse", "voice": voice == "muse"}
+    TemplateMirror.hears_all = muse["voice"]      # the Mirror tells every player to answer aloud
     rooms: dict[str, GameRoom] = {}
 
     def adapters():
         a = make_adapters(sim, move_delay, bridge if bridge_factory is None else "stub",
-                          voice if voice_factory is None else "stub",
-                          mirror if mirror_factory is None else "template", belt_url, belt_lanes, belt_key,
+                          ("muse" if muse["voice"] else "stub") if voice_factory is None else "stub",
+                          ("muse" if muse["mirror"] else "template") if mirror_factory is None else "template", belt_url, belt_lanes, belt_key,
                           virtual_axis, bench_url, lane_axes)
         if bridge_factory is not None:
             a.bridge = bridge_factory()
@@ -553,7 +555,72 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     async def config():
         """What the pages should show: the dev panel and on-screen dice only in dev mode, and whether
         yes/no is answered by voice (Muse) so the board can leave out the Buy / No buttons."""
-        return {"dev": dev, "voice": voice, "jog": jog_on, "jog_players": sorted(jog_axes), "demo": demo_on}
+        return {"dev": dev, "voice": "muse" if muse["voice"] else "stub", "jog": jog_on, "jog_players": sorted(jog_axes),
+                "demo": demo_on, "muse": muse["voice"] or muse["mirror"]}
+
+    def demo_guard(request: Request) -> None:
+        if not dev:
+            raise HTTPException(404, "demo mode needs --dev")
+        if not is_local(request):
+            raise HTTPException(403, "demo controls are for the board laptop")
+
+    @app.post("/api/muse")
+    async def set_muse(request: Request, on: bool):
+        """Dev, laptop only: switch Meta Muse (the narrator's lines and spoken yes/no) on or off for every game,
+        including the ones already running. Pages reload to pick the change up."""
+        demo_guard(request)
+        try:
+            make_voice("muse" if on else "stub")                   # fails now, before anything changes, with no MUSE_API_KEY
+        except RuntimeError as e:
+            raise HTTPException(400, str(e))
+        muse["mirror"] = muse["voice"] = on
+        TemplateMirror.hears_all = on
+        for room in rooms.values():
+            room.adapters.mirror = make_mirror("muse" if on else "template")
+            room.adapters.voice = make_voice("muse" if on else "stub")
+            await room.adapters.voice.start(room.on_adapter_event)
+        return {"muse": on}
+
+    @app.post("/api/demo/step")
+    async def demo_step(request: Request, game: str, player: str, squares: int):
+        """Dev, laptop only: nudge one player's token `squares` forward (negative = back) on the belt and in the game."""
+        demo_guard(request)
+        room = get_room(game)
+        if player not in [p.id for p in room.state.players] or not squares or abs(squares) > 3:
+            raise HTTPException(422, "player must be in the game and squares between -3 and 3 (not 0)")
+        if room.state.phase.value == "MOVING" or room.state.pending is not None:
+            raise HTTPException(409, "wait for the token to stop and the pending decision to finish")
+        p = room.state.player(player)
+        to = (p.position + squares) % 40
+        result = await room.adapters.bridge.move(p.lane, p.position, to)
+        if result.get("type") == "move_failed":
+            raise HTTPException(502, f"belt move failed: {result.get('reason')}")
+        try:
+            await room.dispatch(SYSTEM, {"action": "set_position", "player": player, "square": to})
+        except EngineError as e:
+            raise HTTPException(409, str(e))
+        return {"player": player, "square": to}
+
+    @app.post("/api/demo/reset")
+    async def demo_reset(request: Request, game: str | None = None):
+        """Dev, laptop only: start the demo over. Tokens drive back to their lined-up squares, the current game is
+        retired, and a fresh demo game is made. Answers with the board to open (it plays the opening moves again)."""
+        demo_guard(request)
+        if not demo_on:
+            raise HTTPException(404, "reset needs the belt wiring (--lane-axes or --virtual-axis)")
+        room = rooms.get(game) if game else None
+        if room is not None and is_demo_game(room.state):
+            for p, spec in zip(room.state.players, DEMO_PLAYERS):
+                if p.position != spec["position"]:
+                    result = await room.adapters.bridge.move(p.lane, p.position, spec["position"])
+                    if result.get("type") == "move_failed":
+                        raise HTTPException(502, f"{p.name} could not drive back: {result.get('reason')}")
+            store.set_status(room.game_id, "abandoned")
+            if room._poll_task:
+                room._poll_task.cancel()
+            rooms.pop(room.game_id, None)
+        fresh = await new_demo_room()
+        return {"ok": True, "game_id": fresh.game_id, "board_url": f"/board/{fresh.game_id}"}
 
     @app.post("/api/demo/resume")
     async def demo_resume(request: Request):
