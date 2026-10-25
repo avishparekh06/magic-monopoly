@@ -104,20 +104,23 @@ Run: `.venv/bin/python -m server.main --sim [--tunnel] [--db games.db]`. Tests: 
   active running game (or `?game=<id>`). The engine rejects reads it is not waiting for.
 - **`server/tunnel.py`** — `--tunnel` spawns `cloudflared tunnel --url` (installed via Homebrew), parses the
   `https://*.trycloudflare.com` URL, and links/QR codes use it; falls back to the LAN address. `--public <url>` overrides.
-- **`server/adapters/`** — `bridge` (StubBridge; **GrblBridge is a stub and assumes GRBL, which is not our firmware**),
+- **`server/adapters/`** — `bridge` (StubBridge, or **ArduinoBridge** with `--bridge arduino`: lane 1 moves through
+  `arduino/server.py`'s `board_goto`, loaded in-process by `server/hardware.py`; lanes 2–3 stay stubbed until that
+  server tracks more than one token; `DRY_RUN=1` runs it without an Arduino),
   `vision` (StubVision with dev-panel input; `ArucoVision` stub, unused: the camera talks to `/vision/events` instead),
   `voice` (StubVoice; MuseVoice stub), `mirror` (TemplateMirror narrator lines spoken by the board page via
   `speechSynthesis`; MuseMirror stub). `make_adapters(sim=False)` builds all four real ones and fails until they exist.
 - **`static/`** — `create.html` (roster, join links with QR codes from vendored `qrcode.min.js`, previous games with
   Resume / Chronicles), `kid.html` (phone), `board.html` + `board.js` (animated board, players, Mirror log, Chronicles
   stats, dev panel), `net.js` (reconnecting WebSocket helper). `server/cli.py` plays a full game in the terminal.
-- **`arduino/server.py`** is now a hardware debug tool only (also on port 8000 — run the game server on 8000 and the
-  belt tool on another port, or fold it into the bridge).
+- **`--bridge arduino`** also mounts `arduino/server.py`'s motor endpoints (`/board/*`, `/move`, `/stop`, `/pos`) on
+  the game server, so re-homing with `/board/set` is shared with the game. `README.md` has the full runbook.
 
 ### Next
-1. **Belt bridge** (hardware + app): implement `MoveBridge.move(lane, frm, to)` over `arduino/control.Board` with the
-   corner costs from `arduino/server.py`, per-lane square tracking, and `restore()` = home to Castle Gate then drive.
-   Make `make_adapters(sim=False)` able to mix real and stub adapters so the belt can run before voice/Muse exist.
+1. **Belt bridge for all lanes**: `arduino/server.py` tracks one token (axis 0), so only lane 1 is real. Add per-lane
+   square tracking there, and implement `ArduinoBridge.restore()` = home to Castle Gate then drive.
+   `make_adapters(sim=False)` still builds all of vision/voice/Mirror real adapters at once; keep `--sim` + `--bridge arduino`
+   as the demo configuration until those exist.
 2. Decide one-vs-three physical players with the team; the engine currently allows exactly one in-person player.
 3. Print cards with ArUco markers (ids 10–25 spells, 30–45 fairies, 50–52 player cards; see §3) and add `marker` to
    `cards.json`; put reference photos in `cards/<id>.png`.
