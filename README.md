@@ -152,6 +152,24 @@ magnet really stopped. It suggests new values; **Apply and set position** saves 
 (which wins over the defaults) and records where the magnet is. Test a plain stretch first (it tunes the normal
 value), then a move through a corner (it tunes the two corner values). Longer moves give finer results.
 
+**Guided run** (Tune section): pick a scope (All corners, GO, Jail, Free Parking or Go To Jail) and rounds (default 1),
+put the magnet dead centre on the first stop's square, press Set position and click it, then press Guided run. It
+runs one leg and waits. Click exactly where the magnet really is (or **It's dead centre**). That stop is tuned
+immediately, solving only the value the leg is about (normal, or one corner's in/out), and the position becomes the
+spot you clicked (it can sit between squares, shown like `21 (+0.60)`). The next leg is planned from there, and
+nothing is jogged. **Undo that** reverts the value and lets you click again, **Next stop** (or Enter) goes on,
+**Finish** ends the run. It never advances by itself. A single corner repeats into-it, out-of-it, then a resync
+leg back, so you can run Free Parking again and again until it lands right.
+
+**Free Parking is special.** Measurements around Free Parking and Kentucky Avenue (the hops 19 → 20 and 20 → 21,
+`FP_ZONE_HOPS` in `arduino/server.py`) never change the shared values: a leg touching them only tunes Free Parking's
+own in/out values (primary `in:20` / `out:20`), and any other leg that touches them is skipped (the position is still
+recorded). Free Parking can also have its own step period (the **Free Parking speed** boxes, smaller = faster),
+saved in `tuning.json` as `corner_periods`; other corners keep the shared corner speed.
+
+Endpoints: `POST /tune/leg` (one stop: axis, primary, start, squares, sent, actual), `POST /tune/value` (set one
+value, used by Undo), `POST /board/at?position=` (set a fractional position), `POST /tune/speed?corner=20&in_us=&out_us=`.
+
 Environment variables for the default motor, set before starting the server (a saved `tuning.json` overrides them):
 
 | Variable | Default | Meaning |

@@ -1,5 +1,6 @@
 import collections
 import json
+import math
 import os
 import random
 import threading
@@ -16,8 +17,10 @@ SPEED_MM_S = float(os.environ.get("SPEED_MM_S", 20))
 DRY_RUN = os.environ.get("DRY_RUN") == "1"            # skip the Arduino and just return rolls
 MOTOR_AXIS = int(os.environ.get("MOTOR_AXIS", 1))     # motor the board endpoints drive (0 = X, 1 = Y, 2 = Z)
 # Motor steps per (normal square, square before a corner -> corner middle, corner middle -> square after it).
-# Track 1 is smaller, so its values are hand-tuned and differ from track 0's.
-AXIS_STEPS = {0: (225, 300, 500), 1: (195, 199, 361), 2: (225, 300, 500)}
+# Lane 1 is hand-tuned. Lanes 0 and 2 are ESTIMATES from lane 1's numbers, assuming the lanes sit 20 mm apart
+# (lane 0 outside lane 1, lane 2 inside): a lane moved out or in by 20 mm changes a square by 20 steps and a corner
+# crossing by 220 steps (5 steps per mm), split in:out like lane 1's 36:64. Tune them with the bench tool.
+AXIS_STEPS = {0: (215, 277, 503), 1: (195, 199, 361), 2: (175, 121, 219)}
 STEPS = dict(AXIS_STEPS)                                  # the live values; /tune/apply changes them
 _n, _i, _o = AXIS_STEPS[MOTOR_AXIS]                       # env vars override the default motor's values
 STEPS[MOTOR_AXIS] = (int(os.environ.get("NORMAL_STEPS", _n)),   # normal square
@@ -30,11 +33,39 @@ PERIODS = {0: (3000, 1500), 1: (3000, 1500), 2: (3000, 1500)}
 # isn't listed uses the motor's shared values. The guided run measures every corner on its own, because corners
 # don't all behave alike (Free Parking is the odd one).
 CORNERS = {0: {}, 1: {}, 2: {}}
+# Per-corner step periods in microseconds: {axis: {corner square: (period into the corner, period out of it)}}. A corner
+# that isn't listed uses the motor's shared corner period (PERIODS). Free Parking needs a much harder burst.
+CORNER_PERIODS = {0: {}, 1: {}, 2: {}}
+# A fast zone per motor: {axis: (first square, number of hops, step period in microseconds)} or None. Every hop from
+# `first square` forward (square, square+1, ...) for that many hops runs at that period, in either direction, instead of
+# its normal or corner period. For the stretch around Free Parking and Kentucky Avenue where the belt catches.
+ZONES = {0: None, 1: None, 2: None}
+# The zone's own step counts: {axis: {square a: steps for the hop a -> a+1}}. Inside the fast zone these replace the
+# shared normal / corner values, so tuning the zone never moves the rest of the board (and the reverse). Entries are
+# copied from the shared values when a zone is set; they are kept if the zone is cleared, for when it comes back.
+ZONE_COSTS = {0: {}, 1: {}, 2: {}}
 SQUARES = 40                                           # standard Monopoly board, square 0 = GO
 CORNER_SQUARES = {0, 10, 20, 30}                       # GO, Jail, Free Parking, Go To Jail
+# Free Parking zone: the hops 19->20 (into it) and 20->21 (out of it, ending on Kentucky Avenue). Free Parking and
+# Kentucky Avenue behave unlike the rest of the belt, so a leg whose path touches these hops must not leak into the
+# shared values: only the "in:20" / "out:20" primaries may be solved from it, anything else is skipped.
+FP_CORNER = 20
+FP_ZONE_HOPS = {(19, 20), (20, 21)}
 SQUARE_NAMES = {0: "GO", 10: "Jail", 20: "Free Parking", 30: "Go To Jail"}
 STATE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "board_state.json")
 TUNING_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tuning.json")   # values saved by the bench tool's Tune
+
+
+def write_json(path, data):
+    """Save a settings file all at once: write a temp file, then swap it in, so a kill mid-save can't leave half a file."""
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(data, f)
+    os.replace(tmp, path)
+
+
+def warn_unreadable(path, err):
+    print(f"WARNING: {path} could not be read ({err}); using the defaults for what it held.", flush=True)
 
 
 def load_tuning():
@@ -52,15 +83,30 @@ def load_tuning():
             if int(a) in CORNERS:
                 CORNERS[int(a)] = {int(c): tuple(int(x) for x in v) for c, v in per_corner.items()
                                    if int(c) in CORNER_SQUARES and len(v) == 2}
-    except (OSError, ValueError, TypeError, AttributeError):
-        pass
+        for a, per_corner in saved.get("corner_periods", {}).items():
+            if int(a) in CORNER_PERIODS:
+                CORNER_PERIODS[int(a)] = {int(c): tuple(int(x) for x in v) for c, v in per_corner.items()
+                                          if int(c) in CORNER_SQUARES and len(v) == 2}
+        for a, z in saved.get("zones", {}).items():
+            if int(a) in ZONES and z and len(z) == 3:
+                ZONES[int(a)] = tuple(int(x) for x in z)
+        for a, costs in saved.get("zone_costs", {}).items():
+            if int(a) in ZONE_COSTS:
+                ZONE_COSTS[int(a)] = {int(k): int(v) for k, v in costs.items() if 0 <= int(k) < SQUARES}
+    except FileNotFoundError:
+        pass                                                  # first run: nothing saved yet
+    except (OSError, ValueError, TypeError, AttributeError) as e:
+        warn_unreadable(TUNING_FILE, e)
 
 
 def save_tuning():
-    with open(TUNING_FILE, "w") as f:
-        json.dump({"steps": {str(a): list(v) for a, v in STEPS.items()},
+    write_json(TUNING_FILE, {"steps": {str(a): list(v) for a, v in STEPS.items()},
                    "periods": {str(a): list(v) for a, v in PERIODS.items()},
-                   "corners": {str(a): {str(c): list(v) for c, v in per.items()} for a, per in CORNERS.items()}}, f)
+                   "corners": {str(a): {str(c): list(v) for c, v in per.items()} for a, per in CORNERS.items()},
+                   "corner_periods": {str(a): {str(c): list(v) for c, v in per.items()}
+                                      for a, per in CORNER_PERIODS.items()},
+                   "zones": {str(a): list(z) for a, z in ZONES.items() if z},
+                   "zone_costs": {str(a): {str(k): v for k, v in c.items()} for a, c in ZONE_COSTS.items()}})
 
 
 load_tuning()
@@ -81,19 +127,35 @@ def load_squares():
                     squares[int(a)] = int(s) % SQUARES
         else:
             squares[MOTOR_AXIS] = int(saved["square"]) % SQUARES
-    except (OSError, ValueError, KeyError):
-        pass
+    except FileNotFoundError:
+        pass                                                  # first run: nothing saved yet
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
+        warn_unreadable(STATE_FILE, e)
     return squares
 
 
+def load_offsets():
+    """Saved offset of every axis: how far past the middle of its square the magnet is (squares, about -0.5..0.5)."""
+    out = {a: 0.0 for a in range(LANES)}
+    try:
+        with open(STATE_FILE) as f:
+            for a, o in json.load(f).get("offsets", {}).items():
+                if int(a) in out:
+                    out[int(a)] = max(-0.5, min(0.5, float(o)))
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return out
+
+
 def save_square(*_):
-    with open(STATE_FILE, "w") as f:
-        json.dump({"square": current_square, "axes": {str(a): get_square(a) for a in range(LANES)}}, f)
+    write_json(STATE_FILE, {"square": current_square, "axes": {str(a): get_square(a) for a in range(LANES)},
+                   "offsets": {str(a): offsets[a] for a in range(LANES)}})
 
 
 _loaded = load_squares()
 current_square = _loaded[MOTOR_AXIS]                    # square of the MOTOR_AXIS token (the game's)
 other_squares = {a: s for a, s in _loaded.items() if a != MOTOR_AXIS}
+offsets = load_offsets()                                # position = square + offset
 
 
 def pick_axis(axis):
@@ -108,12 +170,27 @@ def get_square(axis):
     return current_square if axis == MOTOR_AXIS else other_squares[axis]
 
 
+def get_position(axis):
+    """Where the magnet is in squares: its saved square plus the offset (an int when the offset is 0)."""
+    return get_square(axis) + offsets[axis] if offsets[axis] else get_square(axis)
+
+
 def put_square(axis, square):
     global current_square
     if axis == MOTOR_AXIS:
         current_square = square
     else:
         other_squares[axis] = square
+    offsets[axis] = 0.0
+    save_square()
+
+
+def put_position(axis, position):
+    """Record the magnet at `position` (0 <= position < 40): the nearest square plus the offset from its middle."""
+    square = math.ceil(position - 0.5)
+    off = round(position - square, 6)
+    put_square(axis, square % SQUARES)
+    offsets[axis] = off
     save_square()
 
 
@@ -193,9 +270,12 @@ def drive(axis, motor_steps, period_us=None):
             raise HTTPException(503, f"Motor move failed: {e}")
 
 
-def board_state(square):
-    return {"square": square, "name": SQUARE_NAMES.get(square, f"Square {square}"),
-            "is_corner": square in CORNER_SQUARES}
+def board_state(square, offset=0):
+    state = {"square": square, "name": SQUARE_NAMES.get(square, f"Square {square}"),
+             "is_corner": square in CORNER_SQUARES}
+    if offset:
+        state["offset"] = offset
+    return state
 
 
 @app.get("/axes")
@@ -204,14 +284,19 @@ def axes():
     return {"default": MOTOR_AXIS,
             "axes": [{"axis": a, "normal": steps_for(a)[0], "corner_in": steps_for(a)[1],
                       "corner_out": steps_for(a)[2], "period_plain": PERIODS[a][0],
-                      "period_corner": PERIODS[a][1], "square": get_square(a),
-                      "corners": {str(c): list(v) for c, v in CORNERS[a].items()}} for a in range(LANES)]}
+                      "period_corner": PERIODS[a][1], "square": get_square(a), "offset": offsets[a],
+                      "corners": {str(c): list(v) for c, v in CORNERS[a].items()},
+                      "zone": list(ZONES[a]) if ZONES[a] else None,
+                      "zone_costs": {str(k): ZONE_COSTS[a][k] for k in sorted(zone_starts(a)) if k in ZONE_COSTS[a]},
+                      "corner_periods": {str(c): list(v) for c, v in CORNER_PERIODS[a].items()}}
+                     for a in range(LANES)]}
 
 
 @app.get("/board")
 def board_pos(axis: Optional[int] = None):
     """Where the token is on the Monopoly board."""
-    return board_state(get_square(pick_axis(axis)))
+    axis = pick_axis(axis)
+    return board_state(get_square(axis), offsets[axis])
 
 
 @app.post("/board/set")
@@ -224,6 +309,21 @@ def board_set(square: int, axis: Optional[int] = None):
     return board_state(square)
 
 
+@app.post("/board/at")
+def board_at(position: float, axis: Optional[int] = None):
+    """Tell the server exactly where the magnet is, between squares too (11.3 = 0.3 of the way from 11 to 12)."""
+    axis = pick_axis(axis)
+    if not 0 <= position <= SQUARES:
+        raise HTTPException(422, f"position must be 0-{SQUARES}")
+    put_position(axis, position % SQUARES)
+    return board_state(get_square(axis), offsets[axis])
+
+
+def hop_kind(a, b):
+    """(kind, corner) of the forward hop a -> b."""
+    return ("in", b) if b in CORNER_SQUARES else ("out", a) if a in CORNER_SQUARES else ("plain", None)
+
+
 def hop_info(start, squares):
     """The hops a move of `squares` (negative = back) from `start` crosses, in the order the magnet travels, as
     (kind, corner): "in" = the square before a corner into it, "out" = a corner to the square after it (corner =
@@ -234,16 +334,18 @@ def hop_info(start, squares):
     else:
         hops = [((start - i) % SQUARES, (start - i + 1) % SQUARES) for i in range(1, n + 1)]
     # each hop is a forward hop a -> b, whichever way the magnet is going
-    return [("in", b) if b in CORNER_SQUARES else ("out", a) if a in CORNER_SQUARES else ("plain", None)
-            for a, b in hops]
+    return [hop_kind(a, b) for a, b in hops]
 
 
 def hop_kinds(start, squares):
     return [kind for kind, _ in hop_info(start, squares)]
 
 
-def hop_cost(axis, kind, corner=None):
-    """Motor steps for one hop of this kind on this motor (a corner's own values win over the shared ones)."""
+def hop_cost(axis, kind, corner=None, a=None):
+    """Motor steps for one hop of this kind on this motor (a corner's own values win over the shared ones). For the
+    hop that starts on square `a`: the fast zone's own count if it lies in the zone."""
+    if a is not None and a in ZONE_COSTS[axis] and a in zone_starts(axis):
+        return ZONE_COSTS[axis][a]
     normal, c_in, c_out = STEPS[axis]
     if kind == "plain":
         return normal
@@ -251,15 +353,22 @@ def hop_cost(axis, kind, corner=None):
     return (own[0] if own else c_in) if kind == "in" else (own[1] if own else c_out)
 
 
+def fwd_cost(axis, k):
+    """Motor steps for the forward hop k -> k+1."""
+    k %= SQUARES
+    kind, corner = hop_kind(k, (k + 1) % SQUARES)
+    return hop_cost(axis, kind, corner, k)
+
+
 def pos_cost(axis, x):
     """Motor steps from the middle of square 0 forward to position `x` (squares; may have a fraction, any size)."""
     laps = int(x // SQUARES)
     r = x - laps * SQUARES
     whole = int(r)
-    total = laps * sum(hop_cost(axis, *hop_info(k, 1)[0]) for k in range(SQUARES))
-    total += sum(hop_cost(axis, *hop_info(k, 1)[0]) for k in range(whole))
+    total = laps * sum(fwd_cost(axis, k) for k in range(SQUARES))
+    total += sum(fwd_cost(axis, k) for k in range(whole))
     if r - whole > 1e-12:
-        total += (r - whole) * hop_cost(axis, *hop_info(whole, 1)[0])
+        total += (r - whole) * fwd_cost(axis, whole)
     return total
 
 
@@ -289,35 +398,92 @@ def hop_weights(start, squares):
     return weights["plain"], weights["in"], weights["out"]
 
 
+def path_hops(x0, x1):
+    """The hops between positions x0 and x1 (squares, may be fractional or past 40), in the order the magnet
+    travels, as (kind, corner, weight, a, b): weight is the part of the hop covered (1 = all of it), a -> b the
+    forward hop."""
+    lo, hi = min(x0, x1), max(x0, x1)
+    hops = []
+    for k in range(math.floor(lo), math.ceil(hi)):
+        w = min(hi, k + 1) - max(lo, k)
+        if w > 1e-9:
+            a, b = k % SQUARES, (k + 1) % SQUARES
+            hops.append((*hop_kind(a, b), w, a, b))
+    return hops[::-1] if x1 < x0 else hops
+
+
+def zone_starts(axis):
+    """The squares whose forward hop (square -> square+1) lies in this motor's fast zone."""
+    z = ZONES[axis]
+    return {(z[0] + i) % SQUARES for i in range(z[1])} if z else set()
+
+
+def fill_zone_costs(axis):
+    """Give every hop in the axis's fast zone its own step count, copied from what it costs now if it has none."""
+    for a in zone_starts(axis):
+        if a not in ZONE_COSTS[axis]:
+            kind, corner = hop_kind(a, (a + 1) % SQUARES)
+            ZONE_COSTS[axis][a] = hop_cost(axis, kind, corner)               # no `a`: the shared cost
+
+
+for _axis in range(LANES):
+    fill_zone_costs(_axis)
+
+
+def hop_period(axis, kind, corner, a=None):
+    """Step period (microseconds) for the hop that starts on square `a`: the fast zone's if it lies in it, else plain
+    squares', or a corner leg's (the corner's own period if it has one)."""
+    if a is not None and a in zone_starts(axis) and ZONES[axis][2]:        # a zone period of 0 means no speed change
+        return ZONES[axis][2]
+    p_plain, p_corner = PERIODS[axis]
+    if kind == "plain":
+        return p_plain
+    own = CORNER_PERIODS[axis].get(corner)
+    return (own[0] if kind == "in" else own[1]) if own else p_corner
+
+
+def move_ends(start, squares):
+    """(from, to) positions of a move of `squares` from position `start`: it ends in the middle of a square."""
+    return start, math.ceil(start - 0.5) + squares
+
+
 def plan_segments(start, squares, axis=None):
     """A move as a list of (signed motor steps, step period in microseconds), in travel order.
 
-    Corner legs get the motor's faster corner period, plain squares the normal one. Neighbouring hops at the
-    same speed are joined, so a move with no corner is a single piece. The steps add up to plan_move's total."""
+    `start` is a position (a fractional one starts part way along a hop). Corner legs get the corner's period,
+    plain squares the normal one. Neighbouring hops at the same speed are joined, so a move with no corner is a
+    single piece. The steps add up to plan_move's total."""
     axis = pick_axis(axis)
-    p_plain, p_corner = PERIODS[axis]
+    x0, x1 = move_ends(start, squares)
     pieces = []
-    for kind, corner in hop_info(start, squares):
-        steps, period = hop_cost(axis, kind, corner), (p_plain if kind == "plain" else p_corner)
+    for kind, corner, w, a, _ in path_hops(x0, x1):
+        steps, period = w * hop_cost(axis, kind, corner, a), hop_period(axis, kind, corner, a)
         if pieces and pieces[-1][1] == period:
             pieces[-1][0] += steps
         else:
             pieces.append([steps, period])
-    sign = 1 if squares >= 0 else -1
-    return [(sign * steps, period) for steps, period in pieces]
+    sign = -1 if x1 < x0 else 1
+    out, done = [], 0                                      # round the running total, so the pieces add up exactly
+    cum = 0.0
+    for steps, period in pieces:
+        cum += steps
+        out.append((sign * (round(cum) - done), period))
+        done = round(cum)
+    return out
 
 
 def plan_move(start, squares, axis=None):
-    """Cost of moving `squares` (negative = back) from `start`.
+    """Cost of moving `squares` (negative = back) from position `start` (a square, or a point between squares).
 
     A hop costs the same in both directions, so forward then back returns to the same motor position.
     Into a corner costs the motor's corner-in value, out of one its corner-out value, every other hop its normal value.
     """
     axis = pick_axis(axis)
-    hops = hop_info(start, squares)
-    total = sum(hop_cost(axis, kind, corner) for kind, corner in hops)
-    plain = sum(1 for kind, _ in hops if kind == "plain")
-    return plain, len(hops) - plain, (total if squares >= 0 else -total)
+    x0, x1 = move_ends(start, squares)
+    hops = path_hops(x0, x1)
+    total = round(sum(w * hop_cost(axis, kind, corner, a) for kind, corner, w, a, _ in hops))
+    plain = sum(1 for h in hops if h[0] == "plain")
+    return plain, len(hops) - plain, (-total if x1 < x0 else total)
 
 
 def run_board_move(squares, axis=None):
@@ -327,7 +493,7 @@ def run_board_move(squares, axis=None):
         raise HTTPException(409, "A token is still moving")
     try:
         stop_requested.clear()
-        start = get_square(axis)
+        start = get_position(axis)                        # may be part way between squares
         steps, corners, motor_steps = plan_move(start, squares, axis)
         segments = plan_segments(start, squares, axis)
         for seg_steps, period in segments:                # corner legs go faster than plain squares
@@ -336,11 +502,13 @@ def run_board_move(squares, axis=None):
             drive(axis, seg_steps, period)
         if stop_requested.is_set():                       # not 409: the game bridge retries those as "busy"
             raise HTTPException(503, "Stopped part way. Use Set position to say where the magnet is.")
-        end = (start + squares) % SQUARES
+        square = get_square(axis)
+        end = (square + squares) % SQUARES
         put_square(axis, end)
-        return {"from": start, "to": board_state(end), "squares": squares, "axis": axis,
+        return {"from": round(start, 3) if isinstance(start, float) else start, "to": board_state(end),
+                "squares": squares, "axis": axis,
                 "steps": steps, "corners": corners, "motor_steps": motor_steps, "segments": segments,
-                "passed_go": not 0 <= start + squares < SQUARES,
+                "passed_go": not 0 <= square + squares < SQUARES,
                 "moved": bool(motor_steps) and not DRY_RUN}
     finally:
         lock.release()
@@ -391,9 +559,21 @@ def tune_suggest(start: int, squares: int, motor_steps: int, actual: float,
     if motor_steps == 0 or (moved > 0) != (motor_steps > 0):
         raise HTTPException(422, "The magnet went the opposite way to the command. That is the direction "
                                  "wiring, not the step values.")
-    plain, n_in, n_out = hop_weights(start, moved)
     normal, c_in, c_out = steps_for(axis)
     steps = abs(motor_steps)
+    zone = zone_starts(axis)
+    weights = {"plain": 0.0, "in": 0.0, "out": 0.0}
+    for k, c, w, a, _ in path_hops(start, start + moved):
+        if a in zone:
+            steps -= w * hop_cost(axis, k, c, a)                    # the zone is a fixed block: tune only the rest
+        else:
+            weights[k] += w
+    plain, n_in, n_out = weights["plain"], weights["in"], weights["out"]
+    if zone and plain + n_in + n_out < 1e-9:
+        raise HTTPException(422, "That move is entirely inside the fast zone. Tune the zone with the guided run "
+                                 "(scope: Fast zone).")
+    if steps <= 0:
+        raise HTTPException(422, "The fast zone alone already takes more steps than that move sent.")
     if basis == "auto":
         basis = "normal" if n_in + n_out < 1e-9 else "corners"
     if basis in ("corners", "all") and CORNERS[axis]:
@@ -454,52 +634,126 @@ def tune_centre(actual: float, target: Optional[int] = None, axis: Optional[int]
     return {"axis": axis, "steps": centre_steps_for(axis, actual, target)}
 
 
-@app.post("/tune/guided")
-def tune_guided(body: dict):
-    """Turn the legs of a guided run into step values. Each leg is {start, squares, steps}: the magnet started
-    dead centre on `start`, was sent `squares` forward, and `steps` is how many motor steps it really took to end
-    dead centre on the target. A leg that is one hop into or out of a corner sets that corner's own value; a
-    leg of plain squares gives a sample for the normal value (the average of the samples is used)."""
+def parse_primary(primary):
+    """"normal", "in:<corner>", "out:<corner>" or "zone:<square>" -> (kind, corner) with kind plain/in/out, or
+    ("zone", square) for the fast zone's own hop that leaves that square."""
+    kind, _, c = str(primary).partition(":")
+    if kind == "normal" and not c:
+        return "plain", None
+    if kind in ("in", "out") and c.isdigit() and int(c) in CORNER_SQUARES:
+        return kind, int(c)
+    if kind == "zone" and c.isdigit() and int(c) < SQUARES:
+        return "zone", int(c)
+    raise HTTPException(422, 'primary must be "normal", "in:<corner>", "out:<corner>" (corner 0, 10, 20 or 30) '
+                             'or "zone:<square>"')
+
+
+def set_value(axis, primary, value):
+    """Set the one step value `primary` names, for this motor; returns the old value. Caller holds the lock."""
+    kind, corner = parse_primary(primary)
+    if kind == "zone":
+        if corner not in zone_starts(axis):
+            raise HTTPException(422, f"square {corner} is not in this motor's fast zone")
+        old = ZONE_COSTS[axis].get(corner)
+        ZONE_COSTS[axis][corner] = value
+    elif kind == "plain":
+        old = STEPS[axis][0]
+        STEPS[axis] = (value,) + tuple(STEPS[axis][1:])
+    else:
+        pair = list(CORNERS[axis].get(corner, STEPS[axis][1:]))     # a corner starts from the shared values
+        k = 0 if kind == "in" else 1
+        old, pair[k] = pair[k], value
+        CORNERS[axis][corner] = tuple(pair)
+    save_tuning()
+    return old
+
+
+def position_reply(axis):
+    return {"position": round(get_position(axis), 3), "square": get_square(axis), "offset": offsets[axis]}
+
+
+@app.post("/tune/leg")
+def tune_leg(body: dict):
+    """Tune from one stop of a guided run. The magnet went from `start` (a position, may be fractional) to `actual`
+    (where the user clicked it) using exactly `sent` motor steps; `squares` is what was commanded (its sign says
+    which way round the board). Only the `primary` value is solved, from the share of the path it covers:
+    new = (|sent| - what the other hops cost now) / (weight of primary hops covered). The magnet is then recorded at
+    `actual`. A leg that touches the Free Parking zone can only tune Free Parking's own values."""
     axis = pick_axis(body.get("axis"))
-    legs = body.get("legs")
-    if not isinstance(legs, list) or not legs:
-        raise HTTPException(422, "legs must be a list")
-    normal, c_in, c_out = steps_for(axis)
-    corners = {c: list(v) for c, v in CORNERS[axis].items()}
-    before = {c: tuple(corners.get(c, (c_in, c_out))) for c in CORNER_SQUARES}
-    samples, touched = [], set()
-    for leg in legs:
-        try:
-            start, squares, steps = int(leg["start"]), int(leg["squares"]), abs(float(leg["steps"]))
-        except (KeyError, TypeError, ValueError):
-            raise HTTPException(422, "each leg needs start, squares and steps")
-        if not 0 <= start < SQUARES or squares == 0 or steps <= 0:
-            raise HTTPException(422, "each leg needs a start square, some squares and some steps")
-        hops = hop_info(start, squares)
-        if len(hops) == 1 and hops[0][0] != "plain":
-            kind, corner = hops[0]
-            pair = corners.setdefault(corner, [c_in, c_out])
-            pair[0 if kind == "in" else 1] = round(steps)
-            touched.add(corner)
-        elif all(kind == "plain" for kind, _ in hops):
-            samples.append(steps / len(hops))
-    if not samples and not touched:
-        raise HTTPException(422, "Those legs don't isolate a corner or a plain stretch, so there is nothing to tune.")
-    new_normal = round(sum(samples) / len(samples)) if samples else normal
-    values = [new_normal] + [v for pair in corners.values() for v in pair]
-    if not all(1 <= v <= 5000 for v in values):
+    try:
+        start, actual = float(body["start"]), float(body["actual"])
+        squares, sent = int(body["squares"]), int(body["sent"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(422, "a leg needs axis, primary, start, squares, sent and actual")
+    kind, corner = parse_primary(body.get("primary"))
+    primary = body["primary"]
+    if ZONES[axis] and kind in ("in", "out"):                           # a corner hop inside the zone is the zone's own
+        hop_a = (corner - 1) % SQUARES if kind == "in" else corner
+        if hop_a in zone_starts(axis):
+            kind, corner, primary = "zone", hop_a, f"zone:{hop_a}"
+    if kind == "zone" and corner not in zone_starts(axis):
+        raise HTTPException(422, f"square {corner} is not in this motor's fast zone")
+    if not all(math.isfinite(v) for v in (start, actual)):
+        raise HTTPException(422, "start and actual must be numbers")
+    start, actual = start % SQUARES, actual % SQUARES                  # 40 is GO again, -0.2 is 39.8
+    d = (actual - start) % SQUARES
+    moved = d + SQUARES * round((squares - d) / SQUARES)               # the whole number of laps closest to the command
+    if not lock.acquire(blocking=False):
+        raise HTTPException(409, "A token is still moving")
+    try:
+        hops = path_hops(start, start + moved)
+        touchy = {(a, (a + 1) % SQUARES) for a in zone_starts(axis)} or FP_ZONE_HOPS   # the fast zone, if one is set
+        own = kind == "zone" or (not ZONES[axis] and corner == FP_CORNER)           # may tune the zone / Free Parking
+        if any((a, b) in touchy and w > 1e-3 for _, _, w, a, b in hops) and not own:
+            put_position(axis, actual)
+            return {"axis": axis, "primary": primary, "skipped": True,
+                    "message": "skipped: this leg touches Free Parking", **position_reply(axis)}
+        if abs(moved) < 0.005:
+            raise HTTPException(422, "The magnet is still on the start, so there is nothing to tune from.")
+        if sent == 0 or (moved > 0) != (sent > 0):
+            raise HTTPException(422, "The magnet went the opposite way to the command. That is the direction "
+                                     "wiring, not the step values.")
+        weight, rest = 0.0, 0.0
+        for k, c, w, a, _ in hops:
+            mine = (a == corner) if kind == "zone" else ((k, c) == (kind, corner) and a not in zone_starts(axis))
+            if mine:
+                weight += w
+            else:
+                rest += w * hop_cost(axis, k, c, a)
+        if weight < 0.05:
+            raise HTTPException(422, f"That leg covers almost none of {primary} "
+                                     f"({weight:.2f} of a hop), so it can't tune it.")
+        new = round((abs(sent) - rest) / weight)
+        if not 1 <= new <= 5000:
+            raise HTTPException(422, f"That leg would make {primary} {new}, outside 1-5000. "
+                                     "Check that you clicked where the magnet really is.")
+        old = set_value(axis, primary, new)
+        put_position(axis, actual)
+        return {"axis": axis, "primary": primary, "skipped": False, "old": old, "new": new,
+                "weight": round(weight, 3), "undo": {"primary": primary, "value": old},
+                **position_reply(axis)}
+    finally:
+        lock.release()
+
+
+@app.post("/tune/value")
+def tune_value(body: dict):
+    """Set one step value directly (the guided run's Undo). Body: axis, primary ("normal", "in:20", ...), value."""
+    axis = pick_axis(body.get("axis"))
+    try:
+        value = int(body["value"])
+    except (KeyError, TypeError, ValueError):
+        raise HTTPException(422, "value must be a whole number")
+    parse_primary(body.get("primary"))
+    if not 1 <= value <= 5000:
         raise HTTPException(422, "step values must be 1-5000")
     if not lock.acquire(blocking=False):
         raise HTTPException(409, "A token is still moving")
     try:
-        STEPS[axis] = (new_normal, c_in, c_out)
-        CORNERS[axis] = {c: tuple(v) for c, v in corners.items()}
-        save_tuning()
+        old = set_value(axis, body["primary"], value)
+        return {"axis": axis, "primary": body["primary"], "old": old, "new": value}
     finally:
         lock.release()
-    return {"axis": axis, "normal": [normal, new_normal], "edges": [round(x) for x in samples],
-            "corners": {str(c): {"in": [before[c][0], CORNERS[axis][c][0]], "out": [before[c][1], CORNERS[axis][c][1]]}
-                        for c in sorted(touched)}}
 
 
 @app.post("/tune/corners/clear")
@@ -534,17 +788,59 @@ def jog(steps: int, axis: Optional[int] = None):
 
 
 @app.post("/tune/speed")
-def tune_speed(plain_us: int, corner_us: int, axis: Optional[int] = None):
-    """Set the step period (microseconds, smaller = faster) for plain squares and for corner legs, saved in tuning.json."""
+def tune_speed(plain_us: Optional[int] = None, corner_us: Optional[int] = None, axis: Optional[int] = None,
+               corner: Optional[int] = None, in_us: Optional[int] = None, out_us: Optional[int] = None,
+               clear: bool = False):
+    """Set the step period (microseconds, smaller = faster), saved in tuning.json. Without `corner`: plain_us for plain
+    squares and corner_us for corner legs. With `corner` (0, 10, 20 or 30): that corner's own period into it
+    (in_us) and out of it (out_us, default the same as in_us; corner_us also works as the default for both), or
+    clear=true to go back to the shared corner period."""
     axis = pick_axis(axis)
-    if not all(200 <= v <= 20000 for v in (plain_us, corner_us)):
+    if corner is not None:
+        if corner not in CORNER_SQUARES:
+            raise HTTPException(422, "corner must be 0, 10, 20 or 30")
+        period_in = in_us if in_us is not None else corner_us
+        period_out = out_us if out_us is not None else period_in
+        if not clear and (period_in is None or not all(200 <= v <= 20000 for v in (period_in, period_out))):
+            raise HTTPException(422, "periods must be 200-20000 microseconds")
+    elif plain_us is None or corner_us is None or not all(200 <= v <= 20000 for v in (plain_us, corner_us)):
         raise HTTPException(422, "periods must be 200-20000 microseconds")
     if not lock.acquire(blocking=False):
         raise HTTPException(409, "A token is still moving")
     try:
-        PERIODS[axis] = (plain_us, corner_us)
+        if corner is None:
+            PERIODS[axis] = (plain_us, corner_us)
+            save_tuning()
+            return {"axis": axis, "plain_us": plain_us, "corner_us": corner_us}
+        if clear:
+            CORNER_PERIODS[axis].pop(corner, None)
+        else:
+            CORNER_PERIODS[axis][corner] = (period_in, period_out)
         save_tuning()
-        return {"axis": axis, "plain_us": plain_us, "corner_us": corner_us}
+        return {"axis": axis, "corner": corner,
+                "corner_periods": {str(c): list(v) for c, v in CORNER_PERIODS[axis].items()}}
+    finally:
+        lock.release()
+
+
+@app.post("/tune/zone")
+def tune_zone(start: Optional[int] = None, hops: Optional[int] = None, period_us: Optional[int] = None,
+              axis: Optional[int] = None, clear: bool = False):
+    """Set this motor's fast zone: `hops` hops starting with the hop that leaves square `start`, all at `period_us`
+    (smaller = faster; 0 = keep the usual speeds), in either direction. clear=true removes it. Saved in tuning.json."""
+    axis = pick_axis(axis)
+    if not clear:
+        if start is None or hops is None or period_us is None:
+            raise HTTPException(422, "a zone needs start, hops and period_us")
+        if not 0 <= start < SQUARES or not 1 <= hops <= 20 or not (period_us == 0 or 200 <= period_us <= 20000):
+            raise HTTPException(422, f"start must be 0-{SQUARES - 1}, hops 1-20, period_us 0 (no speed change) or 200-20000")
+    if not lock.acquire(blocking=False):
+        raise HTTPException(409, "A token is still moving")
+    try:
+        ZONES[axis] = None if clear else (start, hops, period_us)
+        fill_zone_costs(axis)
+        save_tuning()
+        return {"axis": axis, "zone": list(ZONES[axis]) if ZONES[axis] else None}
     finally:
         lock.release()
 

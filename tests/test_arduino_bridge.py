@@ -18,6 +18,7 @@ def hw(monkeypatch, tmp_path):
     module = motor_server(fresh=True)
     monkeypatch.setattr(module, "STATE_FILE", str(tmp_path / "board_state.json"))
     module.current_square = 0
+    module.offsets.update({axis: 0.0 for axis in module.offsets})    # not the live board_state.json's offsets
     return module
 
 

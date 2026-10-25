@@ -10,3 +10,5 @@ vision/live.json
 vision/samples/
 games.db
 .env
+arduino/public_key.txt
+arduino/tuning.json

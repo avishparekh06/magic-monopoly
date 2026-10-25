@@ -52,6 +52,7 @@
     content: ""; position: absolute; left: 50%; top: 50%; width: 5px; height: 5px; margin: -2.5px 0 0 -2.5px;
     border-radius: 50%; background: var(--muted); opacity: 0.7; pointer-events: none;
   }
+  #lanes { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; overflow: visible; }
   .dot {
     position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%;
     background: #1e88e5; border: 2px solid #fff; box-shadow: 0 0 0 1px #1e88e5; pointer-events: none; z-index: 2;
@@ -108,13 +109,23 @@
       </select>
       <button class="b" id="back1">◀ Back 1</button>
       <button class="b" id="fwd1">Forward 1 ▶</button>
+      <label class="muted"><input type="checkbox" id="showlanes" checked> Show lanes</label>
     </div>
+    <div class="muted" id="lanenote">Lanes: the selected motor's path is solid, the others dashed. Lane 1 is drawn a quarter of the way in from the outer edge of the track; lanes 0 and 2 are guesses. A corner's "middle" is where the lane bends (the big ring).</div>
 
     <h2>Tune</h2>
     <div class="row">
-      <input id="glaps" type="number" min="1" max="5" value="2" style="width: 64px" title="Rounds to run">
-      <button class="b" id="guided" title="Runs the board stop by stop. At each stop you click exactly where the magnet is.">Guided run</button>
-      <span class="muted">stops at every corner, you say where the magnet is</span>
+      <select id="gscope" title="Which corners to tune">
+        <option value="all">All corners</option>
+        <option value="0">GO</option>
+        <option value="10">Jail</option>
+        <option value="20">Free Parking</option>
+        <option value="30">Go To Jail</option>
+        <option value="zone">Fast zone (its own distances)</option>
+      </select>
+      <input id="glaps" type="number" min="1" max="20" value="1" style="width: 64px" title="Rounds to run">
+      <button class="b" id="guided" title="Runs one stop at a time. At each stop you click exactly where the magnet is, and it is tuned right away.">Guided run</button>
+      <span class="muted">one stop at a time, it waits for you; the saved position must be the first stop</span>
     </div>
     <div class="row">
       <input id="laps" type="number" min="1" max="10" value="3" style="width: 64px" title="Full boards to run">
@@ -143,6 +154,26 @@
       <input id="pplain" type="number" min="200" max="20000" style="width: 80px" title="Plain squares">
       <input id="pcorner" type="number" min="200" max="20000" style="width: 80px" title="Corner legs">
       <button class="b" id="savespeed">Save speed</button>
+    </div>
+    <div class="row">
+      <span class="muted">Free Parking speed, µs per step (lower = faster):</span>
+      <input id="fpin" type="number" min="200" max="20000" style="width: 80px" title="Into Free Parking">
+      <input id="fpout" type="number" min="200" max="20000" style="width: 80px" title="Out of Free Parking">
+      <button class="b" id="savefp">Save</button>
+      <button class="b" id="clearfp" title="Use the shared corner speed again">Use shared</button>
+      <span class="muted" id="fpnote"></span>
+    </div>
+    <div class="row">
+      <span class="muted">Fast zone: starts leaving square</span>
+      <input id="zstart" type="number" min="0" max="39" value="19" style="width: 64px" title="First square of the zone (the zone begins with the hop that leaves it)">
+      <span class="muted">for</span>
+      <input id="zhops" type="number" min="1" max="20" value="4" style="width: 56px" title="How many hops (squares travelled) the zone covers">
+      <span class="muted">hops at</span>
+      <input id="zperiod" type="number" min="0" max="20000" value="0" style="width: 80px" title="Step period in microseconds, smaller = faster. 0 = no speed change (the usual speeds)">
+      <span class="muted">µs</span>
+      <button class="b" id="savezone">Save zone</button>
+      <button class="b" id="clearzone">Clear</button>
+      <span class="muted" id="zonenote"></span>
     </div>
   </section>
 </main>
@@ -177,6 +208,8 @@ const jogBox = document.getElementById("jogbox");
 const lapsEl = document.getElementById("laps");
 const pPlainEl = document.getElementById("pplain");
 const pCornerEl = document.getElementById("pcorner");
+const fpInEl = document.getElementById("fpin");
+const fpOutEl = document.getElementById("fpout");
 let axes = [];
 let lastMove = null;       // the last move that was really sent to a motor, for Tune
 let mode = "move", current = 0;
@@ -194,11 +227,123 @@ for (let i = 0; i < 40; i++) {
   buttons.push(b);
 }
 
-function show(square) {
+function show(square, offset) {
   current = square;
+  magnetPos = { square, offset: offset || 0 };
+  drawLanes();
   buttons.forEach((b, i) => b.classList.toggle("here", i === square));
-  whereEl.textContent = `${square} · ${NAMES[square]}`;
+  whereEl.textContent = `${fmtPos(square, offset)} · ${NAMES[square]}`;
 }
+
+// --- pure helpers (a small node test runs these) ---
+const wrap40 = (x) => ((x % 40) + 40) % 40;
+// "21 (+0.60)": the saved square and how far past its middle the magnet is, when that isn't 0.
+// ---- lanes ----
+// How far in from the outer edge of the board each lane runs, as a fraction of one square. Lane 1 is the measured one
+// ("a quarter of the way in"); lanes 0 and 2 are guesses, with lane 0 outside it and lane 2 inside.
+const LANE_INSET = { 0: 0.1, 1: 0.25, 2: 0.45 };
+const SVG_NS = "http://www.w3.org/2000/svg";
+const lanesEl = document.createElementNS(SVG_NS, "svg");
+lanesEl.id = "lanes";
+boardEl.appendChild(lanesEl);
+const showLanesEl = document.getElementById("showlanes");
+let magnetPos = { square: 0, offset: 0 };
+
+// Where the magnet sits for each of the 40 squares on a lane `inset` squares in from the outer edge, in pixels
+// inside the board. Edge squares keep their own along-the-edge position; a corner is the bend of the lane.
+function lanePoints(inset) {
+  const br = boardEl.getBoundingClientRect();
+  const box = (i) => {
+    const r = buttons[i].getBoundingClientRect();
+    return { x: r.left - br.left - boardEl.clientLeft, y: r.top - br.top - boardEl.clientTop, w: r.width, h: r.height };
+  };
+  const go = box(0), jail = box(10), fp = box(20);
+  const right = go.x + go.w, bottom = go.y + go.h, left = jail.x, top = fp.y;
+  const d = inset * go.w;
+  const pts = [];
+  for (let i = 0; i < 40; i++) {
+    const c = box(i), cx = c.x + c.w / 2, cy = c.y + c.h / 2;
+    if (i === 0) pts.push([right - d, bottom - d]);
+    else if (i < 10) pts.push([cx, bottom - d]);
+    else if (i === 10) pts.push([left + d, bottom - d]);
+    else if (i < 20) pts.push([left + d, cy]);
+    else if (i === 20) pts.push([left + d, top + d]);
+    else if (i < 30) pts.push([cx, top + d]);
+    else if (i === 30) pts.push([right - d, top + d]);
+    else pts.push([right - d, cy]);
+  }
+  return pts;
+}
+
+// A point on the lane for a position between squares (square + offset).
+function lanePosition(pts, square, offset) {
+  const p = (((square + offset) % 40) + 40) % 40, i = Math.floor(p), f = p - i;
+  const a = pts[i], b = pts[(i + 1) % 40];
+  return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+}
+
+function drawLanes() {
+  lanesEl.replaceChildren();
+  if (!showLanesEl.checked) return;
+  const selected = Number(motorEl.value);
+  const add = (tag, attrs, style) => {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const k in attrs) el.setAttribute(k, attrs[k]);
+    Object.assign(el.style, style);
+    lanesEl.appendChild(el);
+    return el;
+  };
+  for (const lane of [0, 1, 2]) {
+    const pts = lanePoints(LANE_INSET[lane]);
+    const on = lane === selected;
+    add("polygon", { points: pts.map((p) => p.join(",")).join(" ") },
+        { fill: "none", stroke: on ? "var(--accent)" : "var(--muted)", strokeWidth: on ? 2.5 : 1.2,
+          strokeDasharray: on ? "" : "5 4", opacity: on ? 0.95 : 0.6 });
+    const label = add("text", { x: pts[5][0], y: pts[5][1] + (lane === 0 ? -5 : 12), "text-anchor": "middle" },
+                      { fill: on ? "var(--accent)" : "var(--muted)", fontSize: "10px", fontWeight: on ? 700 : 400 });
+    label.textContent = `lane ${lane}`;
+    if (!on) continue;
+    pts.forEach(([x, y], i) => {                         // every square's spot on this lane; the bends get a ring
+      if (i % 10 === 0) add("circle", { cx: x, cy: y, r: 7 }, { fill: "none", stroke: "var(--accent)", strokeWidth: 2 });
+      else add("circle", { cx: x, cy: y, r: 2.2 }, { fill: "var(--accent)", opacity: 0.8 });
+    });
+    const zone = axes[selected] && axes[selected].zone;                          // the fast zone, thick and orange
+    if (zone) {
+      const zp = [];
+      for (let k = 0; k <= zone[1]; k++) zp.push(pts[(zone[0] + k) % 40].join(","));
+      add("polyline", { points: zp.join(" ") }, { fill: "none", stroke: "#fb8c00", strokeWidth: 6, opacity: 0.55, strokeLinecap: "round", strokeLinejoin: "round" });
+    }
+    const [mx, my] = lanePosition(pts, magnetPos.square, magnetPos.offset);   // the magnet
+    add("circle", { cx: mx, cy: my, r: 6 }, { fill: "#1e88e5", stroke: "#fff", strokeWidth: 2 });
+  }
+}
+
+showLanesEl.onchange = drawLanes;
+window.addEventListener("resize", drawLanes);
+
+function fmtPos(square, offset) {
+  return offset ? `${square} (${offset > 0 ? "+" : "-"}${Math.abs(offset).toFixed(2)})` : `${square}`;
+}
+const squaresTo = (saved, to) => wrap40(to - saved + 20) - 20;       // signed, the short way round
+// The stops of a guided run. A single corner repeats: into it, out of it, then back (just to resync).
+const ALL_LEGS = [[0, 1, "out:0"], [1, 9, "normal"], [9, 10, "in:10"], [10, 11, "out:10"], [11, 19, "normal"],
+  [19, 20, "in:20"], [20, 21, "out:20"], [21, 29, "normal"], [29, 30, "in:30"], [30, 31, "out:30"],
+  [31, 39, "normal"], [39, 0, "in:0"]];
+function legsFor(scope, zone) {
+  if (scope === "all") return ALL_LEGS.map(([from, to, primary]) => ({ from, to, primary }));
+  if (scope === "zone") {                                             // every hop of the fast zone, then back to its start
+    if (!zone) return [];
+    const [start, hops] = zone;
+    const legs = [];
+    for (let i = 0; i < hops; i++) legs.push({ from: wrap40(start + i), to: wrap40(start + i + 1), primary: `zone:${wrap40(start + i)}` });
+    legs.push({ from: wrap40(start + hops), to: wrap40(start), primary: null });
+    return legs;
+  }
+  const c = Number(scope);
+  return [{ from: wrap40(c - 1), to: c, primary: `in:${c}` }, { from: c, to: wrap40(c + 1), primary: `out:${c}` },
+          { from: wrap40(c + 1), to: wrap40(c - 1), primary: null }];
+}
+// --- end pure helpers ---
 
 function say(text, kind) { msgEl.textContent = text; msgEl.className = kind || "muted"; }
 
@@ -221,10 +366,10 @@ async function run(url, label, fromGuided) {
   say(label || "Moving…");
   try {
     const d = await call("POST", withMotor(url));
-    show((d.to || d).square);
+    show((d.to || d).square, (d.to || d).offset);
     if (d.motor_steps !== undefined) {
       const dry = d.moved ? "" : " (not sent to motor)";
-      if (d.moved && d.squares !== 0) {
+      if (d.moved && d.squares !== 0 && !fromGuided && Number.isInteger(d.from)) {   // Tune last move needs a whole-square start
         lastMove = { axis: d.axis, start: d.from, squares: d.squares, steps: d.motor_steps };
         tuneBtn.disabled = false;
         tuneHandBtn.disabled = false;
@@ -391,7 +536,22 @@ function loadMotor() {
     pPlainEl.value = a.period_plain;
     pCornerEl.value = a.period_corner;
   }
-  call("GET", withMotor("/board")).then(d => show(d.square)).catch(e => say(e.message, "err"));
+  const z = a && a.zone;
+  if (a) {
+    if (z) { document.getElementById("zstart").value = z[0]; document.getElementById("zhops").value = z[1]; document.getElementById("zperiod").value = z[2]; }
+    document.getElementById("zonenote").textContent = z
+      ? `on: squares ${z[0]} → ${(z[0] + z[1]) % 40} ${z[2] ? `at ${z[2]} µs` : "at the usual speeds"}, with its own distances` +
+        ` (${Object.entries(a.zone_costs || {}).map(([k, v]) => `${k}→${(Number(k) + 1) % 40}: ${v}`).join(", ")}).` +
+        " The rest of the board's values don't touch them."
+      : "off";
+  }
+  const own20 = a && a.corner_periods && a.corner_periods["20"];
+  if (a) {
+    fpInEl.value = own20 ? own20[0] : a.period_corner;
+    fpOutEl.value = own20 ? own20[1] : a.period_corner;
+    document.getElementById("fpnote").textContent = own20 ? "" : "(using the shared corner speed)";
+  }
+  call("GET", withMotor("/board")).then(d => show(d.square, d.offset)).catch(e => say(e.message, "err"));
 }
 
 // Tune by hand: after a move, nudge the motor until the magnet sits dead centre on the square it was sent to.
@@ -482,10 +642,28 @@ document.getElementById("savespeed").onclick = async () => {
   } catch (e) { say(e.message, "err"); }
 };
 
-// Guided run: the magnet runs from stop to stop around the board. At each stop you click exactly where it really
-// is; it is then moved to the exact middle of that square and the next leg starts from there. After a round the
-// measured legs become step values, each corner on its own (Free Parking doesn't behave like the others).
-const GUIDED_LEGS = [[0, 1], [1, 9], [9, 10], [10, 11], [11, 19], [19, 20], [20, 21], [21, 29], [29, 30], [30, 31], [31, 39], [39, 0]];
+document.getElementById("savefp").onclick = async () => {
+  try {
+    const out = fpOutEl.value ? `&out_us=${fpOutEl.value}` : "";
+    await call("POST", withMotor(`/tune/speed?corner=20&in_us=${fpInEl.value}${out}`));
+    axes = (await call("GET", "/axes")).axes;
+    loadMotor();
+    say(`Saved. Motor ${motorEl.value} goes into Free Parking at ${fpInEl.value} µs and out of it at ${fpOutEl.value || fpInEl.value} µs per step.`, "ok");
+  } catch (e) { say(e.message, "err"); }
+};
+document.getElementById("clearfp").onclick = async () => {
+  try {
+    await call("POST", withMotor("/tune/speed?corner=20&clear=true"));
+    axes = (await call("GET", "/axes")).axes;
+    loadMotor();
+    say("Free Parking uses the shared corner speed again.", "ok");
+  } catch (e) { say(e.message, "err"); }
+};
+
+// Guided run: one stop at a time, and it never carries on by itself. After each move you click exactly where the
+// magnet really is; that stop is tuned right away (only the one value the stop is about) and the position becomes
+// where you clicked. Nothing is jogged: the next leg is planned from that spot. Undo reverts the value so you can
+// click again; Next stop (or Enter) moves on.
 let guided = null;
 
 function guardGuided() {
@@ -503,12 +681,29 @@ function endGuided(text, kind) {
   say(text, kind || "err");
 }
 
+function btn(text, onclick) {
+  const b = document.createElement("button");
+  b.className = "b";
+  b.textContent = text;
+  b.onclick = onclick;
+  return b;
+}
+
+const valueLabel = (primary) => {
+  const [kind, c] = primary.split(":");
+  return kind === "normal" ? "Normal" : `${NAMES[c]} ${kind}`;
+};
+
 async function startGuided() {
   if (guardGuided()) return;
-  const laps = Number(document.getElementById("glaps").value);
-  if (!(laps >= 1 && laps <= 5)) return say("Rounds must be 1-5.", "err");
-  if (current !== 0) return say("Put the magnet dead centre on GO, press Set position and click GO. Then start.", "err");
-  guided = { axis: Number(motorEl.value), laps, lap: 0, leg: 0, done: [], pending: null };
+  const rounds = Number(document.getElementById("glaps").value);
+  if (!(rounds >= 1 && rounds <= 20)) return say("Rounds must be 1-20.", "err");
+  const legs = legsFor(document.getElementById("gscope").value, (axes[Number(motorEl.value)] || {}).zone);
+  if (!legs.length) return say("This motor has no fast zone yet. Set one first (Fast zone: start, hops, speed, Save zone).", "err");
+  if (current !== legs[0].from) {
+    return say(`The first stop starts on square ${legs[0].from} (${NAMES[legs[0].from]}). Put the magnet dead centre there, press Set position and click that square. Then start.`, "err");
+  }
+  guided = { axis: Number(motorEl.value), legs, rounds, round: 0, leg: 0, pending: null, last: null, stage: "moving", log: [] };
   motorEl.disabled = true;                                   // the whole run stays on one motor
   jogBox.hidden = true;
   tuneBox.replaceChildren();
@@ -517,30 +712,38 @@ async function startGuided() {
 
 async function guidedStep() {
   const g = guided;
-  const [from, to] = GUIDED_LEGS[g.leg];
-  const squares = (to - from + 40) % 40;
-  const where = `Round ${g.lap + 1}/${g.laps}, stop ${g.leg + 1}/${GUIDED_LEGS.length}`;
+  const leg = g.legs[g.leg];
+  const squares = squaresTo(current, leg.to);               // planned from wherever the last click put the magnet
+  g.where = `Round ${g.round + 1}/${g.rounds}, stop ${g.leg + 1}/${g.legs.length}`;
+  g.stage = "moving";
+  clearDot();
+  tuneBox.replaceChildren();
   setMode("move");
-  const d = await run(`/board/move?squares=${squares}`, `${where}: running ${from} → ${to}…`, true);
+  const d = await run(`/board/move?squares=${squares}`, `${g.where}: running ${leg.from} → ${leg.to}…`, true);
   if (!guided) return;
-  if (!d) return endGuided("The run stopped. Check where the magnet is, use Set position on GO, and start again.");
+  if (!d) return endGuided("The run stopped. Check where the magnet is, use Set position, and start again.");
+  if (!d.motor_steps) return endGuided("Nothing was sent: the magnet is already on that square.");
   if (!d.moved) return endGuided("That was a dry run, so nothing moved and there is nothing to tune.");
-  g.pending = { start: from, squares, steps: d.motor_steps, target: to };
+  g.pending = { leg, start: wrap40(d.from), squares, sent: d.motor_steps };
+  promptClick();
+}
+
+function promptClick() {
+  const g = guided;
+  const to = g.pending.leg.to;
+  g.stage = "click";
+  clearDot();
   setMode("guided");
-  const centred = document.createElement("button");
-  centred.className = "b";
-  centred.textContent = "It's dead centre";
-  centred.onclick = () => guidedAnswer(to);
-  const cancel = document.createElement("button");
-  cancel.className = "b";
-  cancel.textContent = "Cancel guided run";
-  cancel.onclick = () => endGuided("Cancelled. The magnet is where it stopped: use Set position if the saved square is wrong.");
-  tuneBox.replaceChildren(centred, cancel);
-  say(`${where}: it should be on ${to} (${NAMES[to]}). Click exactly where the magnet really is on the board.`);
+  const cancel = btn("Cancel guided run", () => endGuided("Cancelled. The magnet is where it stopped: use Set position if the saved position is wrong."));
+  const corner = to % 10 === 0;                          // a corner: the lane bends there, not in the middle of the tile
+  tuneBox.replaceChildren(btn(corner ? "It's at the bend" : "It's dead centre", () => guidedAnswer(to)), cancel);
+  say(`${g.where}: it should be on ${to} (${NAMES[to]}). ` + (corner
+    ? "This is a corner: click where the lane BENDS (the turn of the belt path), not the middle of the tile."
+    : "Click exactly where the magnet really is on the board."));
 }
 
 function guidedClick(i, e) {
-  if (!guided || !guided.pending) return;
+  if (!guided || guided.stage !== "click") return;
   const { mouse, actual } = clickedPosition(i, e);
   if (mouse) showDot(e);
   guidedAnswer(actual);
@@ -549,51 +752,108 @@ function guidedClick(i, e) {
 async function guidedAnswer(actual) {
   const g = guided;
   const p = g.pending;
+  g.last = p;
   g.pending = null;
+  g.stage = "busy";
   setMode("guided-busy");
   boardEl.classList.add("busy");
-  say("Moving it to the middle of the square…");
+  say("Saving…");
+  let text = "", kind = "ok", undo = null, pos = "";
   try {
-    let extra = 0;
-    if (Math.abs(actual - p.target) > 0.002) {
-      extra = (await call("GET", `/tune/centre?axis=${g.axis}&actual=${actual}&target=${p.target}`)).steps;
-      if (extra) await call("POST", `/jog?steps=${extra}&axis=${g.axis}`);
+    let r;
+    try {
+      r = p.leg.primary
+        ? await call("POST", "/tune/leg", { axis: g.axis, primary: p.leg.primary, start: p.start, squares: p.squares, sent: p.sent, actual })
+        : await call("POST", `/board/at?axis=${g.axis}&position=${actual}`);
+    } catch (err) {                                          // refused: still record where the magnet is
+      r = await call("POST", `/board/at?axis=${g.axis}&position=${actual}`);
+      text = `${err.message} Nothing was changed.`;
+      kind = "err";
     }
-    g.done.push({ start: p.start, squares: p.squares, steps: p.steps + extra });   // what the leg really took
+    show(r.square, r.offset);
+    pos = fmtPos(r.square, r.offset);
+    if (r.skipped) text = `skipped: this leg touches Free Parking. Nothing was changed.`;
+    else if (r.new !== undefined) {
+      text = `${valueLabel(r.primary)} ${r.old} → ${r.new}.`;
+      undo = r.undo;
+      g.log.push(`${valueLabel(r.primary)} ${r.old} → ${r.new}`);
+    } else if (!text) text = "Position recorded.";
+    axes = (await call("GET", "/axes")).axes;
+    loadMotor();
   } catch (e) {
     return endGuided(e.message);
   } finally {
     boardEl.classList.remove("busy");
   }
-  clearDot();
-  tuneBox.replaceChildren();
-  g.leg += 1;
-  if (g.leg < GUIDED_LEGS.length) return guidedStep();
-  await guidedFinishRound();
+  const last = g.round === g.rounds - 1 && g.leg === g.legs.length - 1;
+  g.stage = "result";
+  tuneBox.replaceChildren(
+    btn(undo ? "Undo that" : "Click again", () => guidedUndo(undo)),
+    btn(last ? "Done" : "Next stop", guidedNext),
+    btn("Finish", guidedFinish));
+  say(`${g.where}: ${text} Position now ${pos}. Enter = next stop.`, kind);
 }
 
-async function guidedFinishRound() {
+async function guidedUndo(undo) {
   const g = guided;
+  if (!g || g.stage !== "result") return;
+  g.stage = "busy";
   try {
-    const r = await call("POST", "/tune/guided", { axis: g.axis, legs: g.done });
-    g.done = [];
-    const parts = [`normal ${r.normal[0]} → ${r.normal[1]} (edges ${r.edges.join(", ")})`];
-    for (const [c, v] of Object.entries(r.corners)) parts.push(`${NAMES[c]}: in ${v.in[0]} → ${v.in[1]}, out ${v.out[0]} → ${v.out[1]}`);
-    axes = (await call("GET", "/axes")).axes;
-    loadMotor();
-    g.lap += 1;
-    g.leg = 0;
-    if (g.lap < g.laps) {
-      say(`Round ${g.lap} saved. ${parts.join(" · ")}. Starting the next round…`, "ok");
-      return guidedStep();
+    if (undo) {
+      await call("POST", "/tune/value", { axis: g.axis, primary: undo.primary, value: undo.value });
+      g.log.pop();
+      axes = (await call("GET", "/axes")).axes;
+      loadMotor();
     }
-    endGuided(`Done. ${parts.join(" · ")}`, "ok");
   } catch (e) {
-    endGuided(e.message);
+    return endGuided(e.message);
   }
+  g.pending = g.last;
+  promptClick();                                             // same leg again, click where the magnet is
 }
+
+async function guidedNext() {
+  const g = guided;
+  if (!g || g.stage !== "result") return;
+  g.stage = "busy";
+  g.leg += 1;
+  if (g.leg >= g.legs.length) { g.leg = 0; g.round += 1; }
+  if (g.round >= g.rounds) return guidedFinish();
+  await guidedStep();
+}
+
+function guidedFinish() {
+  const g = guided;
+  if (!g || g.stage === "moving") return;
+  endGuided(g.log.length ? `Done. ${g.log.join(" · ")}` : "Done. No values changed.", "ok");
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter" || !guided || guided.stage !== "result" || ["INPUT", "SELECT"].includes(document.activeElement.tagName)) return;
+  e.preventDefault();
+  guidedNext();
+});
 
 document.getElementById("guided").onclick = startGuided;
+
+document.getElementById("savezone").onclick = async () => {
+  const v = (id) => document.getElementById(id).value;
+  try {
+    await call("POST", withMotor(`/tune/zone?start=${v("zstart")}&hops=${v("zhops")}&period_us=${v("zperiod")}`));
+    axes = (await call("GET", "/axes")).axes;
+    loadMotor();
+    say(`Fast zone saved for motor ${motorEl.value}: ${v("zhops")} hops from square ${v("zstart")} ` +
+        (Number(v("zperiod")) ? `at ${v("zperiod")} µs.` : "at the usual speeds (its own distances only)."), "ok");
+  } catch (e) { say(e.message, "err"); }
+};
+document.getElementById("clearzone").onclick = async () => {
+  try {
+    await call("POST", withMotor("/tune/zone?clear=true"));
+    axes = (await call("GET", "/axes")).axes;
+    loadMotor();
+    say(`Fast zone cleared for motor ${motorEl.value}.`, "ok");
+  } catch (e) { say(e.message, "err"); }
+};
 
 // Several full boards in a row make any error in the step values big enough to measure well.
 document.getElementById("runlaps").onclick = async () => {
