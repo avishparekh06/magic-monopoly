@@ -99,7 +99,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
                public: str | None = None, tunnel_port: int | None = None,
                voice: str = "stub", voice_factory=None, mirror: str = "template",
                mirror_factory=None, belt_url: str | None = None, belt_lanes: int = 1,
-               bridge_factory=None) -> FastAPI:
+               bridge_factory=None, belt_key: str | None = None) -> FastAPI:
     """db_path: SQLite file that games are saved to and resumed from on startup.
     ":memory:" (the default, used by tests) keeps nothing across restarts.
     bridge: "stub" fakes moves; "arduino" drives lane 1 through arduino/server.py.
@@ -113,7 +113,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     def adapters():
         a = make_adapters(sim, move_delay, bridge if bridge_factory is None else "stub",
                           voice if voice_factory is None else "stub",
-                          mirror if mirror_factory is None else "template", belt_url, belt_lanes)
+                          mirror if mirror_factory is None else "template", belt_url, belt_lanes, belt_key)
         if bridge_factory is not None:
             a.bridge = bridge_factory()
         if voice_factory is not None:
@@ -153,7 +153,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         app.router.routes.extend(r for r in motor_routes() if getattr(r, "path", None) != "/vision/events")
 
     if not sim or (voice == "muse" and voice_factory is None) or (mirror == "muse" and mirror_factory is None) \
-            or (bridge == "http" and bridge_factory is None):
+            or (bridge in ("http", "step") and bridge_factory is None):
         adapters()  # fail at startup, not at first game, if a real adapter is missing (e.g. no MUSE_API_KEY)
 
     def page(name: str) -> FileResponse:
@@ -387,9 +387,11 @@ def main() -> None:
     parser.add_argument("--bridge", choices=BRIDGES, default="stub",
                         help="stub: fake moves; arduino: lane 1 through arduino/server.py loaded in this process "
                              "(set DRY_RUN=1 without an Arduino); http: POST moves to a running arduino/server.py "
-                             "(--belt-url), lanes above --belt-lanes stubbed")
+                             "(--belt-url), lanes above --belt-lanes stubbed; step: POST <belt-url>/step?squares=n&key= "
+                             "(relative moves on track 1)")
     parser.add_argument("--belt-url", default=None,
                         help="with --bridge http: where arduino/server.py is running, e.g. http://192.168.1.20:8001")
+    parser.add_argument("--belt-key", default=None, help="with --bridge step: the service's key (or BELT_KEY in .env)")
     parser.add_argument("--belt-lanes", type=int, default=1,
                         help="how many lanes the belt tool really drives (lanes above this are simulated)")
     parser.add_argument("--voice", choices=VOICES, default="stub",
@@ -405,7 +407,7 @@ def main() -> None:
     load_dotenv()
     uvicorn.run(create_app(sim=args.sim, seed=args.seed, db_path=args.db, bridge=args.bridge, public=args.public,
                            tunnel_port=args.port if args.tunnel else None, voice=args.voice, mirror=args.mirror,
-                           belt_url=args.belt_url, belt_lanes=args.belt_lanes),
+                           belt_url=args.belt_url, belt_lanes=args.belt_lanes, belt_key=args.belt_key),
                 host=args.host, port=args.port)
 
 
