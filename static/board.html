@@ -12,17 +12,20 @@
   <link rel="stylesheet" href="/static/session-hub.css?v=account-forms-7">
   <link rel="stylesheet" href="/static/property-cards.css">
   <style>
-    /* Clean board: the Mirror is a round button bottom-right that opens its actions, players are
+    /* Clean board: the Mirror sits beside Home in the top bar that opens its actions, players are
        clickable, and the dev panel is a corner popup (--dev only). */
-    .mirror-fab { position: fixed; right: 18px; bottom: 18px; z-index: 30; width: 66px; height: 66px; padding: 0;
+    .mirror-fab { position: relative; flex: none; width: 44px; height: 44px; padding: 0;
       border-radius: 50%; border: 3px solid #d5b56a; background: radial-gradient(circle at 35% 30%, #fffaf0, #cfe3ef 45%, #7f9fbd);
       box-shadow: 0 4px 14px #0008; cursor: pointer; display: grid; place-items: center; }
-    .mirror-fab svg { width: 40px; height: 40px; }
+    .mirror-fab svg { width: 28px; height: 28px; }
+    .board-page > .board-masthead { z-index: 35; }
+    .board-page .board-heading-note { position: relative; }
+    .board-page .board-home { min-height: 44px; }
     .mirror-fab.on { box-shadow: 0 0 0 4px #f4c95d88, 0 0 22px #f4c95dcc; }
     .mirror-fab.speaking { animation: mirror-glow 1.2s ease-out; }
     .mirror-fab.needs-mic { animation: mirror-glow 1.2s ease-out infinite; }   /* a yes/no is waiting and the mic is off */
     @keyframes mirror-glow { 0% { box-shadow: 0 0 0 0 #f4c95d; } 100% { box-shadow: 0 0 0 18px #f4c95d00; } }
-    .board-page .mirror-menu { position: fixed; right: 18px; bottom: 96px; z-index: 30; width: min(340px, calc(100vw - 36px)); }
+    .board-page .mirror-menu { position: absolute; right: 0; top: calc(100% + 10px); z-index: 30; width: min(340px, calc(100vw - 30px)); max-height: min(65dvh, 480px); overflow-y: auto; }
     .mirror-menu .mirror-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
     .mirror-menu h2 { margin: 0; font-size: 22px; }
     .mirror-menu .mirror-controls { display: flex; gap: 6px; }
@@ -41,7 +44,7 @@
     /* The logo runs corner to corner across the middle, M bottom-left to Y top-right, like the classic board.
        It stays centred even while an action card is up (overrides the theme's shift-left for that case). */
     .board-page #board .center-logo {
-      font-size: clamp(22px, 3.4vw, 48px); margin: 0; transform: rotate(-45deg); white-space: nowrap;
+      font-size: clamp(28px, 4.3vw, 62px); margin: 0; transform: rotate(-45deg); white-space: nowrap;
       text-shadow: none;
       box-shadow: none; border: 2px solid var(--logo-ivory);
     }
@@ -60,6 +63,20 @@
     <div class="board-heading-note" style="margin-left:auto">
       <a class="btn small board-home" href="/" aria-label="Back to homepage">← Home</a>
       <span class="conn pill cam-pill" id="cam" role="status" hidden></span>
+
+  <button class="mirror-fab" id="mirror-toggle" type="button" aria-label="The Mirror: voice, microphone and recent lines" aria-expanded="false" aria-controls="mirror-menu">
+    <svg viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="20" cy="16" rx="11" ry="13" fill="#e8f2f8" stroke="#8a6a2e" stroke-width="2.5"/>
+      <path d="M14 10q3-4 7-4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
+      <path d="M20 29v8m-4 0h8" stroke="#8a6a2e" stroke-width="3" stroke-linecap="round"/></svg>
+  </button>
+  <div class="panel mirror-menu" id="mirror-menu" hidden>
+    <div class="mirror-head"><h2>The Mirror</h2>
+      <button class="btn small secondary" type="button" id="mirror-close">Close</button></div>
+    <div class="mirror-controls"><button class="btn small" id="voice-btn" title="Read the Mirror's lines aloud">Voice off</button>
+      <button class="btn small secondary" id="mic-btn" title="Listen for yes / no through Muse Voice Transcribe">Mic off</button></div>
+    <div class="muted" id="mic-status" style="font-size:.85em; min-height:1.2em"></div>
+    <ul class="log" id="log"></ul>
+  </div>
     </div>
   </header>
   <div class="layout">
@@ -84,19 +101,6 @@
     </aside>
   </div>
 
-  <button class="mirror-fab" id="mirror-toggle" type="button" aria-label="The Mirror: voice, microphone and recent lines" aria-expanded="false">
-    <svg viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="20" cy="16" rx="11" ry="13" fill="#e8f2f8" stroke="#8a6a2e" stroke-width="2.5"/>
-      <path d="M14 10q3-4 7-4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-      <path d="M20 29v8m-4 0h8" stroke="#8a6a2e" stroke-width="3" stroke-linecap="round"/></svg>
-  </button>
-  <div class="panel mirror-menu" id="mirror-menu" hidden>
-    <div class="mirror-head"><h2>The Mirror</h2>
-      <button class="btn small secondary" type="button" id="mirror-close">Close</button></div>
-    <div class="mirror-controls"><button class="btn small" id="voice-btn" title="Read the Mirror's lines aloud">Voice off</button>
-      <button class="btn small secondary" id="mic-btn" title="Listen for yes / no through Muse Voice Transcribe">Mic off</button></div>
-    <div class="muted" id="mic-status" style="font-size:.85em; min-height:1.2em"></div>
-    <ul class="log" id="log"></ul>
-  </div>
   <button class="btn small secondary dev-toggle" id="dev-toggle" type="button" hidden>Dev</button>
   <div class="dev panel dev-popup" id="dev" hidden>
         <div class="dev-head"><h3 style="margin:0">Dev panel</h3>

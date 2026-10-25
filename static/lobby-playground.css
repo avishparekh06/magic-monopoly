@@ -13,8 +13,6 @@
 .lobby-play-controls { position: absolute; z-index: 500; bottom: 10px; left: 20px; right: 20px; display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none; text-shadow: 0 2px 4px #17263a; }
 .lobby-you-label { display: block; color: #ffe5ac; font-size: 15px; }
 .lobby-playground .lobby-instructions { font-size: 12px; line-height: 1.4; margin: 4px 0 0; color: #fff1dc; }
-.lobby-play-controls .btn { pointer-events: auto; padding: 8px 18px; min-height: 40px; font-size: 16px; background: #f8e8c5; border: 1px solid #b48b48; border-radius: 4px; color: #3e2d39; box-shadow: 0 2px 0 #8f633c; cursor: pointer; flex: none; }
-.lobby-play-controls .btn:disabled { opacity: .5; cursor: default; }
 .guest-wait-note { font-size: 17px; line-height: 1.5; text-align: center; }
 @media (max-width: 959px) {
   .home-roaming { position: relative; width: 100%; height: 225px; margin: -4px 0 24px; background: radial-gradient(ellipse at 50% 80%, #48765caa, #48765c44 48%, transparent 72%); }

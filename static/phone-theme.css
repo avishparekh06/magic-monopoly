@@ -35,7 +35,7 @@
 .phone-page #board .mm-icon svg { display: block; width: 1em; height: 1em; }
 .phone-page #board .mm-band { filter: saturate(.7); }
 .phone-page #board .mm-center { background: #589574 url('/static/art/board-garden.svg') center / cover; border-radius: 0; color: #fff2d5; }
-.phone-board-brand { padding: .22em .36em; transform: rotate(-35deg); background: #a8392d; color: #f2e3c2; border: 1px solid #f2e3c2; font-size: 1.7em; font-weight: 700; letter-spacing: .03em; }
+.phone-board-brand { padding: .22em .36em; transform: rotate(-35deg); background: #a8392d; color: #f2e3c2; border: 1px solid #f2e3c2; font-size: 2.1em; font-weight: 700; letter-spacing: .03em; }
 .phone-page .magic-card.panel { text-align: center; border-top: 7px solid var(--deck-color, #bca179); }
 .phone-page .magic-card h2 { font-size: 26px; line-height: 1.15; }
 .phone-page .magic-card p { margin-bottom: 0; font-size: 18px; }

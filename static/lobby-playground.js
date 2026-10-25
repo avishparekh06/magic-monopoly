@@ -8,8 +8,7 @@ export function mountLobbyPlayground(parent, send) {
   const instruction = h('p', { id: 'home-roam-help', class: 'lobby-instructions' }, 'Move to wander · Click or Space to jump');
   const arena = h('div', { class: 'lobby-arena', tabindex: '0', role: 'group', 'aria-label': 'Move your character around the home landscape. Use the cursor, touch, arrow keys or WASD. Click or press Space to jump.', 'aria-describedby': 'home-roam-help' });
   const label = h('span', { class: 'lobby-you-label' });
-  const jumpButton = h('button', { class: 'btn small lobby-jump', type: 'button', onclick: () => jump() }, 'Jump');
-  root.append(arena, h('div', { class: 'lobby-play-controls' }, h('div', {}, label, instruction), jumpButton));
+  root.append(arena, h('div', { class: 'lobby-play-controls' }, h('div', {}, label, instruction)));
   parent.append(root);
   let state = null, me = null, online = false, active = false, raf = null, lastFrame = 0;
   let lastInput = 0, lastSent = 0, timer = null, lastJump = -Infinity, pendingJump = false;
@@ -105,8 +104,7 @@ export function mountLobbyPlayground(parent, send) {
       });
       const mine = next.players.find(p => p.id === me);
       label.textContent = online ? (mine?.name === characterName(me) ? `${characterName(me)} · You` : `${mine?.name || 'You'} · ${characterName(me)}`) : 'Connecting…';
-      instruction.textContent = matchMedia('(pointer: coarse)').matches ? 'Drag to wander · Tap Jump to hop' : 'Move to wander · Click or Space to jump';
-      jumpButton.disabled = !online;
+      instruction.textContent = matchMedia('(pointer: coarse)').matches ? 'Drag to wander · Tap to jump' : 'Move to wander · Click or Space to jump';
       schedule();
     },
     event(message) {
@@ -123,6 +121,6 @@ export function mountLobbyPlayground(parent, send) {
         actor.jump = pose.jump;
       }
     },
-    connection(status) { online = status === 'online'; if (status === 'closed') { active = false; root.hidden = true; jumpButton.disabled = true; stop(); } if (!online) { clearTimeout(timer); timer = null; pendingJump = false; } if (state && status !== 'closed') this.update(state, me); }
+    connection(status) { online = status === 'online'; if (status === 'closed') { active = false; root.hidden = true; stop(); } if (!online) { clearTimeout(timer); timer = null; pendingJump = false; } if (state && status !== 'closed') this.update(state, me); }
   };
 }

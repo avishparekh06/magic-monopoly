@@ -130,6 +130,10 @@ try {
  console.log('PASS: Virtual player resumes their own seat; mobile details and overall stats fit without inventing missing results');
  await send('Emulation.setDeviceMetricsOverride',{width:1366,height:768,deviceScaleFactor:1,mobile:false});
  await send('Page.navigate',{url:api+'/board/career_active'});await waitFor('document.querySelector("#board-viewport")?.dataset.render==="flat"');
+ if(!await evaluate(`(()=>{const home=document.querySelector('.board-home').getBoundingClientRect(),mirror=document.getElementById('mirror-toggle').getBoundingClientRect();return Math.abs(home.top+home.height/2-mirror.top-mirror.height/2)<1&&document.querySelector('.board-masthead').contains(document.getElementById('mirror-toggle'))})()`))throw Error('Mirror and Home must align on the same header row');
+ await evaluate(`document.getElementById('mirror-toggle').click()`);
+ if(!await evaluate(`!document.getElementById('mirror-menu').hidden&&document.getElementById('mirror-menu').getBoundingClientRect().top>=document.querySelector('.board-home').getBoundingClientRect().bottom`))throw Error('Mirror menu must open below the header');
+ await evaluate(`document.getElementById('mirror-close').click()`);
  await send('Runtime.evaluate',{expression:'document.getElementById("game-fullscreen").click()',userGesture:true});await waitFor('!!document.fullscreenElement');
  await evaluate('document.getElementById("game-players").click()');await waitFor('document.getElementById("game-properties").open');await clickText('Game history & stats','#game-properties button');
  await waitFor('document.getElementById("session-hub").open && !!document.querySelector(".hub-player-stats")');
