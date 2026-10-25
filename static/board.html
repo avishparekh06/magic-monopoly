@@ -20,6 +20,7 @@
     .mirror-fab svg { width: 40px; height: 40px; }
     .mirror-fab.on { box-shadow: 0 0 0 4px #f4c95d88, 0 0 22px #f4c95dcc; }
     .mirror-fab.speaking { animation: mirror-glow 1.2s ease-out; }
+    .mirror-fab.needs-mic { animation: mirror-glow 1.2s ease-out infinite; }   /* a yes/no is waiting and the mic is off */
     @keyframes mirror-glow { 0% { box-shadow: 0 0 0 0 #f4c95d; } 100% { box-shadow: 0 0 0 18px #f4c95d00; } }
     .board-page .mirror-menu { position: fixed; right: 18px; bottom: 96px; z-index: 30; width: min(340px, calc(100vw - 36px)); }
     .mirror-menu .mirror-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -120,7 +121,7 @@
           <button class="btn small" data-act="card">Read card</button>
         </div>
 
-        <h4>Camera — reader spot (player card laid down)</h4>
+        <h4>Token positions</h4>
         <div class="row" id="taps"></div>
 
         <h4>Voice (Grandma)</h4>
@@ -131,9 +132,9 @@
           <button class="btn small secondary" data-act="hear">Hear</button>
         </div>
 
-        <h4>Payment fallback</h4>
+        <h4>Payment</h4>
         <div class="row">
-          <button class="btn small secondary" data-act="confirm-pay">Confirm payment (card not read)</button>
+          <button class="btn small secondary" data-act="confirm-pay" title="Payments settle by themselves now; this only finishes a game saved while it waited for a card tap">Finish an old pending payment</button>
         </div>
 
         <h4>Motors</h4>
@@ -167,7 +168,7 @@ devToggle.onclick = () => { devPanel.hidden = !devPanel.hidden; if (!devPanel.hi
 document.getElementById("dev-close").onclick = () => { devPanel.hidden = true; };
 const board = createBoardView(document.getElementById("board"), boardData);
 const camera = mountBoardCamera(document.getElementById("board"), boardData, gameId);
-const actions = mountBoardActions(document.getElementById("board-viewport"), boardData, cardData, message => net.send(message), { dev: config.dev });
+const actions = mountBoardActions(document.getElementById("board-viewport"), boardData, cardData, message => net.send(message), { dev: config.dev, voice: config.voice });
 let state = null;
 
 // ---- the Mirror button: opens voice / mic controls and the last few lines ----
@@ -235,6 +236,12 @@ function maybeListen() {
     micStatus("Listening… say yes or no");
   }
   if (!deciding && clip) { clip = null; micStatus(mic.on ? "Listening when someone has to decide." : ""); }
+  // With Muse voice, the in-person player answers aloud: if the mic is off, open the Mirror and say so.
+  // (Browsers only open the mic after a click, so someone has to press "Mic" once.)
+  const needsMic = config.voice === "muse" && !config.dev && deciding && !mic.on;
+  if (needsMic && !mirrorFab.classList.contains("needs-mic")) { setMirrorMenu(true); micStatus("Turn on Mic so the Mirror can hear yes or no."); }
+  if (!needsMic && mirrorFab.classList.contains("needs-mic") && !mic.on) micStatus("");
+  mirrorFab.classList.toggle("needs-mic", needsMic);
 }
 function onAudio(ev) {
   if (!clip) return;
@@ -410,12 +417,10 @@ function render() {
       h("span", { class: "bal" }, `${p.balance} G`));
   }));
 
-  // Dev panel: one "tap" button per player card
+  // Dev panel: token positions (built once)
   const taps = document.getElementById("taps");
-  if (!taps.children.length) {
-    for (const p of state.players) {
-      taps.append(h("button", { class: "btn small secondary", onclick: () => net.send({ source: "vision", type: "player_card", player: p.id }) }, `${p.name}'s card on reader`));
-    }
+  if (!taps.dataset.ready) {
+    taps.dataset.ready = "1";
     // Debug: put a token on a square without moving (physical piece placed by hand), or copy the belt's position.
     const sync = h("div", { class: "row", style: "margin-top:8px; flex-wrap:wrap; gap:6px" },
       h("span", { class: "muted" }, "Token positions:"));

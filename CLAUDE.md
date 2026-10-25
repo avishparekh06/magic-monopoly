@@ -34,9 +34,9 @@ Keys go in `.env` at the repo root (gitignored; the server loads it on start):
 | Flag | Default | What it does |
 |---|---|---|
 | `--sim` | off | Stub camera/voice/Mirror adapters. **Always pass it** (real vision adapter isn't built). |
-| `--dev` | off | Dev button (bottom right, next to the Mirror) with manual dice, cards, yes/no, confirm payment, token positions, motors; also the manual fallbacks on the board. Leave it on unless judges are looking. |
+| `--dev` | off | Dev button (bottom right, next to the Mirror) with manual dice, cards, yes/no, token positions, motors; also the board's on-screen Roll Dice and Buy / No buttons. Without it: Grandma rolls real dice (camera), remote players roll on their phones, payments settle by themselves. |
 | `--mirror template\|muse` | template | Who writes the narrator lines. `muse` = Muse Spark, one short sentence per action, template fallback. |
-| `--voice stub\|muse` | stub | Grandma's yes/no. `muse` = board's "Mic" (in the Mirror button) → Muse Voice Transcribe. |
+| `--voice stub\|muse` | stub | Grandma's yes/no. `muse` = she answers aloud: board's "Mic" (in the Mirror button) → Muse Voice Transcribe; outside `--dev` the board then shows no Buy / No buttons, and the Mirror opens and pulses if a yes/no is waiting with the mic off (click Mic once per session). |
 | `--speech browser\|elevenlabs` | browser | Who reads lines aloud. `browser` is free; `elevenlabs` (George) spends credits. Turn sound on with the Mirror button → "Voice". |
 | `--bridge stub\|arduino\|http\|step` | stub | How tokens move. `step` = remote belt gateway (`BELT_URL`/`BELT_KEY`); `arduino` = Uno on this laptop (`DRY_RUN=1` without one). |
 | `--tunnel` / `--public URL` | off | Public address for phone links/QR codes (cloudflared quick tunnel, or a given URL). |

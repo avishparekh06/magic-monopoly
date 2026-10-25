@@ -50,6 +50,7 @@ class GameRoom:
         self.lock = asyncio.Lock()
         self.belt_positions: dict[int, int] = {}  # lane -> square the physical side last reported
         self.debug_sync = False                   # adopt the belt's square automatically (testing)
+        self.dev = False                          # server --dev: the board's on-screen dice may roll
         self._poll_task: asyncio.Task | None = None
         self.seats: dict[str, Socket] = {}       # player id -> its one live socket
         self.viewers: dict[Socket, str] = {}     # host / board sockets -> role
@@ -281,6 +282,8 @@ class GameRoom:
             claimed = msg.get("player")
             if actor != SYSTEM and claimed is not None and claimed != actor:
                 raise EngineError(f"you can only act as {actor}")
+            if msg.get("action") == "board_roll" and not self.dev:
+                raise EngineError("the on-screen dice are for dev mode; roll the real dice into the tray")
             if msg.get("action") == "say":
                 return await self.say(actor, str(msg.get("text", "")))
             if msg.get("action") == "sync_belt":

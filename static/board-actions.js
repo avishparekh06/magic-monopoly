@@ -5,8 +5,13 @@ import { statusText } from '/static/board.js';
 import { mountBoardPlayers } from '/static/board-players.js';
 import { mountSessionHub } from '/static/session-hub.js';
 
-// dev: show the manual stand-ins for the camera and card reader (server --dev).
-export function mountBoardActions(viewport, board, cards, send, { dev = false } = {}) {
+// dev: show the manual stand-ins for the camera and the on-screen dice (server --dev).
+// voice: "muse" when yes/no is answered out loud; then, outside dev mode, the card has no Buy / No buttons.
+export function mountBoardActions(viewport, board, cards, send, { dev = false, voice = 'stub' } = {}) {
+  // Outside dev mode the board shows no Buy / No buttons when the answer comes another way: the in-person
+  // player says it aloud (Muse voice), a remote player taps it on their phone.
+  const noButtons = who => !dev && (player(who)?.kind !== 'in_person' || voice === 'muse');
+  const answerHint = who => player(who)?.kind === 'in_person' ? `${name(who)}, say yes or no.` : `${name(who)} chooses on their phone.`;
   let state = null, connected = false, busy = false, receipt = null, error = '';
   let pendingKey = '', diceRolling = false, waitingForDice = false, lastDigitalRoll = null;
   const status = h('div', { class: 'game-turn-status', role: 'status', hidden: true });   // the board centre says it already
@@ -76,7 +81,8 @@ export function mountBoardActions(viewport, board, cards, send, { dev = false } 
     if (!state) return;
     const moving = !!viewport.querySelector('.mm-token[data-moving="true"]');
     const p = state.pending;
-    rollButton.hidden = state.phase !== 'WAITING_FOR_ROLL' || diceRolling || moving || busy;
+    // On-screen dice only in dev mode: the in-person player rolls real dice, remote players use their phones.
+    rollButton.hidden = !dev || state.phase !== 'WAITING_FOR_ROLL' || diceRolling || moving || busy;
     rollButton.disabled = busy || !connected;
     rollWho.textContent = `${name(state.current_player)}'s turn`;
     rollLabel.textContent = busy ? 'Rolling…' : 'Roll Dice';
@@ -89,12 +95,12 @@ export function mountBoardActions(viewport, board, cards, send, { dev = false } 
     if (state.phase === 'WAITING_FOR_DECISION' && p?.kind === 'decision') {
       if (p.type === 'buy') {
         body = [...deed(board.squares[p.square], p.player),
-          h('div', { class: 'game-action-buttons' },
+          noButtons(p.player) ? paragraph(answerHint(p.player)) : h('div', { class: 'game-action-buttons' },
             button(`Buy · ${p.price} gold`, 'turn-buy', { action: 'decision', player: p.player, answer: 'yes' }),
             button('No thanks', 'turn-decline', { action: 'decision', player: p.player, answer: 'no' }, true))];
       } else {
         body = [...heading(`${name(p.player)}'s choice`, "Escape Rapunzel's Tower"), paragraph(`Pay ${p.price} gold to leave, or stay for this turn.`),
-          h('div', { class: 'game-action-buttons' },
+          noButtons(p.player) ? paragraph(answerHint(p.player)) : h('div', { class: 'game-action-buttons' },
             button(`Pay ${p.price} gold`, 'turn-buy', { action: 'decision', player: p.player, answer: 'yes' }),
             button('Stay this turn', 'turn-decline', { action: 'decision', player: p.player, answer: 'no' }, true))];
       }

@@ -338,8 +338,20 @@ def test_waiting_guests_use_home_and_running_players_use_game(client, game):
     assert 'mountLobbyPlayground' not in playing.text
 
 
+def test_shared_screen_roll_only_in_dev_mode(client, game):
+    gid = game['game_id']
+    with client.websocket_connect(f'/ws/{gid}?role=board') as board:
+        recv_until(board, is_state)
+        board.send_json({'action': 'start', 'force': True})
+        state = recv_until(board, lambda m: is_state(m) and m['state']['phase'] == 'WAITING_FOR_ROLL')['state']
+        board.send_json({'action': 'board_roll', 'target': state['current_player'], 'turn': state['turn']})
+        assert 'dev mode' in recv_until(board, lambda m: m['type'] == 'error')['message']
+        assert client.app.state.rooms.get(gid).state.last_roll is None
+
+
 def test_shared_screen_roll_is_broadcast_once_and_uses_authoritative_result(client, game):
     gid = game['game_id']
+    client.app.state.rooms.get(gid).dev = True                  # server started with --dev
     with client.websocket_connect(f'/ws/{gid}?role=board') as board:
         recv_until(board, is_state)
         board.send_json({'action': 'start', 'force': True})

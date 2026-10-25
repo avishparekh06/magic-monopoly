@@ -157,6 +157,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         for saved in store.games(status="active"):
             try:
                 rooms[saved["game_id"]] = await GameRoom.restore(saved, adapters(), store)
+                rooms[saved["game_id"]].dev = dev
                 if debug_sync:
                     await rooms[saved["game_id"]].set_debug_sync(True)
                 log.info("resumed game %s (turn %s, %s)", saved["game_id"],
@@ -232,6 +233,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
                                          adapters(), seed, store, owner_id=account["id"] if account else None)
         except EngineError as e:
             raise HTTPException(400, str(e))
+        room.dev = dev
         rooms[room.game_id] = room
         if debug_sync:
             await room.set_debug_sync(True)
@@ -458,8 +460,9 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
 
     @app.get("/api/config")
     async def config():
-        """What the pages should show: the board's dev panel only in dev mode."""
-        return {"dev": dev}
+        """What the pages should show: the dev panel and on-screen dice only in dev mode, and whether
+        yes/no is answered by voice (Muse) so the board can leave out the Buy / No buttons."""
+        return {"dev": dev, "voice": voice}
 
     @app.get("/api/lan")
     async def lan(request: Request):
