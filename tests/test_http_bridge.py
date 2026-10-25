@@ -25,6 +25,8 @@ class FakeBelt:
                     return httpx.Response(503, json={"detail": "Motor move failed: no such axis"})
                 self.square[axis] = int(req.url.params["square"])
                 return httpx.Response(200, json={"from": 0, "to": {"square": self.square[axis]}, "moved": True})
+            if req.url.path == "/board" and req.method == "GET":
+                return httpx.Response(200, json={"square": self.square.get(axis, 0)})
             if req.url.path == "/board/set":
                 self.square[axis] = int(req.url.params["square"])
                 return httpx.Response(200, json={"square": self.square[axis]})
@@ -37,7 +39,7 @@ def test_lane_1_goes_to_axis_0_forward():
     b = HttpBeltBridge("http://belt:8001", lanes=1, transport=belt.transport())
     r = asyncio.run(b.move(1, 0, 6))
     assert r == {"type": "move_done", "lane": 1, "square": 6}
-    assert belt.calls[-1] == ("POST", "/board/goto", {"square": "6", "direction": "forward", "axis": "0"})
+    assert belt.calls[-1] == ("POST", "/board/goto", {"square": "6", "direction": "auto", "axis": "0"})
 
 
 def test_other_lanes_fall_back_to_the_stub():
@@ -74,5 +76,24 @@ def test_game_start_resets_and_a_table_roll_moves_the_physical_token():
             c.post("/vision/events", json={"type": "dice_rolled", "values": [3, 3], "total": 6})
             s = state_where(board, lambda s: s["players"][0]["position"] == 6 and s["phase"] != "MOVING")
         assert ("POST", "/board/set", {"square": "0", "axis": "0"}) in belt.calls     # reset at game start
-        assert belt.calls[-1] == ("POST", "/board/goto", {"square": "6", "direction": "forward", "axis": "0"})
+        assert belt.calls[-1] == ("POST", "/board/goto", {"square": "6", "direction": "auto", "axis": "0"})
         assert belt.square[0] == 6
+
+
+def test_a_lane_can_be_mapped_to_a_chosen_axis():
+    belt = FakeBelt()
+    b = HttpBeltBridge("http://belt:8001", lanes=0, axes={2: 0}, transport=belt.transport())
+    assert asyncio.run(b.move(2, 0, 5)) == {"type": "move_done", "lane": 2, "square": 5}
+    assert belt.calls[-1] == ("POST", "/board/goto", {"square": "5", "direction": "auto", "axis": "0"})
+    belt.calls.clear()
+    r = asyncio.run(b.move(3, 0, 5))                          # not mapped: stays simulated
+    assert r["type"] == "move_done" and not belt.calls
+    asyncio.run(b.reset([1, 2, 3]))                           # only the mapped lane is told its square
+    assert belt.calls == [("POST", "/board/set", {"square": "0", "axis": "0"})]
+
+
+def test_positions_reads_every_real_lane_from_its_axis():
+    belt = FakeBelt()
+    belt.square[0] = 4
+    b = HttpBeltBridge("http://belt:8001", lanes=0, axes={2: 0}, transport=belt.transport())
+    assert asyncio.run(b.positions()) == {2: 4}

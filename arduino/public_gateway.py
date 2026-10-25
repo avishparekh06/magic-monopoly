@@ -27,7 +27,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BENCH = os.environ.get("BENCH_URL", "http://127.0.0.1:8001")           # the private bench tool
-MAX_SQUARES = int(os.environ.get("MAX_STEP_SQUARES", 12))              # most squares one request may move
+MAX_SQUARES = int(os.environ.get("MAX_STEP_SQUARES", 20))              # most squares one request may move, either way (half the board)
 KEY_FILE = os.path.join(HERE, "public_key.txt")
 BOARD_FILE = os.path.join(HERE, "..", "server", "board.json")         # the game's squares: the list index is the square id
 
@@ -103,10 +103,10 @@ def root():
 @app.api_route("/step", methods=["GET", "POST"])
 async def step(request: Request, squares: int = 1, key: Optional[str] = None,
                x_key: Optional[str] = Header(None)):
-    """Move the magnet forward `squares` squares from where the bench tool says it is."""
+    """Move the magnet `squares` squares from where the bench tool says it is (negative = back)."""
     check_key(request, key, x_key)
-    if not 1 <= squares <= MAX_SQUARES:
-        raise HTTPException(422, f"squares must be 1-{MAX_SQUARES}")
+    if squares == 0 or abs(squares) > MAX_SQUARES:
+        raise HTTPException(422, f"squares must be 1-{MAX_SQUARES} forward or back (negative)")
     if busy.locked():
         raise HTTPException(409, "still moving")
     async with busy:

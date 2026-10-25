@@ -106,7 +106,8 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
                voice: str = "stub", voice_factory=None, mirror: str = "template",
                mirror_factory=None, belt_url: str | None = None, belt_lanes: int = 1,
                bridge_factory=None, belt_key: str | None = None, debug_sync: bool = False,
-               speech: str = "browser", dev: bool = False, camera_cmd: list[str] | None = None) -> FastAPI:
+               speech: str = "browser", dev: bool = False, camera_cmd: list[str] | None = None,
+               virtual_axis: int | None = None, bench_url: str | None = None) -> FastAPI:
     """db_path: SQLite file that games are saved to and resumed from on startup.
     ":memory:" (the default, used by tests) keeps nothing across restarts.
     bridge: "stub" fakes moves; "arduino" drives lane 1 through arduino/server.py.
@@ -124,7 +125,8 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     def adapters():
         a = make_adapters(sim, move_delay, bridge if bridge_factory is None else "stub",
                           voice if voice_factory is None else "stub",
-                          mirror if mirror_factory is None else "template", belt_url, belt_lanes, belt_key)
+                          mirror if mirror_factory is None else "template", belt_url, belt_lanes, belt_key,
+                          virtual_axis, bench_url)
         if bridge_factory is not None:
             a.bridge = bridge_factory()
         if voice_factory is not None:
@@ -554,6 +556,11 @@ def main() -> None:
     parser.add_argument("--belt-url", default=None,
                         help="with --bridge http: where arduino/server.py is running, e.g. http://192.168.1.20:8001")
     parser.add_argument("--belt-key", default=None, help="with --bridge step: the service's key (or BELT_KEY in .env)")
+    parser.add_argument("--virtual-axis", type=int, default=None, metavar="AXIS",
+                        help="with --bridge step: the second player's token drives this motor axis (0-2) on the belt "
+                             "tool, e.g. 0; without it that token is simulated")
+    parser.add_argument("--bench-url", default=None,
+                        help="with --virtual-axis: the belt tool (arduino/server.py), default http://127.0.0.1:8001")
     parser.add_argument("--debug-sync", action="store_true",
                         help="testing: the game adopts the belt's reported square automatically (polls the gateway "
                              "and accepts pushes to /belt/position); off = only show the mismatch")
@@ -585,7 +592,8 @@ def main() -> None:
     uvicorn.run(create_app(sim=args.sim, seed=args.seed, db_path=args.db, bridge=args.bridge, public=args.public,
                            tunnel_port=args.port if args.tunnel else None, voice=args.voice, mirror=args.mirror,
                            belt_url=args.belt_url, belt_lanes=args.belt_lanes, belt_key=args.belt_key,
-                           debug_sync=args.debug_sync, speech=args.speech, dev=args.dev, camera_cmd=camera_cmd),
+                           debug_sync=args.debug_sync, speech=args.speech, dev=args.dev, camera_cmd=camera_cmd,
+                           virtual_axis=args.virtual_axis, bench_url=args.bench_url),
                 host=args.host, port=args.port)
 
 

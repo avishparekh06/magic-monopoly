@@ -69,3 +69,17 @@ def test_game_start_adopts_where_the_belt_is():
             board.send_json({"action": "start", "force": True})
             s = state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL" and s["players"][0]["position"] == 14)
             assert s["players"][1]["position"] == 0          # only the lane the belt reports
+
+
+def test_the_virtual_lane_is_polled_and_adopted_too():
+    from server.adapters.bridge import HttpBeltBridge
+    from tests.test_http_bridge import FakeBelt
+    g, belt = FakeGateway(square=5), FakeBelt()
+    belt.square[0] = 9
+    def bridge():
+        virtual = HttpBeltBridge("http://bench:8001", lanes=0, axes={2: 0}, transport=belt.transport())
+        return StepBeltBridge("https://belt.example", "k", fallback=virtual, transport=g.transport())
+    with TestClient(create_app(sim=True, move_delay=0, debug_sync=True, bridge_factory=bridge)) as c:
+        game = c.post("/api/games", json={"players": TABLE}).json()
+        with c.websocket_connect(f"/ws/{game['game_id']}?role=board") as board:
+            state_where(board, lambda s: s["players"][0]["position"] == 5 and s["players"][1]["position"] == 9)

@@ -349,9 +349,8 @@ class GameRoom:
         async def poll():
             while True:
                 try:
-                    pos = await bridge.position()
-                    if pos is not None:
-                        await self.belt_reported(1, pos, source="poll")
+                    for lane, pos in (await bridge.positions()).items():
+                        await self.belt_reported(lane, pos, source="poll")
                 except Exception as e:                      # keep polling through tunnel hiccups
                     log.info("belt poll: %s", e)
                 await asyncio.sleep(interval)
@@ -362,12 +361,12 @@ class GameRoom:
         bridge = self.adapters.bridge
         if not hasattr(bridge, "position"):
             raise EngineError("this bridge cannot report a position (run with --bridge step)")
-        pos = await bridge.position()
-        if pos is None:
+        positions = await bridge.positions()
+        if not positions:
             raise EngineError("the belt gateway did not answer with a position")
-        for p in self.state.players:            # the gateway reports track 1 only
-            if p.lane == 1:
-                await self.dispatch(SYSTEM, {"action": "set_position", "player": p.id, "square": pos})
+        for p in self.state.players:            # every lane the belt can read; the rest stay as they are
+            if p.lane in positions:
+                await self.dispatch(SYSTEM, {"action": "set_position", "player": p.id, "square": positions[p.lane]})
 
     async def _adopt_belt_at_start(self) -> None:
         try:

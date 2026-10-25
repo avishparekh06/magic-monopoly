@@ -43,8 +43,19 @@ def test_steps_forward_distance_and_wraps():
     b = StepBeltBridge("https://belt.example/", "k", transport=g.transport())
     assert asyncio.run(b.move(1, 0, 7)) == {"type": "move_done", "lane": 1, "square": 7}
     assert steps_sent(g) == [7] and g.square == 7
-    assert asyncio.run(b.move(1, 38, 2)) == {"type": "move_done", "lane": 1, "square": 2}   # gateway was at 7 -> 35 squares
-    assert steps_sent(g)[-1] == (2 - 7) % 40 and g.square == 2
+    assert asyncio.run(b.move(1, 38, 2)) == {"type": "move_done", "lane": 1, "square": 2}   # gateway was at 7: 5 back is shorter
+    assert steps_sent(g)[-1] == -5 and g.square == 2
+
+
+def test_goes_the_shorter_way_round_and_ties_go_forward():
+    g = FakeGateway(square=30)
+    b = StepBeltBridge("https://belt.example", "k", transport=g.transport())
+    assert asyncio.run(b.move(1, 30, 10))["square"] == 10      # to jail: 20 squares, a tie, goes forward
+    assert steps_sent(g) == [20]
+    assert asyncio.run(b.move(1, 10, 7))["square"] == 7        # "go back 3": 3 back, not 37 forward
+    assert steps_sent(g)[-1] == -3 and g.square == 7
+    assert asyncio.run(b.move(1, 7, 38))["square"] == 38       # 31 forward = 9 back, through GO the other way
+    assert steps_sent(g)[-1] == -9
 
 
 def test_self_corrects_from_the_gateways_real_position():

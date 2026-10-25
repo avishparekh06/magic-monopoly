@@ -26,7 +26,8 @@ class Adapters:
 
 
 def make_bridge(kind: str = "stub", move_delay: float = 1.0, belt_url: str | None = None,
-                belt_lanes: int = 1, belt_key: str | None = None) -> MoveBridge:
+                belt_lanes: int = 1, belt_key: str | None = None, virtual_axis: int | None = None,
+                bench_url: str | None = None) -> MoveBridge:
     import os
     if kind == "stub":
         return StubBridge(move_delay)
@@ -42,7 +43,11 @@ def make_bridge(kind: str = "stub", move_delay: float = 1.0, belt_url: str | Non
         key = belt_key or os.environ.get("BELT_KEY")
         if not url or not key:
             raise RuntimeError("--bridge step needs --belt-url and --belt-key (or BELT_URL / BELT_KEY in .env)")
-        return StepBeltBridge(url, key, lanes=belt_lanes, fallback=StubBridge(move_delay))
+        fallback = StubBridge(move_delay)
+        if virtual_axis is not None:             # the second player's token rides this motor axis on the belt tool
+            fallback = HttpBeltBridge(bench_url or os.environ.get("BENCH_URL", "http://127.0.0.1:8001"), lanes=0,
+                                      axes={2: virtual_axis}, fallback=fallback)
+        return StepBeltBridge(url, key, lanes=belt_lanes, fallback=fallback)
     raise ValueError(f"bridge must be one of {BRIDGES}")
 
 
@@ -64,8 +69,9 @@ def make_mirror(kind: str = "template") -> Mirror:
 
 def make_adapters(sim: bool, move_delay: float = 1.0, bridge: str = "stub", voice: str = "stub",
                   mirror: str = "template", belt_url: str | None = None, belt_lanes: int = 1,
-                  belt_key: str | None = None) -> Adapters:
+                  belt_key: str | None = None, virtual_axis: int | None = None,
+                  bench_url: str | None = None) -> Adapters:
     """`sim` picks the stub for vision (the camera comes through /vision/events instead). The bridge, the voice
     and the Mirror are chosen on their own so each real piece can be switched on as soon as it works."""
     vision = StubVision() if sim else ArucoVision()
-    return Adapters(make_bridge(bridge, move_delay, belt_url, belt_lanes, belt_key), vision, make_voice(voice), make_mirror(mirror))
+    return Adapters(make_bridge(bridge, move_delay, belt_url, belt_lanes, belt_key, virtual_axis, bench_url), vision, make_voice(voice), make_mirror(mirror))
