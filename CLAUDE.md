@@ -3,6 +3,52 @@
 HackTX 26 runs Oct 24–25, 2026. Theme: fairy tale / magical. Judging is Sun 2–5 PM and the pitch is 5:30–6 PM.
 Optimize for a demo that works reliably in front of judges, not for completeness.
 
+## How to run it
+
+All commands from the repo root. Python lives in `.venv`; never use the system `python`.
+
+**Once per machine**
+```
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+```
+Keys go in `.env` at the repo root (gitignored; the server loads it on start):
+- `MUSE_API_KEY=...` for `--mirror muse` / `--voice muse`. Check it: `set -a; . ./.env; set +a; .venv/bin/python scripts/muse_check.py`.
+- `ELEVENLABS_API_KEY` for `--speech elevenlabs`: run `npx -y @elevenlabs/cli@latest onboard init` (signs in, writes the key).
+- `BELT_URL=...` and `BELT_KEY=...` for `--bridge step` (the teammate's belt gateway).
+
+**Pick a mode** (then open http://localhost:8000, create a game, open the board link on the laptop, scan the QR codes on phones)
+```
+# Practice, free: template narrator, browser voice, dev panel
+.venv/bin/python -m server.main --sim --dev
+
+# Muse narrator, free browser voice, dev panel
+.venv/bin/python -m server.main --sim --mirror muse --dev
+
+# Demo: Muse narrator + Muse yes/no voice, ElevenLabs voice, public links, saved games
+.venv/bin/python -m server.main --sim --mirror muse --voice muse --speech elevenlabs --tunnel --db games.db
+
+# Demo with track 1 on the real belt
+.venv/bin/python -m server.main --sim --bridge step --mirror muse --voice muse --speech elevenlabs --tunnel --db games.db
+```
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--sim` | off | Stub camera/voice/Mirror adapters. **Always pass it** (real vision adapter isn't built). |
+| `--dev` | off | Dev button (bottom right, next to the Mirror) with manual dice, cards, yes/no, confirm payment, token positions, motors; also the manual fallbacks on the board. Leave it on unless judges are looking. |
+| `--mirror template\|muse` | template | Who writes the narrator lines. `muse` = Muse Spark, one short sentence per action, template fallback. |
+| `--voice stub\|muse` | stub | Grandma's yes/no. `muse` = board's "Mic" (in the Mirror button) → Muse Voice Transcribe. |
+| `--speech browser\|elevenlabs` | browser | Who reads lines aloud. `browser` is free; `elevenlabs` (George) spends credits. Turn sound on with the Mirror button → "Voice". |
+| `--bridge stub\|arduino\|http\|step` | stub | How tokens move. `step` = remote belt gateway (`BELT_URL`/`BELT_KEY`); `arduino` = Uno on this laptop (`DRY_RUN=1` without one). |
+| `--tunnel` / `--public URL` | off | Public address for phone links/QR codes (cloudflared quick tunnel, or a given URL). |
+| `--db games.db` | games.db | SQLite file; unfinished games resume on restart. Use `--db /tmp/scratch.db` for throwaway tests. |
+| `--port 8000` | 8000 | Change if "Address already in use". |
+
+**Camera** (separate terminal, server already running): `.venv/bin/python vision/live.py 0 --post` (dice);
+`vision/live.py 0 --cards --post` (cards). Without a camera, use `--dev` and the Dev panel's Read dice / Read card.
+
+**Tests**: `.venv/bin/pytest tests`. If the Arduino tests error with `No module named 'serial'`, the venv is
+missing packages: re-run `.venv/bin/pip install -r requirements.txt`.
+
 ## The project
 A physical board game in the style of Monopoly, reskinned as a fairy tale. Tokens move by themselves: a magnet rides on a
 GT2 belt under a thin acrylic plate and drags a token with a steel-washer base along the top. **Physical first:** real dice
