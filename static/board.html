@@ -214,22 +214,36 @@ function say(text) {
 const mic = { on: false, ctx: null, src: null, proc: null, stream: null, busy: false, armed: false, quietUntil: 0 };
 const micStatus = (t) => { document.getElementById("mic-status").textContent = t; };
 
-document.getElementById("mic-btn").onclick = async (e) => {
-  if (mic.on) { stopMic(); e.target.textContent = "Mic off"; micStatus(""); mirrorOn(); return; }
+const micBtn = document.getElementById("mic-btn");
+async function startMic(quiet = false) {
   try {
     mic.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-  } catch { toast("Microphone permission was refused.", "error"); return; }
+  } catch { if (!quiet) toast("Microphone permission was refused.", "error"); return; }
   mic.ctx = new (window.AudioContext || window.webkitAudioContext)();
+  if (mic.ctx.state === "suspended") {     // a page that opens the mic by itself needs one click before it may play audio
+    const wake = () => mic.ctx?.resume();
+    document.addEventListener("pointerdown", wake, { once: true });
+    mic.ctx.resume().catch(() => {});
+  }
   mic.src = mic.ctx.createMediaStreamSource(mic.stream);
   mic.proc = mic.ctx.createScriptProcessor(4096, 1, 1);
   mic.src.connect(mic.proc); mic.proc.connect(mic.ctx.destination);
   mic.proc.onaudioprocess = onAudio;
   mic.on = true;
-  e.target.textContent = "Mic on";
+  micBtn.textContent = "Mic on";
   mirrorOn();
   micStatus("Listening when someone has to decide.");
   maybeListen();
+}
+micBtn.onclick = async () => {
+  if (mic.on) { stopMic(); micBtn.textContent = "Mic off"; micStatus(""); mirrorOn(); return; }
+  await startMic();
 };
+// With Muse voice the board listens by itself once the browser has been allowed the mic before.
+if (config.voice === "muse") {
+  navigator.permissions?.query({ name: "microphone" }).then((p) => { if (p.state === "granted") startMic(true); }).catch(() => {});
+}
+
 function stopMic() {
   mic.on = false; mic.armed = false;
   mic.proc?.disconnect(); mic.src?.disconnect(); mic.stream?.getTracks().forEach((t) => t.stop()); mic.ctx?.close();
@@ -250,7 +264,7 @@ function maybeListen() {
   if (!deciding && clip) { clip = null; micStatus(mic.on ? "Listening when someone has to decide." : ""); }
   // With Muse voice, the in-person player answers aloud: if the mic is off, open the Mirror and say so.
   // (Browsers only open the mic after a click, so someone has to press "Mic" once.)
-  const needsMic = config.voice === "muse" && !config.dev && deciding && !mic.on;
+  const needsMic = config.voice === "muse" && deciding && !mic.on;
   if (needsMic && !mirrorFab.classList.contains("needs-mic")) { setMirrorMenu(true); micStatus("Turn on Mic so the Mirror can hear yes or no."); }
   if (!needsMic && mirrorFab.classList.contains("needs-mic") && !mic.on) micStatus("");
   mirrorFab.classList.toggle("needs-mic", needsMic);
