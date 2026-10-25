@@ -125,8 +125,11 @@ def new_game(game_id: str, specs: list[dict]) -> GameState:
             raise EngineError(f"unknown player kind: {kind}")
         if not name:
             raise EngineError("every player needs a name")
+        position = spec.get("position") or 0          # debug: start where the physical token already is
+        if not isinstance(position, int) or not 0 <= position < rules.NUM_SQUARES:
+            raise EngineError(f"start position must be 0-{rules.NUM_SQUARES - 1}")
         players.append(Player(
-            id=f"p{i + 1}", name=name[:20], kind=kind, lane=i + 1,
+            id=f"p{i + 1}", name=name[:20], kind=kind, lane=i + 1, position=position,
             # Grandma is present from the start; remote kids connect by link.
             connected=kind != "remote",
         ))
@@ -216,6 +219,22 @@ def _start(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
     s.current = 0
     s.turn = 1
     return [{"type": "game_started", "players": [p.id for p in s.players]}] + _start_turn(s)
+
+
+# --- debugging: align the game with the physical board -----------------------
+
+def _set_position(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
+    """Host/debug: put a player's token on a square without a move (no salary, nothing resolved).
+    Used when the physical piece was placed or jogged by hand, so the two boards agree."""
+    _require_system(actor)
+    if s.phase == Phase.MOVING:
+        raise EngineError("wait for the token to stop moving")
+    p = s.player(a.get("player", ""))
+    square = a.get("square")
+    if not isinstance(square, int) or not 0 <= square < rules.NUM_SQUARES:
+        raise EngineError(f"square must be 0-{rules.NUM_SQUARES - 1}")
+    frm, p.position = p.position, square
+    return [{"type": "position_set", "player": p.id, "from": frm, "to": square}]
 
 
 # --- rolling and moving -----------------------------------------------------
@@ -605,6 +624,7 @@ def _start_turn(s: GameState) -> list[dict]:
 
 _HANDLERS: dict[str, Handler] = {
     "set_connected": _set_connected,
+    "set_position": _set_position,
     "start": _start,
     "roll": _roll,
     "dice": _dice,

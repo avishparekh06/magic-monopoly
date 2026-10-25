@@ -88,6 +88,7 @@ def is_local(request: Request) -> bool:
 class PlayerSpec(BaseModel):
     name: str
     kind: str  # "in_person" | "remote"
+    position: int | None = None   # debug: the square the physical token already sits on (default 0)
 
 
 class CreateGame(BaseModel):

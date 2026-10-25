@@ -295,6 +295,16 @@ function render() {
     for (const p of state.players) {
       taps.append(h("button", { class: "btn small secondary", onclick: () => net.send({ source: "vision", type: "player_card", player: p.id }) }, `${p.name}'s card on reader`));
     }
+    // Debug: put a token on a square without moving (physical piece placed by hand), or copy the belt's position.
+    const sync = h("div", { class: "row", style: "margin-top:8px; flex-wrap:wrap; gap:6px" },
+      h("span", { class: "muted" }, "Token positions:"));
+    for (const p of state.players) {
+      const inp = h("input", { type: "number", min: 0, max: 39, value: p.position, style: "width:64px", id: `pos-${p.id}` });
+      sync.append(h("span", {}, p.name), inp,
+        h("button", { class: "btn small secondary", onclick: () => net.send({ action: "set_position", player: p.id, square: Number(inp.value) }) }, "Set"));
+    }
+    sync.append(h("button", { class: "btn small", onclick: () => net.send({ action: "sync_belt" }) }, "Sync lane 1 from belt"));
+    taps.after(sync);
   }
 
   // Dev panel: when the token moves, move the dice pick off any total that would land on a card square,

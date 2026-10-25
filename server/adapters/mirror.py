@@ -135,6 +135,9 @@ class TemplateMirror(Mirror):
             return f"Repairs are due, but {who} owns no cottages or castles. Nothing to pay!"
         return f"{who} owes {e['amount']} gold in repairs."
 
+    def _position_set(self, e, s):
+        return f"A wave of the wand: {self._name(s, e['player'])}'s token now stands on {square(e['to'])['name']}."
+
     def _got_jail_key(self, e, s):
         return f"{self._name(s, e['player'])} tucks the key away for later."
 

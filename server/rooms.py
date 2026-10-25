@@ -200,7 +200,13 @@ class GameRoom:
                 raise EngineError(f"you can only act as {actor}")
             if msg.get("action") == "say":
                 return await self.say(actor, str(msg.get("text", "")))
-            action = {k: v for k, v in msg.items() if k != "player"}
+            if msg.get("action") == "sync_belt":
+                if role not in ("board", "host"):
+                    raise EngineError("only the board or host page can sync from the belt")
+                return await self.sync_belt()
+            # A seat may only act as itself, so its "player" claim is dropped; the board/host act as the
+            # system and may name a player (set_position, decision).
+            action = dict(msg) if actor == SYSTEM else {k: v for k, v in msg.items() if k != "player"}
             await self.dispatch(actor, action)
         except (EngineError, ValueError) as e:
             await self._safe_send(ws, {"type": "error", "message": str(e)})
@@ -214,6 +220,19 @@ class GameRoom:
         name = next((p.name for p in self.state.players if p.id == actor), "The host")
         await self.broadcast({"type": "mirror", "kind": "say", "from": actor, "name": name,
                               "text": f"{name} says: {text}"})
+
+    async def sync_belt(self) -> None:
+        """Debug: ask the belt where its token really is and put the game's token there."""
+        bridge = self.adapters.bridge
+        if not hasattr(bridge, "position"):
+            raise EngineError("this bridge cannot report a position (run with --bridge step)")
+        pos = await bridge.position()
+        if pos is None:
+            raise EngineError("the belt gateway did not answer with a position")
+        lanes = getattr(bridge, "lanes", 1)
+        for p in self.state.players:
+            if p.lane <= lanes:
+                await self.dispatch(SYSTEM, {"action": "set_position", "player": p.id, "square": pos})
 
     async def scene(self, text: str) -> None:
         """What the Mirror sees at the table, for the players who are not there."""
