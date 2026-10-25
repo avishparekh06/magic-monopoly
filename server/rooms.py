@@ -92,6 +92,21 @@ class GameRoom:
             await room.dispatch(SYSTEM, {"action": "retry_move"})
         return room
 
+    async def demo_resume(self) -> list[int]:
+        """Demo resume: the tokens were lined up on Once Upon a Time by hand. Tell the belt that, then drive
+        each token to the square the saved game has it on. Returns the lanes that were driven."""
+        players = [p for p in self.state.players if not p.bankrupt]
+        await self.adapters.bridge.reset([p.lane for p in players])
+        driven = []
+        for p in players:
+            if p.position:
+                result = await self.adapters.bridge.move(p.lane, 0, p.position)
+                if result.get("type") == "move_failed":
+                    log.warning("demo resume: lane %s did not reach square %s: %s", p.lane, p.position, result.get("reason"))
+                else:
+                    driven.append(p.lane)
+        return driven
+
     async def _start_adapters(self) -> None:
         await self.adapters.vision.start(self.on_adapter_event)
         await self.adapters.voice.start(self.on_adapter_event)

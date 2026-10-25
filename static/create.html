@@ -88,8 +88,10 @@ import { mountLobbyPlayground } from "/static/lobby-playground.js";
 import { connect, toast, h } from "/static/net.js";
 import { mountScene } from "/static/scene.js";
 import { avatarSvg } from "/static/avatars.js";
+import { mountDemoPanel } from "/static/demo.js";
 
 mountScene();
+mountDemoPanel();
 
 // A player's crest: their seat's avatar on their color (or their initial).
 function crest(p, extra = "") {

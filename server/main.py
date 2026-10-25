@@ -183,6 +183,9 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         # only logged; ours below feeds the engine, so his is left out.
         from .hardware import motor_routes
         app.router.routes.extend(r for r in motor_routes() if getattr(r, "path", None) != "/vision/events")
+        if dev:
+            from .jog import jog_router
+            app.include_router(jog_router(is_local))
 
     if not sim or (voice == "muse" and voice_factory is None) or (mirror == "muse" and mirror_factory is None) \
             or (bridge in ("http", "step") and bridge_factory is None):
@@ -464,7 +467,19 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     async def config():
         """What the pages should show: the dev panel and on-screen dice only in dev mode, and whether
         yes/no is answered by voice (Muse) so the board can leave out the Buy / No buttons."""
-        return {"dev": dev, "voice": voice}
+        return {"dev": dev, "voice": voice, "jog": dev and bridge == "arduino"}
+
+    @app.post("/api/games/{game_id}/demo-resume")
+    async def demo_resume(game_id: str, request: Request):
+        """Dev only, laptop only. The token was lined up on GO by hand: drive it to where the saved game has it.
+        Answers at once; the drive carries on in the background (a roll waits for it)."""
+        if not dev:
+            raise HTTPException(404, "demo mode needs --dev")
+        if not is_local(request):
+            raise HTTPException(403, "demo resume is for the board laptop")
+        room = get_room(game_id)
+        room._spawn(room.demo_resume())
+        return {"ok": True, "board_url": f"/board/{game_id}"}
 
     @app.get("/api/lan")
     async def lan(request: Request):
