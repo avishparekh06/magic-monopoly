@@ -11,6 +11,14 @@
   <link rel="stylesheet" href="/static/board-theme.css">
   <link rel="stylesheet" href="/static/session-hub.css">
   <link rel="stylesheet" href="/static/property-cards.css">
+  <style>
+    .drawn-card { border-radius: 12px; padding: .5em .8em; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.6);
+      max-width: 22em; margin: .2em auto; font-size: .7em; box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+    .drawn-card .deck { font-size: .75em; opacity: .9; letter-spacing: .04em; text-transform: uppercase; }
+    .drawn-card .art { font-size: 2.2em; line-height: 1.1; }
+    .drawn-card .title { font-weight: 700; font-size: 1.15em; }
+    .drawn-card .text { font-size: .95em; opacity: .95; }
+  </style>
 </head>
 <body class="board-page">
   <header class="board-masthead">
@@ -325,9 +333,16 @@ function render() {
       h("button", { class: "btn", disabled: waiting.length > 0, onclick: () => net.send({ action: "start" }) }, "Start the game"));
   } else {
     const roll = state.last_roll;
+    const lc = state.last_card && cardData.cards.find((k) => k.id === state.last_card.id);
+    const drawer = lc && state.players.find((p) => p.id === state.last_card.for);
     c.replaceChildren(
       h("div", { class: "center-title" }, "Magic Mirror"),
       roll ? h("div", { class: "dice" }, `Roll: ${roll}`) : "",
+      lc ? h("div", { class: "drawn-card", style: `background:${cardData.decks[lc.deck].color}` },
+        h("div", { class: "deck" }, `${cardData.decks[lc.deck].name} - drawn by ${drawer?.name ?? "?"}`),
+        h("div", { class: "art" }, lc.art || ""),
+        h("div", { class: "title" }, lc.title),
+        h("div", { class: "text" }, lc.text)) : "",
       h("div", { class: "center-phase" }, statusText(state, boardData, "board")));
   }
 
