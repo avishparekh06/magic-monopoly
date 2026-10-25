@@ -3,8 +3,12 @@
   --ink-dim: var(--ink-soft); --parchment-ink: var(--ink); --gold-ink: var(--ink);
   --wait: #b07d22; --sky-3: #e9d6af; --radius: 6px; --grass-h: 80px;
   background: var(--sky-top); height: 100dvh; min-height: 0;
-  display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden;
+  display: grid; grid-template-rows: auto minmax(0, 1fr); grid-auto-rows: max-content; overflow: hidden;
 }
+/* Pin the two real rows. Anything else that lands in <body> (a browser extension's div, a notice, a
+   sparkle) must not steal the board's row and push the header into the stretchy one. */
+.board-page > .board-masthead { grid-row: 1; }
+.board-page > .layout { grid-row: 2; }
 .board-page .scene .tower-wrap { left: -100px; width: 290px; height: min(60vh, 530px); opacity: .4; }
 .board-page .scene .moon { left: auto; right: 6vw; top: 18px; width: 52px; height: 52px; }
 .board-masthead { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 20px; width: 100%; max-width: 1660px; margin: 0 auto; padding: 12px 24px 14px; }
