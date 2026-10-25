@@ -1,4 +1,4 @@
-"""The remote step service: relative forward moves on track 1 with a key."""
+"""The remote belt gateway: /position tells where the token is; /step moves it forward n squares."""
 import asyncio
 
 import httpx
@@ -6,9 +6,10 @@ import httpx
 from server.adapters.bridge import StepBeltBridge
 
 
-class FakeStep:
-    def __init__(self, key="k"):
-        self.key, self.calls, self.down = key, [], False
+class FakeGateway:
+    def __init__(self, key="k", square=0):
+        self.key, self.square, self.calls, self.down = key, square, [], False
+        self.position_ok = True
 
     def transport(self):
         def handler(req: httpx.Request) -> httpx.Response:
@@ -17,25 +18,69 @@ class FakeStep:
             self.calls.append((req.method, req.url.path, dict(req.url.params)))
             if req.url.params.get("key") != self.key:
                 return httpx.Response(401, json={"detail": "missing or wrong key"})
-            return httpx.Response(200, json={"ok": True, "squares": int(req.url.params["squares"])})
+            if req.url.path == "/position":
+                if not self.position_ok:
+                    return httpx.Response(500, json={"detail": "no bench tool"})
+                return httpx.Response(200, json={"square": self.square, "name": "x", "type": "property"})
+            if req.url.path == "/step":
+                n = int(req.url.params["squares"])
+                frm = self.square
+                self.square = (self.square + n) % 40
+                return httpx.Response(200, json={"ok": True, "square": self.square, "name": "x", "type": "property",
+                                                 "from": {"id": frm, "name": "y", "type": "property"},
+                                                 "squares": n, "motor_steps": 195 * n, "moved": True,
+                                                 "passed_go": frm + n >= 40})
+            return httpx.Response(404)
         return httpx.MockTransport(handler)
 
 
-def test_sends_forward_distance_with_key_and_wraps_past_go():
-    f = FakeStep()
-    b = StepBeltBridge("https://belt.example/", "k", transport=f.transport())
+def steps_sent(g):
+    return [int(c[2]["squares"]) for c in g.calls if c[1] == "/step"]
+
+
+def test_steps_forward_distance_and_wraps():
+    g = FakeGateway()
+    b = StepBeltBridge("https://belt.example/", "k", transport=g.transport())
     assert asyncio.run(b.move(1, 0, 7)) == {"type": "move_done", "lane": 1, "square": 7}
-    assert f.calls[-1] == ("POST", "/step", {"squares": "7", "key": "k"})
-    assert asyncio.run(b.move(1, 38, 2))["square"] == 2
-    assert f.calls[-1][2]["squares"] == "4"                       # 38 -> 2 is 4 squares forward
-    assert asyncio.run(b.move(1, 5, 5))["type"] == "move_done" and len(f.calls) == 2   # no call for 0 squares
+    assert steps_sent(g) == [7] and g.square == 7
+    assert asyncio.run(b.move(1, 38, 2)) == {"type": "move_done", "lane": 1, "square": 2}   # gateway was at 7 -> 35 squares
+    assert steps_sent(g)[-1] == (2 - 7) % 40 and g.square == 2
+
+
+def test_self_corrects_from_the_gateways_real_position():
+    g = FakeGateway(square=36)                       # stale bench position, game thinks 0
+    b = StepBeltBridge("https://belt.example", "k", transport=g.transport())
+    r = asyncio.run(b.move(1, 0, 5))
+    assert r["type"] == "move_done" and r["square"] == 5
+    assert steps_sent(g) == [9] and g.square == 5    # 36 -> 5 is 9 squares forward
+
+
+def test_position_unavailable_falls_back_to_engine_distance():
+    g = FakeGateway(square=3); g.position_ok = False      # token really is on 3; only /position is broken
+    b = StepBeltBridge("https://belt.example", "k", transport=g.transport())
+    assert asyncio.run(b.move(1, 3, 9))["type"] == "move_done" and steps_sent(g) == [6]
 
 
 def test_other_lanes_simulated_and_errors_reported():
-    f = FakeStep()
-    b = StepBeltBridge("https://belt.example", "wrong", lanes=1, transport=f.transport())
-    assert asyncio.run(b.move(2, 0, 3))["type"] == "move_done" and not f.calls
+    g = FakeGateway()
+    b = StepBeltBridge("https://belt.example", "wrong", lanes=1, transport=g.transport())
+    assert asyncio.run(b.move(2, 0, 3))["type"] == "move_done" and not g.calls
     r = asyncio.run(b.move(1, 0, 3))
-    assert r["type"] == "move_failed" and "401" in r["reason"] and "wrong key" in r["reason"]
-    f.down = True
+    assert r["type"] == "move_failed" and "401" in r["reason"]
+    g.down = True
     assert "unreachable" in asyncio.run(b.move(1, 0, 3))["reason"]
+
+
+def test_reported_square_mismatch_is_a_failed_move():
+    g = FakeGateway()
+    orig = g.transport()
+
+    def lying(req):
+        resp = orig.handler(req)
+        if req.url.path == "/step":
+            data = resp.json(); data["square"] = 99
+            return httpx.Response(200, json=data)
+        return resp
+    b = StepBeltBridge("https://belt.example", "k", transport=httpx.MockTransport(lying))
+    r = asyncio.run(b.move(1, 0, 4))
+    assert r["type"] == "move_failed" and "reports square 99" in r["reason"]

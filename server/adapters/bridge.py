@@ -151,13 +151,16 @@ class HttpBeltBridge(MoveBridge):
 
 
 class StepBeltBridge(MoveBridge):
-    """Drives track 1 through a minimal remote belt service:
+    """Drives track 1 through the remote belt gateway (behind a Cloudflare tunnel):
 
-        POST <base>/step?squares=<n>&key=<key>      move the token n squares forward
+        GET  <base>/position?key=<key>               -> {"square": 14, "name": ..., "type": ...}
+        POST <base>/step?squares=<n>&key=<key>       -> {"ok": true, "square": 17, "from": {"id": 14, ...},
+                                                         "squares": 3, "motor_steps": ..., "moved": true, "passed_go": ...}
 
-    Moves are relative, so the bridge sends the forward distance between the engine's from and
-    to squares. There is no way to set or read the tracked square, so the token must start on
-    Once Upon a Time; a drift is fixed by jogging the token by hand. Lanes above `lanes` are simulated.
+    Square ids are the game's own (0-39). Before each move the bridge asks where the token really is
+    and steps the forward distance from there to the engine's target, so a stale or drifted tracked
+    square self-corrects instead of compounding. The square the gateway reports afterwards must be
+    the target, or the move is reported as failed. Lanes above `lanes` are simulated.
     """
 
     def __init__(self, base_url: str, key: str, lanes: int = 1, fallback: MoveBridge | None = None,
@@ -169,16 +172,36 @@ class StepBeltBridge(MoveBridge):
         self.move_timeout = move_timeout
         self._transport = transport
 
+    def _client(self):
+        import httpx
+        return httpx.AsyncClient(base_url=self.base_url, timeout=self.move_timeout, transport=self._transport)
+
+    async def position(self) -> int | None:
+        """The gateway's tracked square for track 1, or None if it cannot be read."""
+        try:
+            async with self._client() as c:
+                r = await c.get("/position", params={"key": self.key})
+            if r.status_code == 200:
+                sq = r.json().get("square")
+                return int(sq) if sq is not None else None
+            log.warning("belt /position -> %s %s", r.status_code, r.text[:120])
+        except Exception as e:
+            log.warning("belt /position unreachable: %s", e)
+        return None
+
     async def move(self, lane: int, frm: int, to: int) -> dict:
         if lane > self.lanes:
             return await self.fallback.move(lane, frm, to)
-        n = steps_between(frm, to)
+        actual = await self.position()
+        start = actual if actual is not None else frm
+        if actual is not None and actual != frm:
+            log.warning("belt lane %d: gateway says square %d, game expected %d; stepping from %d", lane, actual, frm, actual)
+        n = steps_between(start, to)
         if n == 0:
             return {"type": "move_done", "lane": lane, "square": to}
-        import httpx
         try:
-            async with httpx.AsyncClient(timeout=self.move_timeout, transport=self._transport) as c:
-                r = await c.post(f"{self.base_url}/step", params={"squares": n, "key": self.key})
+            async with self._client() as c:
+                r = await c.post("/step", params={"squares": n, "key": self.key})
         except Exception as e:
             return {"type": "move_failed", "lane": lane, "reason": f"belt service unreachable: {e}"}
         if r.status_code != 200:
@@ -187,11 +210,29 @@ class StepBeltBridge(MoveBridge):
             except ValueError:
                 detail = r.text
             return {"type": "move_failed", "lane": lane, "reason": f"belt service {r.status_code}: {str(detail)[:140]}"}
-        log.info("belt lane %d: stepped %d squares (%d -> %d)", lane, n, frm, to)
+        try:
+            body = r.json()
+        except ValueError:
+            body = {}
+        reported = body.get("square")
+        if isinstance(reported, int) and reported != to:
+            return {"type": "move_failed", "lane": lane,
+                    "reason": f"belt stepped {n} but reports square {reported}, expected {to}; check Set position"}
+        log.info("belt lane %d: stepped %d squares (%d -> %d, motor_steps=%s)", lane, n, start, to, body.get("motor_steps"))
         return {"type": "move_done", "lane": lane, "square": to}
 
     async def reset(self, lanes: list[int]) -> None:
-        log.info("game start: token on lane 1 must be on Once Upon a Time (the step service has no set-position)")
+        """Game start: the game puts every token on square 0. The gateway has no set-position, so if its
+        tracked square differs, the first move simply steps from wherever it says the token is."""
+        pos = await self.position()
+        if pos is None:
+            log.warning("game start: belt gateway position unknown; first move steps relative to square 0")
+        elif pos != 0:
+            log.warning("game start: belt gateway says track 1 is on square %d, game starts at 0; "
+                        "the first move will drive it from %d (use the bench tool's Set position if that is wrong)", pos, pos)
+        else:
+            log.info("game start: belt track 1 at square 0")
 
     async def restore(self, positions: dict[int, int]) -> None:
-        log.info("resume: place tokens by hand at %s (lane: square); moves continue relative from there", positions)
+        pos = await self.position()
+        log.info("resume: game has tokens at %s (lane: square); belt gateway says track 1 is at %s", positions, pos)
