@@ -5,42 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="preload" href="/static/fonts/planewalker/regular.otf" as="font" type="font/otf" crossorigin>
   <link rel="stylesheet" href="/static/typography.css">
-  <title>Magic Mirror — Play with Grandma</title>
+  <title>Monopoly — Your player board</title>
   <link rel="stylesheet" href="/static/style.css">
-  <link rel="stylesheet" href="/static/session-hub.css?v=save-cards-3">
+  <link rel="stylesheet" href="/static/fairytale.css">
+  <link rel="stylesheet" href="/static/session-hub.css?v=account-forms-7">
   <link rel="stylesheet" href="/static/property-cards.css">
-  <style>
-    header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding-right: 72px; }
-    header .token-dot { width: 52px; height: 52px; font-size: 24px; }
-    header .me { flex: 1; min-width: 0; font-family: var(--font-game); font-size: 24px; }
-    header .bal { font-size: 30px; font-weight: 800; color: var(--gold); }
-    .banner { text-align: center; font-family: var(--font-game); font-size: 24px; padding: 14px; border-radius: var(--radius); background: var(--sky-2); margin-bottom: 16px; }
-    .banner.mine { background: var(--gold); color: var(--gold-ink); animation: pulse 1.4s ease-in-out infinite; }
-    @keyframes pulse { 50% { transform: scale(1.02); } }
-    .actions { display: grid; gap: 12px; margin: 16px 0; }
-    .actions .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .status { text-align: center; font-size: 18px; margin: -6px 0 14px; color: var(--ink-dim); min-height: 1.3em; }
-    .where { text-align: center; margin: 8px 0 0; font-size: 18px; }
-    .center-title { font-family: var(--font-game); color: var(--gold); }
-    .magic-card { text-align: center; border-radius: var(--radius); padding: 20px; color: #fff; }
-    .picker summary { cursor: pointer; color: var(--ink-dim); padding: 8px 0; }
-    .picker .cards { display: grid; gap: 8px; margin-top: 8px; }
-    .picker .cards .btn { justify-content: flex-start; text-align: left; font-size: 16px; min-height: 52px; }
-    .places { list-style: none; margin: 0; padding: 0; }
-    .places li { display: flex; gap: 10px; align-items: center; padding: 6px 0; }
-    .places .swatch { width: 14px; height: 14px; border-radius: 4px; flex: none; }
-    .lobby-hero { text-align: center; padding: 24px 0; }
-    .mirror-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-    .mirror-head h3 { margin: 0; }
-    .mirror .log li:nth-child(n+4) { display: none; }
-    .say summary { cursor: pointer; color: var(--ink-dim); padding: 6px 0; }
-    .lobby-hero .big { font-family: var(--font-game); font-size: 30px; color: var(--gold); }
-  </style>
+  <link rel="stylesheet" href="/static/phone-theme.css?v=storybook-1">
 </head>
-<body>
-  <span class="conn pill" id="conn">…</span>
+<body class="phone-page">
+  <p class="phone-connection" id="conn" role="status" hidden></p>
   <div class="wrap">
-    <header id="header" hidden>
+    <div class="phone-brand" aria-label="Monopoly Fairy Tale Edition">
+      <span class="banner">MONOPOLY</span>
+      <span class="byline">Fairy Tale Edition</span>
+    </div>
+    <header class="phone-player-header" id="header" hidden>
       <span id="me-dot"></span>
       <span class="me" id="me-name"></span>
       <span class="bal" id="me-bal"></span>
@@ -59,13 +38,13 @@
 
     <!-- Game -->
     <section id="game" hidden>
-      <div class="banner" id="banner"></div>
+      <div class="phone-turn-banner" id="banner"></div>
       <p class="status" id="status"></p>
       <div id="board"></div>
       <p class="where" id="where"></p>
 
       <div class="actions">
-        <button class="btn huge" id="roll">Roll</button>
+        <button class="btn huge" id="roll">Roll Dice</button>
         <div class="pair" id="decide" hidden>
           <button class="btn huge" id="buy">Buy!</button>
           <button class="btn huge secondary" id="pass">No thanks</button>
@@ -97,10 +76,14 @@
   </div>
 
 <script type="module">
+import { mountScene } from "/static/scene.js";
+import { avatarSvg } from "/static/avatars.js";
 import { renderPropertyCards } from '/static/property-cards.js';
 import { mountSessionHub } from "/static/session-hub.js";
 import { connect, toast, h, seatList, tokenDot, narrate } from "/static/net.js";
 import { loadBoard, createBoardView, statusText } from "/static/board.js";
+
+mountScene();
 
 // URL is /game/<game_id>/join/<seat_token>
 const [, , gameId, , seatToken] = location.pathname.split("/");
@@ -135,7 +118,11 @@ const net = connect(`/ws/${gameId}?seat=${seatToken}`, {
   onState: (s) => { state = s; render(); },
   onMessage: (m) => { board.onEvent(m); if (m.type === "mirror") { addLog(m.text); speak(m.text); } },
   onError: (m) => toast(m, "error"),
-  onStatus: (s) => { document.getElementById("conn").textContent = { online: "● live", offline: "○ reconnecting", connecting: "…", closed: "" }[s]; },
+  onStatus: (s) => {
+    const notice = document.getElementById("conn");
+    notice.textContent = { offline: "Reconnecting to your game…", connecting: "Connecting to your game…", closed: "Connection closed" }[s] || "";
+    notice.hidden = s === "online";
+  },
   onClosed: showNotice,
 });
 
@@ -154,9 +141,16 @@ function render() {
 
   // Header: who am I and how much do I have
   document.getElementById("header").hidden = false;
-  document.getElementById("me-dot").replaceChildren(tokenDot(mine));
+  const crest = h("span", { class: "phone-player-crest", "aria-hidden": "true" });
+  const portrait = avatarSvg(mine.id);
+  if (portrait) {
+    crest.innerHTML = portrait;
+    crest.firstElementChild.setAttribute('width', '37');
+    crest.firstElementChild.setAttribute('height', '42');
+  } else crest.append(tokenDot(mine));
+  document.getElementById("me-dot").replaceChildren(crest);
   document.getElementById("me-name").textContent = mine.name;
-  document.getElementById("me-bal").textContent = `${mine.balance} G`;
+  document.getElementById("me-bal").textContent = `${mine.balance.toLocaleString()} gold`;
 
   document.getElementById("lobby").hidden = !inLobby;
   document.getElementById("game").hidden = inLobby;
@@ -169,12 +163,12 @@ function render() {
   }
 
   board.render(state);
-  board.center.replaceChildren(h("div", { class: "center-title" }, "Magic Mirror"),
+  board.center.replaceChildren(h("div", { class: "phone-board-brand" }, "MONOPOLY"),
     state.last_roll ? h("div", {}, `Roll: ${state.last_roll}`) : "");
 
   const myTurn = state.current_player === me;
   const banner = document.getElementById("banner");
-  banner.className = `banner${myTurn ? " mine" : ""}`;
+  banner.className = `phone-turn-banner${myTurn ? " mine" : ""}`;
   banner.textContent = state.phase === "GAME_OVER"
     ? (state.winner === me ? "You won! " : "The tale is told!")
     : myTurn ? "Your turn! " : `${current.name}'s turn`;
@@ -209,7 +203,7 @@ function render() {
   const lc = state.last_card;
   const card = lc && lc.for === me && cardData.cards.find((c) => c.id === lc.id);
   document.getElementById("card-slot").replaceChildren(card ? h("div", {
-    class: "magic-card panel", style: `background: ${cardData.decks[card.deck].color}`,
+    class: "magic-card panel", style: `--deck-color: ${cardData.decks[card.deck].color}`,
   }, h("h2", {}, card.title), h("p", {}, card.text)) : "");
 
   const places = document.getElementById("places");

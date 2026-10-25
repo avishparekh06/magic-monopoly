@@ -37,9 +37,13 @@ try {
  };
  const visible=selector=>`[...document.querySelectorAll(${JSON.stringify(selector)})].filter(e=>e.checkVisibility()).length`;
  await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+ await send('Page.navigate',{url:api+'/game/career_waiting/join/seat2-career_waiting'});
+ await waitFor('location.pathname==="/" && document.getElementById("guest-waiting")?.hidden===false && document.getElementById("guest-hello")?.textContent.includes("Maya")');
+ if(!await evaluate(`!!document.querySelector('.scene')&&!!document.querySelector('.logo .banner')&&!document.querySelector('svg.fairy')`))throw Error('Waiting join link did not use current home theme');
  await send('Page.navigate',{url:api});await waitFor('document.getElementById("home-menu")?.hidden===false');
  if(await evaluate(visible('#home-menu > button'))!==2)throw Error('Home has more than two actions');
  await evaluate('document.getElementById("home-play").click()');await waitFor('document.querySelectorAll("a.hub-save-slot").length===2');
+ if(!await evaluate(`(()=>{const art=[...document.querySelectorAll('a.hub-save-slot .hub-slot-art')];return art[0].dataset.theme==='snow-white'&&art[1].dataset.theme==='sleeping-beauty'&&new Set(art.map(el=>getComputedStyle(el).backgroundImage)).size===art.length})()`))throw Error('Saved games need different fairy-tale covers');
  if(!await evaluate(`document.querySelectorAll('.hub-save-grid > .hub-save-slot').length===3&&document.querySelectorAll('.hub-save-slot.is-empty').length===1&&!document.querySelector('.hub-save-preview')`))throw Error('Save screen must show tall slots with an empty placeholder');
  if(!await evaluate(`document.querySelector('.hub-save-slot[data-game="career_active"]').getAttribute('href')==='/board/career_active'&&document.querySelector('.hub-save-slot[data-game="career_waiting"]').getAttribute('href').includes('game=career_waiting')`))throw Error('Saved game/lobby resume links are wrong');
  await evaluate(`const slot=document.querySelector('a.hub-save-slot');window.firstSave=slot.dataset.game;slot.focus();slot.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))`);
@@ -62,6 +66,7 @@ try {
  if(await evaluate('document.querySelectorAll(".hub-session").length')!==4)throw Error('Finished filter incorrect');
  await evaluate('document.querySelector("[data-game=career_win] button").click()');await waitFor('document.querySelectorAll(".hub-player-stats").length===3');
  if(await evaluate('document.querySelectorAll(".hub-player-stats[open]").length')!==0)throw Error('Player details should start collapsed');
+ if(await evaluate('document.querySelectorAll(".hub-player-stats > summary .hub-ledger-avatar").length')!==3)throw Error('Player-result portraits missing');
  if(!await evaluate(`document.querySelector('.hub-player-stats summary').innerText.includes('Finish #1')`))throw Error('Standings missing');
  if(await evaluate(visible('.hub-timeline'))!==0)throw Error('Timeline should start collapsed');
  await evaluate(`document.querySelector('.hub-timeline').closest('details').open=true`);
@@ -74,11 +79,13 @@ try {
  await login('career_alice');
  if(await evaluate(metric('Average finish'))!=='#1.5'||await evaluate(metric('Wins'))!=='1')throw Error('Lifetime figures changed');
  if(await evaluate(visible('.hub-metric'))!==4)throw Error('Too many initial statistics');
+ if(!await evaluate(`document.querySelectorAll('.hub-highlights .hub-metric').length===4&&['none','normal'].includes(getComputedStyle(document.getElementById('session-hub'),'::before').content)`))throw Error('Overall stats should use compact tiles without notebook rings');
  if(!await evaluate(`document.querySelector('.hub-favorite').innerText.includes('Stepmother')`))throw Error('Favorite missing');
  await fs.writeFile('/private/tmp/magic-monopoly-career-overall.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
  await clickText('Games');await waitFor('document.querySelectorAll(".hub-session").length===2');
  await select('Filter games','all');if(await evaluate('document.querySelectorAll(".hub-session").length')!==4)throw Error('Account scope includes other games');
  await select('Game collection','all');if(await evaluate('document.querySelectorAll(".hub-session").length')!==6)throw Error('Available game scope missing');
+ if(!await evaluate(`document.querySelectorAll('.hub-history-grid .hub-session .hub-slot-art').length===6&&document.querySelectorAll('.hub-history-grid .hub-slot-action').length===6&&[...document.querySelectorAll('.hub-history-grid .hub-slot-portrait svg')].every(svg=>svg.getBoundingClientRect().width<=40)`))throw Error('History needs rounded cards with compact portraits and one stats action');
  await fs.writeFile('/private/tmp/magic-monopoly-career-games.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
  await evaluate('document.getElementById("session-hub").scrollTop=100;window.libraryScroll=document.getElementById("session-hub").scrollTop;document.querySelector("[data-game=career_guest] button").click()');await waitFor('!!document.querySelector(".hub-player-stats")');
  await evaluate(`const player=document.querySelector('.hub-player-stats[data-player=p1]');player.open=true;player.querySelector('.hub-details').open=true`);
@@ -107,6 +114,13 @@ try {
  await evaluate('document.querySelector(".hub-game-summary a").click()');await waitFor('document.getElementById("header")?.hidden===false && !!document.getElementById("phone-session-stats")');
  if((await(await fetch(api+'/api/games')).json()).length!==count)throw Error('Resume created another game');
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ await waitFor('document.body.classList.contains("phone-page") && !!document.querySelector(".phone-player-crest svg")');
+ for(const [width,height] of [[390,844],[320,720]]){
+   await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});await pause(100);
+   if(!await evaluate(`(()=>{const header=document.getElementById('header'),portrait=document.querySelector('.phone-player-crest svg');return !!document.querySelector('.phone-brand .banner')&&getComputedStyle(header).backgroundColor==='rgb(255, 242, 213)'&&getComputedStyle(document.getElementById('banner')).borderRadius==='6px'&&portrait.getBoundingClientRect().width<=42&&document.documentElement.scrollWidth<=innerWidth+1&&document.getElementById('conn').hidden})()`))throw Error('Joined phone page lost storybook theme or overflows at '+width);
+ }
+ await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
+ await fs.writeFile('/private/tmp/magic-monopoly-joined-phone.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
  await evaluate('document.getElementById("phone-session-stats").click()');await waitFor('!!document.querySelector(".hub-player-stats")');
  if(!await evaluate('document.documentElement.scrollWidth<=innerWidth+1 && document.getElementById("session-hub").scrollWidth<=document.getElementById("session-hub").clientWidth+1'))throw Error('Phone overflow');
  await fs.writeFile('/private/tmp/magic-monopoly-career-phone.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
@@ -134,6 +148,12 @@ try {
  await send('Network.setBlockedURLs',{urls:[]});await clickText('Try again');await waitFor('!!document.querySelector(".hub-session")');
  await signout();
  await clickText('Create an account');await waitFor('!!document.querySelector("input[name=repeat]")');
+ if(!await evaluate(`document.querySelector('.hub-password-help').textContent.includes('8–128')`))throw Error('Account creation must show password requirements');
+ await evaluate(`document.querySelector('input[name=password]').value='storybook-test-password';document.querySelector('input[name=repeat]').value='different-password';document.querySelector('input[name=username]').value='career_new';document.querySelector('#session-hub form').requestSubmit()`);
+ if(!await evaluate(`document.querySelector('.hub-error').textContent.includes('do not match')&&document.activeElement.name==='repeat'`))throw Error('Mismatched passwords must explain the problem and focus confirmation');
+ await evaluate(`document.querySelector('input[name=show_password]').click()`);
+ if(!await evaluate(`document.querySelector('input[name=password]').type==='text'&&document.querySelector('input[name=repeat]').type==='text'&&document.querySelector('input[name=password]').value==='storybook-test-password'`))throw Error('Show password changed the entered password');
+ await evaluate(`document.querySelector('input[name=show_password]').click()`);
  await evaluate(`for(const [name,value] of Object.entries({username:'career_new',password:'storybook-test-password',repeat:'storybook-test-password',display_name:'New Wanderer'}))document.querySelector('#session-hub input[name="'+name+'"]').value=value;document.querySelector('#session-hub form').requestSubmit()`);
  await waitFor(`${metric('Games played')}==='0'`);
  if(await evaluate(metric('Wins'))!=='0'||await evaluate(metric('Average finish'))!=='—')throw Error('New account has fabricated results');
@@ -157,6 +177,18 @@ try {
  if(!await evaluate('document.documentElement.scrollWidth<=innerWidth+1 && document.getElementById("session-hub").scrollWidth<=document.getElementById("session-hub").clientWidth+1'))throw Error('320px history overflow');
  await clickText('Overall stats');await waitFor('!!document.querySelector(".hub-highlights")');
  if(!await evaluate('document.getElementById("session-hub").scrollWidth<=document.getElementById("session-hub").clientWidth+1'))throw Error('320px stats overflow');
+ await fs.writeFile('/private/tmp/magic-monopoly-ledger-phone.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
+ await send('Page.navigate',{url:api+lobbyHref});await waitFor('!!document.querySelector("#guests .who button")');
+ await evaluate(`document.querySelector('#guests .who button').click()`);await waitFor('!!document.querySelector(".hub-account-modes")');
+ if(!await evaluate(`document.querySelector('.hub-account-modes [aria-pressed="true"]').textContent==='Sign in'&&!document.querySelector('input[name=repeat]').required`))throw Error('Existing account linking should explicitly identify sign-in mode');
+ await clickText('Create account','.hub-account-modes button');
+ if(!await evaluate(`document.querySelector('input[name=repeat]').required&&document.querySelector('input[name=password]').minLength===8&&document.querySelector('input[name=password]').autocomplete==='new-password'&&document.querySelector('#session-hub button[type=submit]').textContent==='Create account & save stats'`))throw Error('Creation mode did not switch validation and submit action');
+ await evaluate(`for(const [name,value] of Object.entries({username:'career_link_created',password:'storybook-test-password',repeat:'different-password'}))document.querySelector('#session-hub input[name="'+name+'"]').value=value;document.querySelector('#session-hub form').requestSubmit()`);
+ if(!await evaluate(`document.querySelector('.hub-error').textContent.includes('do not match')`))throw Error('Linked account creation skipped confirmation');
+ await evaluate(`document.querySelector('#session-hub input[name=repeat]').value='storybook-test-password';document.querySelector('#session-hub form').requestSubmit()`);
+ await waitFor('document.getElementById("session-hub-title").textContent==="Stats account linked"');
+ if(!await evaluate(`(async()=>{const roster=await(await fetch('/api/games/'+new URLSearchParams(location.search).get('game')+'/accounts?host='+new URLSearchParams(location.search).get('host'))).json();return roster.players.p2.username==='career_link_created'&&(await(await fetch('/api/auth/me')).json()).account.username==='career_new'})()`))throw Error('New player account was not linked or replaced the signed-in host');
+ console.log('PASS: Sign-in and creation modes are explicit; password confirmation/visibility work; new accounts register and link without changing the host login');
  console.log('PASS: Failed loads keep navigation; account creation, new games, editable lobby continuation and 320px layouts work');
 }catch(e){
  console.error(e);

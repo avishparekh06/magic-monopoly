@@ -1,0 +1,64 @@
+/* The join-link player screen shares the home page's storybook palette and artwork. */
+.phone-page { --ink-dim: var(--ink-soft); --parchment-ink: var(--ink); --gold-ink: var(--ink); --sky-2: #f6e7c8; --sky-3: #eee0bf; --radius: 7px; --grass-h: 65px; color-scheme: light; }
+.phone-page .scene .tower-wrap { width: 210px; left: -100px; height: 65vh; opacity: .25; }
+.phone-page .scene .moon { right: 12px; left: auto; top: 12px; width: 38px; height: 38px; }
+.phone-page .wrap { position: relative; z-index: 1; width: 100%; max-width: 650px; margin: 0 auto; padding: 20px 16px 45px; }
+.phone-brand { display: flex; flex-direction: column; align-items: center; margin: 4px 0 22px; }
+.phone-brand .banner { display: block; font-size: clamp(30px, 8vw, 42px); }
+.phone-brand .byline { font-size: 12px; padding: 4px 16px; }
+.phone-player-header { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 13px 15px; margin-bottom: 14px; border: 1px solid #bca179; border-radius: 7px; background: #fff2d5; color: #49354e; box-shadow: 0 3px 0 #1e12284a; }
+.phone-player-crest { display: grid; place-items: center; width: 44px; height: 48px; background: #e5d7b8; border: 2px solid #bca179; border-radius: 7px; overflow: hidden; }
+.phone-player-crest svg { width: 37px; height: 42px; display: block; }
+.phone-player-header .me { font-size: 24px; line-height: 1.1; overflow-wrap: anywhere; }
+.phone-player-header .bal { padding: 8px 10px; border-radius: 5px; background: #62445e; color: #fff2d5; font-size: 20px; white-space: nowrap; }
+.phone-turn-banner { margin: 0 0 12px; border: 1px solid #ae9366; border-radius: 6px; padding: 12px 16px; background: #e6e8db; color: #49354e; text-align: center; font-size: 23px; }
+.phone-turn-banner.mine { background: #62445e; color: #fff2d5; border-color: #c8a361; }
+.phone-page .status, .phone-page .where { color: #fff1dc; text-align: center; font-size: 17px; line-height: 1.4; margin: 9px 0 16px; overflow-wrap: anywhere; }
+.phone-page .panel { background: #fff2d5; color: #49354e; border: 1px solid #bca179; border-radius: 7px; box-shadow: 0 3px 0 #1e12284a; padding: 17px; margin-bottom: 17px; }
+.phone-page .panel h2, .phone-page .panel h3 { color: #62445e; }
+.phone-page :is(.wrap, .notice) .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 44px; padding: 10px 16px; border: 2px solid #683c22; border-radius: 5px; background: #b9784a; color: #2f1d13; box-shadow: 0 2px 0 #683c22; font: 18px/1.25 var(--font-game); white-space: normal; }
+.phone-page :is(.wrap, .notice) .btn.huge { min-height: 62px; font-size: 23px; width: 100%; }
+.phone-page :is(.wrap, .notice) .btn.secondary { border: 1px solid #bca179; background: #fff2d5; color: #49354e; box-shadow: 0 2px 0 #bca179; }
+.phone-page :is(.wrap, .notice) .btn.small { min-height: 36px; font-size: 14px; padding: 7px 11px; }
+.phone-page #roll { background: #62445e; color: #fff2d5; border-color: #c8a361; box-shadow: 0 3px 0 #382737; }
+.phone-page :is(.wrap, .notice) .btn:disabled { opacity: .55; }
+.phone-page .actions { display: grid; gap: 12px; margin: 15px 0 20px; }
+.phone-page .pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px; }
+.phone-page .panel .pair { grid-template-columns: minmax(0, 1fr) auto; }
+.phone-page input, .phone-page select { color: #49354e; background: #fffaf0; border: 1px solid #bca179; border-radius: 5px; }
+.phone-page #board.mm-board { background: #805439; border: 2px solid #ad8963; border-radius: 4px; padding: 3px; gap: 1px; box-shadow: 0 0 0 3px #683c22, 0 5px 12px #0004; }
+.phone-page #board .mm-sq { background: #eee7d5; color: #49354e; border-radius: 0; }
+.phone-page #board .mm-body { justify-content: center; }
+.phone-page #board .mm-name { font-size: .88em; font-weight: 400; }
+.phone-page #board .mm-price { color: #805c30; opacity: 1; }
+.phone-page #board .mm-icon { color: #785268; }
+.phone-page #board .mm-icon svg { display: block; width: 1em; height: 1em; }
+.phone-page #board .mm-band { filter: saturate(.7); }
+.phone-page #board .mm-center { background: #589574 url('/static/art/board-garden.svg') center / cover; border-radius: 0; color: #fff2d5; }
+.phone-board-brand { padding: .22em .36em; transform: rotate(-35deg); background: #a8392d; color: #f2e3c2; border: 1px solid #f2e3c2; font-size: 1.7em; font-weight: 700; letter-spacing: .03em; }
+.phone-page .magic-card.panel { text-align: center; border-top: 7px solid var(--deck-color, #bca179); }
+.phone-page .magic-card h2 { font-size: 26px; line-height: 1.15; }
+.phone-page .magic-card p { margin-bottom: 0; font-size: 18px; }
+.phone-page .picker summary, .phone-page .say summary { color: #62445e; cursor: pointer; padding: 7px 0; }
+.phone-page .picker .cards { display: grid; gap: 9px; margin-top: 10px; max-height: 350px; overflow-y: auto; }
+.phone-page .picker .cards .btn { min-height: 48px; text-align: left; justify-content: flex-start; font-size: 16px; }
+.phone-page .mirror-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.phone-page .mirror-head h3 { margin: 0; }
+.phone-page .mirror .log { max-height: 230px; overflow-y: auto; }
+.phone-page .mirror .log li { color: #49354e; border-color: #d8c7a5; font-size: 16px; }
+.phone-page .mirror .log li:nth-child(n+4) { display: none; }
+.phone-page #phone-session-stats { width: 100%; margin-bottom: 15px; }
+.phone-connection { position: relative; z-index: 1; margin: 0; padding: 10px 16px; background: #fff2d5; color: #62445e; text-align: center; }
+.phone-page .notice { z-index: 40; background: #0b1935dc; }
+.phone-page .notice .panel { width: min(420px, calc(100% - 28px)); }
+.phone-page .lobby-hero { text-align: center; padding: 18px; background: #fff2d5; border-radius: 7px; margin-bottom: 15px; }
+.phone-page .lobby-hero .big { color: #62445e; font-size: 25px; }
+@media (max-width: 370px) {
+  .phone-page .wrap { padding-inline: 12px; }
+  .phone-player-header { gap: 8px; padding: 12px; grid-template-columns: 38px minmax(0, 1fr) auto; }
+  .phone-player-crest { width: 36px; height: 42px; }
+  .phone-player-crest svg { width: 30px; height: 36px; }
+  .phone-player-header .me { font-size: 20px; }
+  .phone-player-header .bal { font-size: 17px; padding: 7px; }
+  .phone-page #decide { grid-template-columns: minmax(0, 1fr); }
+}

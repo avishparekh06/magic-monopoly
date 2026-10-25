@@ -3,7 +3,7 @@ import { h } from '/static/net.js';
 import { avatarSvg } from '/static/avatars.js';
 
 // Version the shared component stylesheet so an older cached page cannot render new markup unstyled.
-const saveStyles = '/static/session-hub.css?v=save-cards-3';
+const saveStyles = '/static/session-hub.css?v=account-forms-7';
 if (![...document.querySelectorAll('link[rel="stylesheet"]')].some(link => link.getAttribute('href') === saveStyles)) {
   const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = saveStyles;
   document.head.append(link);
@@ -19,6 +19,49 @@ const button = (text, onclick, extra = '') => h('button', { type: 'button', clas
 const date = value => new Date(value * 1000).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
 const metric = (label, value, hint) => h('div', { class: 'hub-metric' }, h('span', {}, label), h('strong', {}, value ?? '—'), hint ? h('small', {}, hint) : null);
 const favorite = properties => properties?.length ? `${properties.map(p => p.name).join(' / ')} · ${properties[0].count} purchase${properties[0].count === 1 ? '' : 's'}${properties.length > 1 ? ' each (tied)' : ''}` : 'No purchases yet';
+
+// Decorative storybook covers; every game keeps its original rules and resume link.
+const SAVE_SCENES = [
+  ['snow-white', 'Snow White'], ['sleeping-beauty', 'Sleeping Beauty'],
+  ['cinderella', 'Cinderella'], ['peter-pan', 'Peter Pan'],
+  ['beauty-and-the-beast', 'Beauty and the Beast'], ['red-riding-hood', 'Red Riding Hood'],
+  ['hansel-and-gretel', 'Hansel & Gretel'], ['aladdin', 'Aladdin'],
+  ['frog-prince', 'The Frog Prince'], ['three-little-pigs', 'Three Little Pigs'],
+  ['pixie-hollow', 'Pixie Hollow'],
+];
+
+function showPasswords(...inputs) {
+  return h('label', { class: 'hub-check' }, h('input', { type: 'checkbox', name: 'show_password', onchange: event => {
+    inputs.forEach(input => { input.type = event.target.checked ? 'text' : 'password'; });
+  } }), 'Show password');
+}
+
+function ledgerPortrait(player) {
+  const portrait = h('span', { class: 'hub-ledger-avatar', 'aria-hidden': 'true' });
+  const svg = avatarSvg(player.id);
+  if (svg) {
+    portrait.innerHTML = svg;
+    portrait.firstElementChild.setAttribute('width', '36');
+    portrait.firstElementChild.setAttribute('height', '40');
+  } else portrait.textContent = (player.name || '?').slice(0, 1);
+  return portrait;
+}
+
+function gameCover(game, index) {
+  const [scene, story] = SAVE_SCENES[index % SAVE_SCENES.length];
+  const portraits = h('span', { class: 'hub-slot-portraits', 'aria-hidden': 'true' });
+  game.players.forEach(player => {
+    const portrait = h('span', { class: 'hub-slot-portrait' });
+    const svg = avatarSvg(player.id);
+    if (svg) {
+      portrait.innerHTML = svg;
+      portrait.firstElementChild.setAttribute('width', '35');
+      portrait.firstElementChild.setAttribute('height', '39');
+    } else portrait.textContent = player.name.slice(0, 1);
+    portraits.append(portrait);
+  });
+  return h('span', { class: 'hub-slot-art', 'data-theme': scene, style: `--slot-scene: url('/static/art/saves/${scene}.svg')` }, h('span', { class: 'hub-slot-theme', 'aria-hidden': 'true' }, story), h('span', { class: 'hub-slot-number', 'aria-label': `Save ${index + 1}` }, String(index + 1)), portraits);
+}
 
 export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
   let user = null, generation = 0, catalog = [], board = null, cards = null;
@@ -97,19 +140,21 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
     return result;
   }
   function sessionCard(game, options = {}) {
-    const names = game.players.map(p => p.name).join(' · ');
+    const names = game.players.map(p => p.name).join(' & ');
     const resume = resumeUrl(game), personal = game.stats;
     const winner = game.players.find(p => p.id === game.winner)?.name;
-    const finished = game.status === 'over', waiting = game.phase === 'LOBBY';
-    const status = finished ? 'Finished' : waiting ? 'In lobby' : 'In progress';
-    const result = finished ? (winner ? `${winner} won` : 'Result not recorded') : waiting ? 'Ready when you are' : `Turn ${game.turn}`;
+    const finished = game.status === 'over', waiting = game.phase === 'LOBBY', ended = game.status === 'abandoned';
+    const status = ended ? 'Ended' : finished ? 'Finished' : waiting ? 'In lobby' : 'In progress';
+    const result = ended ? 'Ended early' : finished ? (winner ? `${winner} won` : 'Result not recorded') : waiting ? 'Ready when you are' : `Turn ${game.turn}`;
     const contents = [
-      h('span', { class: 'hub-session-main' }, h('strong', {}, names),
-        h('span', { class: 'hub-subtle' }, date(game.updated_at)),
-        h('span', { class: 'hub-session-result' }, result,
-          personal?.placement != null ? ` · Your finish: #${personal.placement}` : personal ? ` · Playing as ${personal.name}` : '')),
-      h('span', { class: 'hub-session-end' }, h('span', { class: `hub-status ${finished ? 'finished' : ''}` }, status),
-        h('span', { class: 'hub-row-action' }, options.continue ? 'Continue' : 'View game'))
+      gameCover(game, options.index || 0),
+      h('span', { class: 'hub-slot-content' },
+        h('span', { class: 'hub-slot-label' }, status),
+        h('strong', { class: 'hub-slot-names' }, names),
+        h('span', { class: 'hub-slot-turn' }, result),
+        h('time', { datetime: new Date(game.updated_at * 1000).toISOString() }, date(game.updated_at)),
+        personal ? h('span', { class: 'hub-subtle' }, personal.placement != null ? `Your finish: #${personal.placement}` : `Playing as ${personal.name}`) : null,
+        h('span', { class: 'hub-slot-action' }, options.continue ? 'Continue game' : 'View game stats'))
     ];
     const open = () => {
       const scroll = dialog.scrollTop;
@@ -122,16 +167,16 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
       });
     };
     const action = options.continue && resume
-      ? h('a', { class: 'hub-session-row', href: resume }, ...contents)
-      : h('button', { type: 'button', class: 'hub-session-row', onclick: open }, ...contents);
+      ? h('a', { class: 'hub-session-row hub-save-slot', href: resume }, ...contents)
+      : h('button', { type: 'button', class: 'hub-session-row hub-save-slot', onclick: open }, ...contents);
     return h('article', { class: 'hub-session', 'data-game': game.game_id }, action);
   }
   function showCatalog(games, mode) {
-    const list = h('div', { class: 'hub-session-list' });
+    const list = h('div', { class: 'hub-session-list hub-save-grid hub-history-grid' });
     const filtered = mode === 'continue' ? games.filter(g => g.status !== 'over' && g.status !== 'abandoned' && resumeUrl(g)) : games;
     if (!filtered.length) list.append(h('div', { class: 'hub-empty' }, h('h3', {}, mode === 'continue' ? 'A new story awaits' : 'No games here yet'),
       h('p', {}, mode === 'continue' ? 'Start a new game. Your unfinished games will appear here next time.' : historyFilter !== 'all' ? 'Try a different filter to see your other games.' : user ? 'Your linked games appear here. Choose All available games to find an older session.' : 'Games appear here as you play. Sign in to keep your own results together.')));
-    else list.append(...filtered.map(game => sessionCard(game, { continue: mode === 'continue' })));
+    else list.append(...filtered.map((game, index) => sessionCard(game, { continue: mode === 'continue', index })));
     return list;
   }
   function continuePicker(games) {
@@ -139,19 +184,8 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
     const grid = h('div', { class: 'hub-save-grid', 'aria-label': 'Saved games' });
     saves.forEach((game, index) => {
       const waiting = game.phase === 'LOBBY';
-      const portraits = h('span', { class: 'hub-slot-portraits', 'aria-hidden': 'true' });
-      game.players.forEach(player => {
-        const portrait = h('span', { class: 'hub-slot-portrait' });
-        const svg = avatarSvg(player.id);
-        if (svg) {
-          portrait.innerHTML = svg;
-          portrait.firstElementChild.setAttribute('width', '35');
-          portrait.firstElementChild.setAttribute('height', '39');
-        } else portrait.textContent = player.name.slice(0, 1);
-        portraits.append(portrait);
-      });
       grid.append(h('a', { class: 'hub-save-slot', href: resumeUrl(game), 'data-game': game.game_id },
-        h('span', { class: 'hub-slot-art' }, h('span', { class: 'hub-slot-number', 'aria-label': `Save ${index + 1}` }, String(index + 1)), portraits),
+        gameCover(game, index),
         h('span', { class: 'hub-slot-content' },
           h('span', { class: 'hub-slot-label' }, index === 0 ? 'Most recent' : 'Saved game'),
           h('strong', { class: 'hub-slot-names' }, game.players.map(player => player.name).join(' & ')),
@@ -207,6 +241,7 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
     async openHistory() {
       const tabFocused = document.activeElement?.getAttribute('role') === 'tab';
       const ticket = show('History & stats', h('p', {}, 'Loading games…'));
+      dialog.dataset.screen = 'history';
       try {
         const games = await loadCatalog(); if (!fresh(ticket)) return;
         const list = h('div');
@@ -232,6 +267,7 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
     async openProfile() {
       const tabFocused = document.activeElement?.getAttribute('role') === 'tab';
       const ticket = show('History & stats', h('p', {}, 'Loading your stats…'));
+      dialog.dataset.screen = 'profile';
       try {
         await syncUser(); if (!fresh(ticket)) return;
         if (!user) {
@@ -254,21 +290,23 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
       const username = h('input', { name: 'username', required: true, minlength: 3, maxlength: 32, autocomplete: 'username', placeholder: 'Username' });
       const password = h('input', { name: 'password', type: 'password', required: true, minlength: register ? 8 : 1, maxlength: 128, autocomplete: register ? 'new-password' : 'current-password' });
       const display = h('input', { name: 'display_name', maxlength: 40, placeholder: 'Name shown on your profile' });
-      const repeat = h('input', { name: 'repeat', type: 'password', required: register, autocomplete: 'new-password' });
+      const repeat = h('input', { name: 'repeat', type: 'password', required: register, maxlength: 128, autocomplete: 'new-password' });
       const message = h('p', { class: 'hub-error', role: 'alert' });
       const submit = h('button', { class: 'btn', type: 'submit' }, register ? 'Create account' : 'Sign in');
       const ticket = show(register ? 'Create your player account' : 'Sign in to your player account',
         h('p', {}, 'Save your sessions, favorite purchases and results across games.'),
         h('form', { class: 'hub-form', onsubmit: async event => {
           event.preventDefault(); message.textContent = '';
-          if (register && password.value !== repeat.value) { message.textContent = 'The passwords do not match.'; return; }
+          if (register && password.value !== repeat.value) { message.textContent = 'The passwords do not match. Enter the same password in both fields.'; repeat.focus(); return; }
           submit.disabled = true;
           try {
             const data = await api(`/api/auth/${register ? 'register' : 'login'}`, { username: username.value, password: password.value, display_name: display.value });
             changed(data.account); if (fresh(ticket)) after();
           } catch(e) { message.textContent = e.message; submit.disabled = false; }
         } }, h('label', {}, 'Username', username), register ? h('label', {}, 'Display name', display) : null,
-          h('label', {}, 'Password', password), register ? h('label', {}, 'Repeat password', repeat) : null, message, submit),
+          h('label', {}, register ? 'New password' : 'Password', password),
+          register ? h('p', { class: 'hub-password-help' }, 'Use 8–128 characters. Passwords are case-sensitive.') : null,
+          register ? h('label', {}, 'Repeat password', repeat) : null, showPasswords(password, repeat), message, submit),
         button(register ? 'Already have an account? Sign in' : 'Create an account', () => hub.openAuth(!register, after), 'hub-text-button'));
       goBack('Back', after);
     },
@@ -281,9 +319,24 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
       const username = h('input', { name: 'username', required: true, maxlength: 32, autocomplete: 'username' });
       const password = h('input', { name: 'password', type: 'password', required: true, maxlength: 128, autocomplete: 'current-password' });
       const display = h('input', { name: 'display_name', maxlength: 40, placeholder: 'Display name for a new account' });
-      const createCheck = h('input', { type: 'checkbox', onchange: event => {
-        create = event.target.checked; display.parentElement.hidden = !create; password.autocomplete = create ? 'new-password' : 'current-password';
-      } });
+      const repeat = h('input', { name: 'repeat', type: 'password', maxlength: 128, autocomplete: 'new-password' });
+      const displayField = h('label', { hidden: true }, 'Display name', display);
+      const repeatField = h('label', { hidden: true }, 'Repeat password', repeat);
+      const help = h('p', { class: 'hub-password-help' }, 'Use the username and password of an existing account, or choose Create account.');
+      const heading = h('h3', {}, 'Sign in to save stats');
+      const signInMode = button('Sign in', () => setMode(false), 'secondary');
+      const createMode = button('Create account', () => setMode(true), 'secondary');
+      function setMode(value) {
+        create = value;
+        displayField.hidden = !create; repeatField.hidden = !create; repeat.required = create;
+        password.minLength = create ? 8 : 1;
+        password.autocomplete = create ? 'new-password' : 'current-password';
+        signInMode.setAttribute('aria-pressed', String(!create)); createMode.setAttribute('aria-pressed', String(create));
+        heading.textContent = create ? 'Create an account for this player' : 'Sign in to save stats';
+        help.textContent = create ? 'Choose a new username and a password with 8–128 characters. Passwords are case-sensitive.' : 'Use the username and password of an existing account, or choose Create account.';
+        submit.textContent = create ? 'Create account & save stats' : 'Sign in & save stats';
+        message.textContent = '';
+      }
       const message = h('p', { class: 'hub-error', role: 'alert' });
       const finish = data => {
         const name = data.account.username;
@@ -291,24 +344,30 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
           h('p', { class: 'hub-subtle' }, 'Linking another player does not change the account signed in on this device.'),
           button('Done', () => { dialog.close(); after(data.account); }));
       };
-      const submit = h('button', { type: 'submit', class: 'btn' }, 'Link this account');
+      const submit = h('button', { type: 'submit', class: 'btn' }, 'Sign in & save stats');
+      setMode(false);
       const ticket = show('Save this player’s stats', old ? h('p', {}, `Currently linked: ${old.username}`) : h('p', {}, 'Choose the account for this player. Different players need separate accounts.'),
         user ? button(`Use my account · ${user.username}`, async () => {
           try { const data = await api(`/api/games/${gameId}/players/${playerId}/account`, { ...context, use_current: true, expected_account: user.id }); if (fresh(ticket)) finish(data); }
           catch(e) { message.textContent = e.message; }
         }) : button('Sign in to use your account', () => hub.openAuth(false, () => hub.linkSeat(gameId, playerId, context, after, onCancel)), 'secondary'),
         h('form', { class: 'hub-form', onsubmit: async event => {
-          event.preventDefault(); submit.disabled = true; message.textContent = '';
+          event.preventDefault(); message.textContent = '';
+          if (create && password.value !== repeat.value) { message.textContent = 'The passwords do not match. Enter the same password in both fields.'; repeat.focus(); return; }
+          submit.disabled = true;
           try {
             const data = await api(`/api/games/${gameId}/players/${playerId}/account`, { ...context, username: username.value, password: password.value, display_name: display.value, create });
             if (fresh(ticket)) finish(data);
           } catch(e) { message.textContent = e.message; submit.disabled = false; }
-        } }, h('h3', {}, user ? 'Or link another player’s account' : 'Account details'), h('label', {}, 'Username', username), h('label', {}, 'Password', password),
-          h('label', { class: 'hub-check' }, createCheck, 'Create this as a new account'), h('label', { hidden: true }, 'Display name', display), message, submit));
+        } }, heading,
+          h('div', { class: 'hub-account-modes', role: 'group', 'aria-label': 'Choose sign in or create account' }, signInMode, createMode),
+          h('label', {}, 'Username', username), displayField, h('label', {}, 'Password', password), help,
+          repeatField, showPasswords(password, repeat), message, submit));
       goBack('Back to game', onCancel);
     },
     async openGame(gameOrId, context = {}, returnTo = () => hub.openHistory()) {
       const ticket = show('Game details', h('p', {}, 'Loading this game…'));
+      dialog.dataset.screen = 'game';
       goBack('Back to games', returnTo);
       try {
         const games = await loadCatalog();
@@ -337,7 +396,7 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
                 catch (e) { alert(e.message); }
               }, 'secondary') : null);
         const playerCards = [...stats.players].sort((a,b) => stats.phase === 'GAME_OVER' ? (a.placement ?? Infinity) - (b.placement ?? Infinity) : 0).map(p => h('details', { class: 'hub-player-stats', 'data-player': p.id },
-          h('summary', {}, h('span', { class: 'hub-player-name' }, h('strong', {}, p.name),
+          h('summary', {}, ledgerPortrait(p), h('span', { class: 'hub-player-name' }, h('strong', {}, p.name),
             h('span', { class: 'hub-subtle' }, p.placement != null ? `Finish #${p.placement}` : stats.phase === 'GAME_OVER' ? 'Finish not recorded' : stats.phase === 'LOBBY' ? 'Waiting to start' : p.bankrupt ? 'Out' : 'Still playing')),
             h('span', { class: 'hub-player-score' }, h('strong', {}, `${p.balance} gold`), h('span', { class: 'hub-subtle' }, `${p.bought} ${p.bought === 1 ? 'property' : 'properties'} bought`))),
           h('div', { class: 'hub-player-breakdown' }, h('div', { class: 'hub-metrics' }, metric('Rent earned', `${p.rent_received} gold`), metric('Rent paid', `${p.rent_paid} gold`), metric('Average roll', p.avg_roll), metric('Best roll', p.best_roll)),

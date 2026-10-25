@@ -221,3 +221,28 @@ def test_signing_in_rotates_and_revokes_the_previous_device_session(client):
     register(client, 'second_account')
     assert client.cookies.get('mm_player_session') != old
     assert client.app.state.store.accounts.current(old) is None
+
+@pytest.mark.parametrize('password', ['Abcd1234', 'two words 123', 'Héllo世界123', '😀' * 8])
+def test_create_from_player_link_accepts_password_and_can_sign_in(client, password):
+    game = client.post('/api/games', json={'players': SPECS}).json()
+    path = f'/api/games/{game["game_id"]}/players/p2/account'
+    credentials = {'username': 'new_linked_player', 'password': password}
+    # Existing-account mode must not silently create an account.
+    assert client.post(path, json={**credentials, 'create': False}).status_code == 401
+    created = client.post(path, json={**credentials, 'create': True})
+    assert created.status_code == 200
+    account_id = created.json()['account']['id']
+    assert client.app.state.store.accounts.roster(game['game_id'])['p2']['id'] == account_id
+    logged_in = client.post('/api/auth/login', json=credentials)
+    assert logged_in.status_code == 200
+    assert logged_in.json()['account']['id'] == account_id
+
+
+def test_player_link_creation_rejects_short_password_without_creating_account(client):
+    game = client.post('/api/games', json={'players': SPECS}).json()
+    response = client.post(f'/api/games/{game["game_id"]}/players/p2/account',
+                           json={'username': 'new_linked_player', 'password': 'short', 'create': True})
+    assert response.status_code == 422
+    assert '8–128' in response.json()['detail']
+    assert client.app.state.store.accounts.authenticate('new_linked_player', 'short') is None
+    assert 'p2' not in client.app.state.store.accounts.roster(game['game_id'])
