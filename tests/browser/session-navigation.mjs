@@ -98,7 +98,7 @@ try {
  if(await evaluate(metric('Average finish'))!=='—')throw Error('Unknown rank invented');
  console.log('PASS: Virtual player resumes their own seat; mobile details and overall stats fit without inventing missing results');
  await send('Emulation.setDeviceMetricsOverride',{width:1366,height:768,deviceScaleFactor:1,mobile:false});
- await send('Page.navigate',{url:api+'/board/career_active'});await waitFor('document.querySelector("#board-viewport")?.dataset.render==="3d"');
+ await send('Page.navigate',{url:api+'/board/career_active'});await waitFor('document.querySelector("#board-viewport")?.dataset.render==="flat"');
  await send('Runtime.evaluate',{expression:'document.getElementById("game-fullscreen").click()',userGesture:true});await waitFor('!!document.fullscreenElement');
  await evaluate('document.getElementById("game-players").click()');await waitFor('document.getElementById("game-properties").open');await clickText('Game history & stats','#game-properties button');
  await waitFor('document.getElementById("session-hub").open && !!document.querySelector(".hub-player-stats")');
