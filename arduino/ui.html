@@ -700,10 +700,10 @@ async function startGuided() {
   if (!(rounds >= 1 && rounds <= 20)) return say("Rounds must be 1-20.", "err");
   const legs = legsFor(document.getElementById("gscope").value, (axes[Number(motorEl.value)] || {}).zone);
   if (!legs.length) return say("This motor has no fast zone yet. Set one first (Fast zone: start, hops, speed, Save zone).", "err");
-  if (current !== legs[0].from) {
-    return say(`The first stop starts on square ${legs[0].from} (${NAMES[legs[0].from]}). Put the magnet dead centre there, press Set position and click that square. Then start.`, "err");
-  }
-  guided = { axis: Number(motorEl.value), legs, rounds, round: 0, leg: 0, pending: null, last: null, stage: "moving", log: [] };
+  // From anywhere: if the magnet isn't on the first stop's square, a one-off lead leg drives it there first. Nothing
+  // is tuned on it (you click where it landed, which becomes its position), and it is not repeated on later rounds.
+  const lead = current !== legs[0].from ? { from: current, to: legs[0].from, primary: null } : null;
+  guided = { axis: Number(motorEl.value), legs, lead, rounds, round: 0, leg: lead ? -1 : 0, pending: null, last: null, stage: "moving", log: [] };
   motorEl.disabled = true;                                   // the whole run stays on one motor
   jogBox.hidden = true;
   tuneBox.replaceChildren();
@@ -712,9 +712,9 @@ async function startGuided() {
 
 async function guidedStep() {
   const g = guided;
-  const leg = g.legs[g.leg];
+  const leg = g.leg < 0 ? g.lead : g.legs[g.leg];
   const squares = squaresTo(current, leg.to);               // planned from wherever the last click put the magnet
-  g.where = `Round ${g.round + 1}/${g.rounds}, stop ${g.leg + 1}/${g.legs.length}`;
+  g.where = g.leg < 0 ? `Getting to the start (square ${leg.to})` : `Round ${g.round + 1}/${g.rounds}, stop ${g.leg + 1}/${g.legs.length}`;
   g.stage = "moving";
   clearDot();
   tuneBox.replaceChildren();
@@ -785,7 +785,7 @@ async function guidedAnswer(actual) {
   } finally {
     boardEl.classList.remove("busy");
   }
-  const last = g.round === g.rounds - 1 && g.leg === g.legs.length - 1;
+  const last = g.leg >= 0 && g.round === g.rounds - 1 && g.leg === g.legs.length - 1;
   g.stage = "result";
   tuneBox.replaceChildren(
     btn(undo ? "Undo that" : "Click again", () => guidedUndo(undo)),

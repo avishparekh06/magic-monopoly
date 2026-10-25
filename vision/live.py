@@ -9,13 +9,16 @@ card, the card zone. Start it once and leave it running next to the game server.
   .venv/bin/python vision/live.py 0 --post --server http://127.0.0.1:8000
   .venv/bin/python vision/live.py 0 --dice --post          dice only, never switch
   .venv/bin/python vision/live.py 0 --cards --post         cards only (ids from server/cards.json)
+  .venv/bin/python vision/live.py 0 --zoom 1.5             narrower view: keep only the middle 1/1.5 of the frame (a software
+                                                           crop; the camera's own zoom can't be set from here)
   .venv/bin/python vision/live.py 0 --belt                 hardware test: each confirmed roll goes straight to the
                                                            belt step service (BELT_URL/BELT_KEY from .env), no game engine
 
 Mouse:  drag a box around the dice area (green). In card mode the drag sets the card area (orange) instead.
         Both default to the whole frame and are remembered in vision/live.json.
 Slider: "die px" = how wide one die looks in pixels at this camera height (match the yellow reference square)
-Keys:   m  force a mode (auto -> dice -> card -> auto)   r reset the current box   s save frame   q quit
+Keys:   d  look for dice   c  look for cards   a  auto (follow the game)   m  cycle modes   r reset the current box
+        s  save frame   q  quit
 
 How the switch works: with --post the window asks the server GET /vision/mode a few times a second. The server
 answers "card" while the engine is in WAITING_FOR_CARD (someone landed on Crystal Ball / Chest of Spells) and
@@ -119,7 +122,8 @@ def main():
         if not belt_url or not belt_key:
             sys.exit("--belt needs BELT_URL and BELT_KEY (in .env) or --belt-url/--belt-key")
         print(f"hardware test: confirmed rolls go straight to {belt_url}/step (no game engine)")
-    skip = {source, server, game, belt_url, belt_key}
+    zoom_arg = flag_value(argv, "--zoom")
+    skip = {source, server, game, belt_url, belt_key, zoom_arg}
     args = [a for a in argv if not a.startswith("--") and a not in skip]
     z = Zones.load()
     idx = int(args[0]) if args else z.d["camera"]["index"]
@@ -135,6 +139,12 @@ def main():
         sys.exit(f"could not open camera {idx}. Run: .venv/bin/python vision/probe.py --list")
 
     s = load_settings()
+    zoom = max(1.0, float(zoom_arg if zoom_arg is not None else s.get("zoom", 1.0)))
+    if zoom != s.get("zoom", 1.0):                # the boxes are in pixels of the cropped frame: a new zoom makes them wrong
+        s.pop("box", None)
+        s.pop("card_box", None)
+        s["zoom"] = zoom
+        save_settings(s)
     boxes = {"dice": s.get("box"), "card": s.get("card_box")}     # [x0, y0, x1, y1] in frame pixels, or None = whole frame
     drag = {"start": None, "cur": None}
     mode = {"active": forced or "dice", "override": forced}      # what we are reading right now / what the user forced
@@ -234,6 +244,11 @@ def main():
                 continue
             print("frame grab failed")
             break
+        if zoom > 1.0:                            # keep the middle of the frame: a narrower field of view
+            full_h, full_w = frame.shape[:2]
+            crop_h, crop_w = int(full_h / zoom), int(full_w / zoom)
+            top, left = (full_h - crop_h) // 2, (full_w - crop_w) // 2
+            frame = frame[top:top + crop_h, left:left + crop_w]
         n += 1
         raw = frame
         latest["img"] = raw
@@ -250,6 +265,11 @@ def main():
         if wanted != mode["active"]:
             mode["active"] = wanted
             enter_card_mode(raw) if wanted == "card" else leave_card_mode()
+            if wanted == "card" and mode["override"] == "card":   # you pressed c: read the card that is lying there
+                cw.current = None
+                ignored_card["id"] = None
+        if mode["active"] == "card" and cw is None:   # --cards from the start: no mode change ever builds the reader, and no last-turn card to ignore
+            cw = CardWatcher(matcher, on_event)
 
         # dice are always tracked (the watcher needs continuity); cards only in card mode
         (dx0, dy0, dx1, dy1), tray = region_of("dice", raw)
@@ -327,13 +347,19 @@ def main():
             cv2.putText(view, f"mode {active.upper()}" + ("" if post else "    (not posting: add --post)"), (16, 124),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, WHITE, 2)
         hint = "drag = dice area" if active == "dice" else "drag = card area"
-        cv2.putText(view, f"{hint}   m = force mode   r = reset box   s = save frame   q = quit", (16, H - 14),
+        cv2.putText(view, f"{hint}   d = dice   c = cards   a = auto   r = reset box   s = save   q = quit", (16, H - 14),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, WHITE, 2)
 
         cv2.imshow(WIN, view)
         k = cv2.waitKey(1) & 0xFF
         if k == ord("q"):
             break
+        if k == ord("d"):                                 # look for dice
+            mode["override"] = "dice"
+        if k == ord("c"):                                 # look for cards
+            mode["override"] = "card"
+        if k == ord("a"):                                 # back to following the game (or the --dice / --cards flag)
+            mode["override"] = None if poller is not None else forced
         if k == ord("m"):
             if poller is None and forced is None:         # no server to follow: just flip
                 mode["override"] = "card" if active == "dice" else "dice"

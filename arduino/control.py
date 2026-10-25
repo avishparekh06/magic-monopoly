@@ -63,7 +63,13 @@ class Board:
             raise TimeoutError(f"Axes still moving: {self.pending}")
 
     def stop(self):
-        self._send("S"); self._wait_ok(); self.pending.clear()
+        """Stop every motor. The Uno answers `ok` but never sends `done` for the axes it stopped, and a move that is
+        waiting on another thread reads the same port (and discards the `ok`), so don't wait for the `ok`: drop the
+        pending axes so that move's wait() ends, then throw away whatever the Uno sent so it can't answer the next command."""
+        self._send("S")
+        self.pending.clear()
+        time.sleep(0.15)
+        self.ser.reset_input_buffer()
 
     def motors(self, on=True):
         self._send(f"E {1 if on else 0}"); self._wait_ok()
