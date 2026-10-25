@@ -4,6 +4,8 @@
   .venv/bin/python vision/live.py --source clip.mp4
   .venv/bin/python vision/live.py 0 --post                 also send confirmed rolls to the game server
   .venv/bin/python vision/live.py 0 --post --server http://127.0.0.1:8000
+  .venv/bin/python vision/live.py 0 --belt                 hardware test: each confirmed roll goes straight to the
+                                                           belt step service (BELT_URL/BELT_KEY from .env), no game engine
 
 Mouse:  drag a box around the dice area (defaults to the whole frame)
 Slider: "die px" = how wide one die looks in pixels at this camera height (match the yellow reference square)
@@ -46,6 +48,23 @@ def main():
     server = argv[argv.index("--server") + 1] if "--server" in argv else "http://127.0.0.1:8000"
     post = "--post" in argv
     frames = "--frames" in argv                   # send a picture of the table with each roll
+    belt = "--belt" in argv                       # bypass the game: POST <BELT_URL>/step?squares=<total>&key=<BELT_KEY>
+    belt_url = belt_key = None
+    if belt:
+        env = {}
+        try:
+            for line in open(os.path.join(os.path.dirname(HERE), ".env")):
+                if "=" in line and not line.startswith("#"):
+                    k, v = line.strip().split("=", 1); env[k] = v.strip().strip('"')
+        except OSError:
+            pass
+        belt_url = (argv[argv.index("--belt-url") + 1] if "--belt-url" in argv else os.environ.get("BELT_URL") or env.get("BELT_URL"))
+        belt_key = (argv[argv.index("--belt-key") + 1] if "--belt-key" in argv else os.environ.get("BELT_KEY") or env.get("BELT_KEY"))
+        if not belt_url or not belt_key:
+            sys.exit("--belt needs BELT_URL and BELT_KEY (in .env) or --belt-url/--belt-key")
+        skip = {source, server, belt_url, belt_key}
+        args = [a for a in argv if not a.startswith("--") and a not in skip]
+        print(f"hardware test: confirmed rolls go straight to {belt_url}/step (no game engine)")
     skip = {source, server}
     args = [a for a in argv if not a.startswith("--") and a not in skip]
     z = Zones.load()
@@ -88,11 +107,22 @@ def main():
 
     latest = {}
 
+    def step_belt(n):
+        import requests
+        try:
+            r = requests.post(f"{belt_url.rstrip('/')}/step", params={"squares": n, "key": belt_key}, timeout=120)
+            print(f"belt /step?squares={n} -> {r.status_code} {r.text[:120]}", flush=True)
+        except Exception as ex:
+            print(f"belt /step?squares={n} -> FAILED {ex}", flush=True)
+
     def on_event(e):
         events.append((time.time(), e))
         if frames and e.get("type") == "dice_rolled" and "img" in latest:
             e = {**e, "frame_b64": jpeg_b64(latest["img"])}
         emitter(e)
+        if belt and e.get("type") == "dice_rolled":
+            import threading
+            threading.Thread(target=step_belt, args=(e["total"],), daemon=True).start()   # don't freeze the window
 
     dw = DiceWatcher(1.0, die_mm, on_event)
     if post:
