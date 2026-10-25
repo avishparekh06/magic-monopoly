@@ -224,3 +224,35 @@ def test_two_lanes_on_the_belt_tool_axes_0_and_2(monkeypatch):
             assert gotos == [("2", "3"), ("0", "6")]
             assert ("/board/set", {"square": "5", "axis": "0"}) in bench.calls
             assert ("/board/set", {"square": "1", "axis": "2"}) in bench.calls
+
+
+def test_a_played_demo_game_is_replayed_fresh_after_a_restart(tmp_path):
+    """The demo ignores saved state: old games do not touch the belt at startup, and opening a demo game that was
+    played before the restart gives a fresh demo from the lined-up squares instead."""
+    db = str(tmp_path / "games.db")
+    bench = FakeBench()
+    with TestClient(create_app(sim=True, move_delay=0, dev=True, virtual_axis=0, db_path=db,
+                               bridge_factory=lambda: HttpBeltBridge("http://bench", lanes=0, axes={2: 0},
+                                                                     fallback=StubBridge(0), transport=bench.transport()))) as c:
+        old = demo_room(c)
+        with open_board(c, old):
+            wait_for(lambda: [p.position for p in old.state.players] == [6, 3])
+        old_id = old.game_id
+        assert [p.position for p in old.state.players] == [6, 3]
+
+    bench2 = FakeBench()
+    with TestClient(create_app(sim=True, move_delay=0, dev=True, virtual_axis=0, db_path=db,
+                               bridge_factory=lambda: HttpBeltBridge("http://bench", lanes=0, axes={2: 0},
+                                                                     fallback=StubBridge(0), transport=bench2.transport()))) as c:
+        # startup restored the old game without pushing its squares to the belt tool
+        assert not [1 for p, q in bench2.calls if p == "/board/set" and q["square"] == "3"]
+        r = c.get(f"/board/{old_id}", follow_redirects=False)
+        assert r.status_code == 302 and r.headers["location"] != f"/board/{old_id}"
+        new_id = r.headers["location"].rsplit("/", 1)[1]
+        fresh = c.app.state.rooms[new_id]
+        assert is_fresh_demo(fresh.state) and fresh.forced_rolls == {"p2": [(1, 1), (1, 1)]}
+        # a fresh demo opens normally, and a game already running this session is not replaced on reload
+        assert c.get(f"/board/{new_id}", follow_redirects=False).status_code == 200
+        with open_board(c, fresh):
+            wait_for(lambda: [p.position for p in fresh.state.players] == [6, 3])
+        assert c.get(f"/board/{new_id}", follow_redirects=False).status_code == 200

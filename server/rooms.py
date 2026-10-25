@@ -88,7 +88,7 @@ class GameRoom:
         return room
 
     @classmethod
-    async def restore(cls, saved: dict, adapters: Adapters, store: Store) -> "GameRoom":
+    async def restore(cls, saved: dict, adapters: Adapters, store: Store, sync_belt: bool = True) -> "GameRoom":
         """Rebuild a room from a Store.games() row and pick up where it left off.
 
         Remote seats come back as disconnected (their phones will reconnect by
@@ -102,8 +102,9 @@ class GameRoom:
                    host_token=saved["host_token"], seat_tokens=saved["seat_tokens"], seq=saved["seq"])
         room.updated_at = saved.get("updated_at") or room.updated_at
         await room._start_adapters()
-        await adapters.bridge.restore({p.lane: p.position for p in state.players if not p.bankrupt})
-        if state.phase == Phase.MOVING:
+        if sync_belt:     # demo mode skips this: old saved games must not overwrite the belt's tracked squares
+            await adapters.bridge.restore({p.lane: p.position for p in state.players if not p.bankrupt})
+        if state.phase == Phase.MOVING and sync_belt:     # (demo mode must not drive the belt at startup)
             await room.dispatch(SYSTEM, {"action": "retry_move"})
         return room
 

@@ -23,3 +23,8 @@ def is_fresh_demo(state) -> bool:
             and [p.position for p in state.players] == [d["position"] for d in DEMO_PLAYERS]
             and state.turn == 1 and state.phase.value == "WAITING_FOR_ROLL"
             and state.current_player.id == DEMO_FIRST_PLAYER)
+
+
+def is_demo_game(state) -> bool:
+    """True for any game made from DEMO_PLAYERS (played or not), found by its player names."""
+    return [p.name for p in state.players] == [d["name"] for d in DEMO_PLAYERS]

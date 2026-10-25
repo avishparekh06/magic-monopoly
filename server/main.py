@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 from .adapters import BRIDGES, MIRRORS, VOICES, make_adapters
 from .adapters.mirror import TemplateMirror
-from .demo import DEMO_FIRST_PLAYER, DEMO_FORCED_ROLLS, DEMO_MOVES, DEMO_PLAYERS, is_fresh_demo
+from .demo import DEMO_FIRST_PLAYER, DEMO_FORCED_ROLLS, DEMO_MOVES, DEMO_PLAYERS, is_demo_game, is_fresh_demo
 from .engine import SYSTEM, EngineError, new_game, to_public
 from .rooms import GameRoom
 from .rules.monopoly import board, cards
@@ -181,7 +181,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         # Startup: bring every unfinished saved game back to life.
         for saved in store.games(status="active"):
             try:
-                rooms[saved["game_id"]] = await GameRoom.restore(saved, adapters(), store)
+                rooms[saved["game_id"]] = await GameRoom.restore(saved, adapters(), store, sync_belt=not demo_on)
                 rooms[saved["game_id"]].dev = dev
                 if debug_sync:
                     await rooms[saved["game_id"]].set_debug_sync(True)
@@ -256,7 +256,14 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         return page("phone.html")
 
     @app.get("/board/{game_id}")
-    async def board_page(game_id: str):
+    async def board_page(game_id: str, request: Request):
+        room = rooms.get(game_id)
+        if demo_on and room and is_local(request) and is_demo_game(room.state) and not room.demo_started \
+                and not is_fresh_demo(room.state):
+            # A demo game that was already played before this server started: ignore its saved state and
+            # give the full demo again, from the squares the tokens are lined up on.
+            fresh = await new_demo_room()
+            return RedirectResponse(f"/board/{fresh.game_id}", status_code=302, headers={"Cache-Control": "no-store"})
         return page("board.html")
 
     # --- API ---
