@@ -3,90 +3,139 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Magic Mirror — New Game</title>
-  <link rel="stylesheet" href="/static/style.css">
-  <style>
-    .seat-row { display: grid; grid-template-columns: 1fr 150px; gap: 8px; }
-    .link-card .row { margin-top: 8px; }
-    .hero { text-align: center; padding: 24px 0 8px; }
-    .hero .mirror { font-size: 56px; }
-    #started { text-align: center; }
-    #create .btn.huge { margin-top: 24px; }
-    .qr { background: #fff; padding: 8px; border-radius: 8px; display: inline-block; }
-  .qr img, .qr canvas { display: block; }
-</style>
+  <title>Monopoly</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&family=League+Spartan:wght@700&family=Pirata+One&display=swap">
+  <link rel="stylesheet" href="/static/fairytale.css">
 </head>
 <body>
-  <div class="wrap">
-    <div class="hero">
-      <div class="mirror">🪞</div>
-      <h1>Magic Mirror Monopoly</h1>
-      <p class="muted">Grandma plays at her table. The family plays from their phones.</p>
-    </div>
+  <main class="page">
+    <!-- The Monopoly banner, with a fairy leaning on it -->
+    <header class="title">
+      <div class="logo">
+        <svg class="fairy" viewBox="0 0 120 110" aria-hidden="true">
+          <g class="wing wing-l">
+            <ellipse cx="36" cy="50" rx="22" ry="30" transform="rotate(-32 36 50)"/>
+            <ellipse cx="40" cy="82" rx="13" ry="17" transform="rotate(24 40 82)"/>
+          </g>
+          <g class="wing wing-r">
+            <ellipse cx="84" cy="50" rx="22" ry="30" transform="rotate(32 84 50)"/>
+            <ellipse cx="80" cy="82" rx="13" ry="17" transform="rotate(-24 80 82)"/>
+          </g>
+          <ellipse class="hair" cx="60" cy="56" rx="19" ry="21"/>
+          <circle class="hair" cx="60" cy="36" r="7"/>
+          <path class="dress" d="M42 106q2-28 18-31q16 3 18 31z"/>
+          <path class="skin arm" d="M49 80q-10 10-12 22" />
+          <circle class="skin" cx="37" cy="103" r="4.5"/>
+          <path class="skin arm" d="M71 80q10 0 15-11"/>
+          <g class="head">
+            <circle class="skin" cx="60" cy="57" r="14"/>
+            <path class="hair" d="M46 56q14-21 28 0q-5-8-14-8t-14 8z"/>
+            <path class="tiara" d="M52 45l2.5-6 3 3.5 2.5-5 2.5 5 3-3.5 2.5 6z"/>
+            <circle class="eye" cx="55" cy="59" r="1.8"/><circle class="eye" cx="65" cy="59" r="1.8"/>
+            <circle class="shine" cx="55.7" cy="58.3" r=".6"/><circle class="shine" cx="65.7" cy="58.3" r=".6"/>
+            <circle class="cheek" cx="50.5" cy="63" r="2.4"/><circle class="cheek" cx="69.5" cy="63" r="2.4"/>
+            <path class="smile" d="M57 64q3 2.6 6 0"/>
+          </g>
+          <path class="wand" d="M86 69L100 44"/>
+          <circle class="skin" cx="86" cy="69" r="4.5"/>
+          <path class="wand-star" d="M101 30l2.6 6.6 7 .9-5.3 4.6 1.6 6.9-5.9-3.7-5.9 3.7 1.6-6.9-5.3-4.6 7-.9z"/>
+        </svg>
+        <h1 class="banner">MONOPOLY</h1>
+        <p class="byline">Fairy Tale Edition</p>
+        <span class="star big" style="left:-3%;top:44%;--size:16px;--twinkle:2.2s" aria-hidden="true"></span>
+        <span class="star big" style="right:-4%;top:52%;--size:12px;--twinkle:3s;animation-delay:-1s" aria-hidden="true"></span>
+        <span class="star big" style="right:9%;top:16%;--size:10px;--twinkle:2.6s;animation-delay:-.5s" aria-hidden="true"></span>
+      </div>
+    </header>
 
     <!-- Step 1: who's playing -->
-    <form id="create" class="panel">
+    <form id="create" class="tag">
       <h2>Who's playing?</h2>
-      <label for="grandma">At the board (in person)</label>
+      <label for="grandma">At the board, in person</label>
       <input id="grandma" value="Grandma" maxlength="20" required>
 
       <div id="seat-fields"></div>
 
-      <p id="form-error" class="wait" hidden></p>
-      <button class="btn huge" type="submit">Create the game ✨</button>
+      <p id="form-error" class="error-text" hidden></p>
+      <button class="btn wood" type="submit">Create the game</button>
     </form>
 
-    <!-- Step 2: links + live lobby -->
-    <section id="previous" class="panel" hidden style="margin-top:16px">
-      <h2>Previous games</h2>
+    <!-- Games saved on this laptop: resume or review them -->
+    <section id="previous" class="tag" hidden>
+      <h2>Previous tales</h2>
       <div id="previous-list"></div>
     </section>
 
-    <section id="lobby" hidden>
-      <div class="panel">
-        <h2>Send these links</h2>
-        <p class="muted">Paste each one in the family chat. Tapping it puts that grandchild straight in their seat — no sign-up. The same link works again if they get disconnected.</p>
-        <div id="links"></div>
-      </div>
-
-      <div class="panel link-card">
-        <h3>🖥️ The board laptop</h3>
-        <p class="muted">Open this on the laptop next to Grandma's board.</p>
-        <div class="row">
-          <div id="board-qr"></div>
-          <input class="grow" id="board-link" readonly>
-          <button class="btn small secondary" data-copy="board-link" type="button">Copy</button>
+    <!-- Step 2: one scroll with every guest, their links, and Start -->
+    <section id="lobby" class="scroll" hidden>
+      <div class="rod"></div>
+      <div class="sheet">
+        <h2>The guest list</h2>
+        <p class="muted center">Send each grandchild their link. It takes them straight to their seat.</p>
+        <ul class="guests" id="guests"></ul>
+        <div class="board-row">
+          <span class="who"><span class="name">Board laptop</span><span class="role">the screen next to Grandma's board</span></span>
+          <a class="btn ink small" id="board-open" target="_blank" rel="noopener">Open</a>
+          <button class="btn ink small" id="board-copy" type="button">Copy link</button>
+          <button class="btn ink small" id="board-qr-btn" type="button">QR code</button>
+          <div class="qr-slot" id="board-qr" hidden></div>
         </div>
-      </div>
-
-      <div class="panel">
-        <h2>Who's here</h2>
-        <div id="seats"></div>
-        <p id="lobby-note" class="muted"></p>
-        <button id="start" class="btn huge" disabled>Start the game</button>
-        <div id="started" hidden>
-          <h2>The tale has begun! 🏰</h2>
+        <p id="lobby-note" class="note muted"></p>
+        <button id="start" class="btn wood" disabled>Start the game</button>
+        <div id="started" class="started" hidden>
+          <h2>The tale has begun!</h2>
           <p class="muted">You can close this page.</p>
         </div>
       </div>
+      <div class="rod"></div>
     </section>
-  </div>
+  </main>
 
 <script src="/static/qrcode.min.js"></script>
 <script type="module">
-import { connect, toast, h, seatList } from "/static/net.js";
+import { connect, toast, h } from "/static/net.js";
+import { mountScene } from "/static/scene.js";
+import { avatarSvg } from "/static/avatars.js";
+
+mountScene();
+
+// A player's crest: their seat's avatar on their color (or their initial).
+function crest(p, extra = "") {
+  const el = h("span", { class: `crest ${extra}`, style: `background: var(--${p.id})` });
+  const svg = avatarSvg(p.id);
+  if (svg) el.innerHTML = svg;
+  else el.textContent = (p.name[0] || "?").toUpperCase();
+  return el;
+}
+
+// navigator.clipboard only works on https or localhost; when the page is
+// opened over the Wi-Fi address we fall back to the older execCommand.
+async function copy(text) {
+  try { await navigator.clipboard.writeText(text); }
+  catch {
+    const ta = h("textarea", { style: "position:fixed;opacity:0" });
+    ta.value = text;
+    document.body.append(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+  toast("Link copied!");
+}
 
 // ---- Step 1: form -------------------------------------------------------
 
 const seatFields = document.getElementById("seat-fields");
-for (const n of [2, 3]) {
+for (const [n, label] of [[2, "Second player"], [3, "Third player"]]) {
   seatFields.append(
-    h("label", { for: `name${n}`, style: "margin-top:16px" }, `Seat ${n}`),
+    h("label", { for: `name${n}` }, label),
     h("div", { class: "seat-row" },
       h("input", { id: `name${n}`, placeholder: "Name", maxlength: 20 }),
-      h("select", { id: `kind${n}` },
-        h("option", { value: "remote", selected: n === 2 }, "Grandchild 📱"),
-        h("option", { value: "empty", selected: n === 3 }, "Empty"))));
+      h("select", { id: `kind${n}`, "aria-label": `${label}: who` },
+        h("option", { value: "remote", selected: n === 2 }, "Grandchild"),
+        h("option", { value: "empty", selected: n === 3 }, "Empty seat"))));
 }
 
 document.getElementById("create").addEventListener("submit", async (e) => {
@@ -116,7 +165,7 @@ function showFormError(detail) {
   el.textContent = typeof detail === "string" ? detail : "Please give every seat a name.";
 }
 
-// ---- Step 2: links + lobby ----------------------------------------------
+// ---- Step 2: the guest list ---------------------------------------------
 
 // Links must use an address phones can reach: the public tunnel when the
 // server has one, else this page's own address if it isn't "localhost",
@@ -140,63 +189,90 @@ fetch("/api/games").then((r) => r.json()).then((games) => {
   if (!games.length) return;
   const list = document.getElementById("previous-list");
   for (const g of games) {
-    const names = g.players.map((p) => `${p.name} 🪙${p.balance}`).join(" · ");
+    const names = g.players.map((p) => `${p.name} (${p.balance} gold)`).join(" · ");
     const when = new Date(g.updated_at * 1000).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
     const status = g.status === "over" ? `finished · ${g.players.find((p) => p.id === g.winner)?.name ?? "?"} won`
                  : `turn ${g.turn} · ${g.phase.toLowerCase().replaceAll("_", " ")}`;
-    list.append(h("div", { class: "link-card", style: "margin-top:10px" },
-      h("div", {}, h("strong", {}, names)),
-      h("div", { class: "muted" }, `${when} · ${status}`),
-      h("div", { class: "row", style: "margin-top:6px" },
-        g.status !== "over" && g.host_url && h("a", { class: "btn small", href: g.host_url }, "Resume"),
-        h("a", { class: "btn small secondary", href: g.board_url }, g.status === "over" ? "Chronicles" : "Board"))));
+    list.append(h("div", { class: "past" },
+      h("div", { class: "name" }, names),
+      h("div", { class: "role" }, `${when} · ${status}`),
+      h("div", { class: "acts" },
+        g.status !== "over" && g.host_url && h("a", { class: "btn ink small fill", href: g.host_url }, "Resume"),
+        h("a", { class: "btn ink small", href: g.board_url }, g.status === "over" ? "Chronicles" : "Board"))));
   }
-  document.getElementById("previous").hidden = false;
+  document.getElementById("previous").hidden = !document.getElementById("lobby").hidden;
 }).catch(() => {});
 
+let links = {};  // player id -> full join URL
 async function showLobby(game) {
   document.getElementById("create").hidden = true;
+  document.getElementById("previous").hidden = true;
   document.getElementById("lobby").hidden = false;
   const base = await linkBase();
-  document.getElementById("board-link").value = base + game.board_url;
-  const bq = document.getElementById("board-qr");
-  if (bq && !bq.children.length) bq.append(qr(base + game.board_url));
+  links = Object.fromEntries(Object.entries(game.join_links).map(([pid, path]) => [pid, base + path]));
+  const boardUrl = base + game.board_url;
+  document.getElementById("board-open").href = boardUrl;
+  document.getElementById("board-copy").onclick = () => copy(boardUrl);
+  const boardQr = document.getElementById("board-qr");
+  document.getElementById("board-qr-btn").onclick = () => {
+    if (!boardQr.children.length) boardQr.append(qr(boardUrl));
+    boardQr.hidden = !boardQr.hidden;
+  };
 
   // One socket as the host: receives live state and may press Start.
   const net = connect(`/ws/${game.game_id}?host=${game.host_token}`, {
-    onState: (s) => { renderLinks(game, base, s); renderLobby(s); },
+    onState: renderLobby,
     onError: (m) => toast(m, "error"),
     onClosed: () => toast("This game no longer exists. Create a new one.", "error"),
   });
   document.getElementById("start").onclick = () => net.send({ action: "start" });
 }
 
-let linksDrawn = false;
-function renderLinks(game, base, state) {
-  if (linksDrawn) return;
-  linksDrawn = true;
-  const box = document.getElementById("links");
-  for (const [pid, path] of Object.entries(game.join_links)) {
-    const p = state.players.find((x) => x.id === pid);
-    const id = `link-${pid}`;
-    const url = base + path;
-    box.append(h("div", { class: "link-card", style: "margin-top:12px" },
-      h("h3", {}, `📱 ${p.name}`),
-      h("div", { class: "row", style: "align-items:flex-start" }, qr(url), h("p", { class: "muted", style: "margin:0" }, "Scan with the phone's camera, or send the link:")),
-      h("div", { class: "row" },
-        h("input", { class: "grow", id, readonly: true, value: url }),
-        h("button", { class: "btn small secondary", type: "button", "data-copy": id }, "Copy"),
-        navigator.share && h("button", {
-          class: "btn small", type: "button",
-          onclick: () => navigator.share({ title: "Play with Grandma!", text: `${p.name}, tap to join Grandma's game:`, url }).catch(() => {}),
-        }, "Share"))));
-  }
+// QR codes are shown on request, so the list stays short. The list is redrawn
+// on every state push, so which ones are open (and the codes) live here.
+const qrOpen = new Set();
+const qrEls = {};
+function linkButtons(p) {
+  const url = links[p.id];
+  if (!url) return null;
+  return h("span", { class: "acts" },
+    h("button", { class: "btn ink small", type: "button", onclick: () => copy(url) }, "Copy link"),
+    navigator.share && h("button", {
+      class: "btn ink small fill", type: "button",
+      onclick: () => navigator.share({ title: "Play with Grandma!", text: `${p.name}, tap to join Grandma's game:`, url }).catch(() => {}),
+    }, "Share"),
+    h("button", { class: "btn ink small", type: "button", onclick: (e) => {
+      qrOpen.has(p.id) ? qrOpen.delete(p.id) : qrOpen.add(p.id);
+      e.target.closest("li").querySelector(".qr-slot").hidden = !qrOpen.has(p.id);
+    } }, "QR code"));
 }
 
+function qrSlot(p) {
+  if (!links[p.id]) return null;
+  qrEls[p.id] ??= qr(links[p.id]);
+  return h("div", { class: "qr-slot", hidden: !qrOpen.has(p.id) },
+    qrEls[p.id], h("span", { class: "role" }, "Scan with the phone's camera"));
+}
+
+// Who was already shown as arrived; anyone new gets a little pop.
+let arrived = null;
 function renderLobby(state) {
-  document.getElementById("seats").replaceChildren(seatList(state));
-  const waiting = state.players.filter((p) => !p.connected).map((p) => p.name);
+  const fresh = arrived ? state.players.filter((p) => p.connected && !arrived.has(p.id)).map((p) => p.id) : [];
+  arrived = new Set(state.players.filter((p) => p.connected).map((p) => p.id));
   const inLobby = state.phase === "LOBBY";
+
+  document.getElementById("guests").replaceChildren(...state.players.map((p) =>
+    h("li", {},
+      crest(p, fresh.includes(p.id) ? "pop" : ""),
+      h("span", { class: "who" },
+        h("span", { class: "name" }, p.name),
+        h("span", { class: "role" }, p.kind === "in_person" ? "at the board" : "on a phone")),
+      // Links stay available after they arrive, in case they drop off.
+      inLobby && linkButtons(p),
+      p.connected ? h("span", { class: "status here" }, "Arrived") : h("span", { class: "status away" }, "On the way"),
+      inLobby && qrSlot(p))));
+
+  const waiting = state.players.filter((p) => !p.connected).map((p) => p.name);
   const start = document.getElementById("start");
   start.hidden = !inLobby;
   start.disabled = waiting.length > 0;
@@ -204,17 +280,6 @@ function renderLobby(state) {
     inLobby ? (waiting.length ? `Waiting for ${waiting.join(" and ")}…` : "Everyone's here!") : "";
   document.getElementById("started").hidden = inLobby;
 }
-
-// Copy buttons. navigator.clipboard only works on https or localhost; when the
-// page is opened over the Wi-Fi address we fall back to the older execCommand.
-document.addEventListener("click", async (e) => {
-  const id = e.target.dataset?.copy;
-  if (!id) return;
-  const input = document.getElementById(id);
-  try { await navigator.clipboard.writeText(input.value); }
-  catch { input.select(); document.execCommand("copy"); }
-  toast("Copied!");
-});
 
 // ---- On load: returning to an existing lobby? ---------------------------
 

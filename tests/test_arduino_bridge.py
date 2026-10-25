@@ -35,7 +35,7 @@ def test_his_endpoints_are_served_by_our_app(client):
     assert client.post("/board/move", params={"squares": -1}).json()["to"]["square"] == 1
     assert client.post("/vision/events", json={"type": "dice_cleared"}).json()["ok"] is True
     # Our pages are still ours: his GET / (ui.html) is left out.
-    assert "Magic Mirror" in client.get("/").text and "Belt Board" not in client.get("/").text
+    assert "MONOPOLY" in client.get("/").text and "Belt Board" not in client.get("/").text
 
 
 def test_stub_bridge_does_not_load_his_routes(hw):
