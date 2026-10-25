@@ -142,12 +142,15 @@ class GameRoom:
         return events
 
     async def _react(self, events: list[dict]) -> None:
-        # Mirror lines are written concurrently (a Muse call is ~1-2 s each) but spoken in event order.
-        lines = await asyncio.gather(*(self.adapters.mirror.line(ev, self.state) for ev in events),
-                                     return_exceptions=True)
-        for ev, line in zip(events, lines):
-            if isinstance(line, Exception):
-                log.info("mirror failed for %s: %s", ev.get("type"), line)
+        # Mirror lines are written concurrently when the Mirror is slow (a Muse call is ~1-2 s each) but
+        # spoken in event order. The template Mirror is instant, so it is simply awaited in turn.
+        slow = len(events) > 1 and hasattr(self.adapters.mirror, "ask")
+        pending = [asyncio.create_task(self.adapters.mirror.line(ev, self.state)) for ev in events] if slow else None
+        for i, ev in enumerate(events):
+            try:
+                line = await pending[i] if slow else await self.adapters.mirror.line(ev, self.state)
+            except Exception as e:
+                log.info("mirror failed for %s: %s", ev.get("type"), e)
                 line = None
             if line:
                 await self.broadcast({"type": "mirror", "text": line})
