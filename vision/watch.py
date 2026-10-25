@@ -26,7 +26,8 @@ from zones import Zones, DEFAULT_PATH            # noqa: E402
 from dice import read_dice                       # noqa: E402
 from cards import CardMatcher                    # noqa: E402
 
-MOTION_THRESH = 6.0      # mean abs diff (0-255) in the tray that counts as motion
+MOTION_THRESH = 0.5      # changed area, in die areas, that counts as motion (independent of region size)
+PIXEL_DELTA = 28         # a pixel counts as changed when it differs this much (0-255) from the last frame
 STILL_SECONDS = 0.6      # dice must be still this long before reading
 AGREE_FRAMES = 3         # consecutive identical readings required
 SAME_POS_FRAC = 0.4      # dice within this many die-widths of the last emitted ones count as the same roll
@@ -76,7 +77,14 @@ class DiceWatcher:
     def step(self, tray_bgr, now):
         gray = cv2.cvtColor(tray_bgr, cv2.COLOR_BGR2GRAY)
         gray = cv2.GaussianBlur(gray, (7, 7), 0)
-        motion = 0.0 if self.prev is None else float(cv2.absdiff(gray, self.prev).mean())
+        if self.prev is None or self.prev.shape != gray.shape:
+            motion = 0.0
+        else:
+            # How much of the picture changed, measured in die areas, so a small die tumbling in a big
+            # region still counts and sensor noise over a big region does not.
+            changed = int(cv2.countNonZero((cv2.absdiff(gray, self.prev) > PIXEL_DELTA).view(np.uint8)))
+            die_area = max((self.die_mm * self.px_per_mm) ** 2, 1.0)
+            motion = changed / die_area
         self.prev = gray
 
         if motion > MOTION_THRESH:
@@ -175,7 +183,7 @@ def draw_overlay(mat, z, dw, cw, motion, fps):
         txt = f"dice {dw.last.values} {dw.last.reason or ''}"
     else:
         txt = "dice -"
-    cv2.putText(mat, f"{dw.state}  motion {motion:.1f}  {txt}", (x0 + 6, y0 + 26), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+    cv2.putText(mat, f"{dw.state}  motion {motion:.2f} dice-areas  {txt}", (x0 + 6, y0 + 26), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
     cx0, cy0, _, _ = z.rect_px("card_zone_mm")
     if cw.last and cw.last.quad is not None:
         cv2.polylines(mat, [np.int32(cw.last.quad) + np.int32([cx0, cy0])], True, (255, 160, 0), 2)
