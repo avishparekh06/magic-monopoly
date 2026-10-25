@@ -238,3 +238,30 @@
 
 .game-overlay[data-roll-ready="true"] .game-roll-result { bottom: 190px; }
 @container (max-width: 700px) { .game-overlay[data-roll-ready="true"] .game-roll-result { bottom: 130px; } }
+
+/* Flat 2D board: the board fills the stage, so overlays must live over its empty centre, never over squares.
+   The ring is 1.6fr of 12.2fr per side (~13%), so the overlay is shrunk to the board and inset by 14%. */
+.board-page .board-viewport[data-render="flat"] .game-overlay {
+  inset: auto; top: 50%; left: 50%; width: min(100cqw, 100cqh); height: min(100cqw, 100cqh); transform: translate(-50%, -50%);
+}
+.board-page .board-viewport[data-render="flat"] .game-surface-tools { top: 14.5%; right: 14.5%; }
+.board-page .board-viewport[data-render="flat"] .game-turn-status { top: 14.5%; left: 14.5%; max-width: 44%; }
+.board-page .board-viewport[data-render="flat"] .game-dice-entry { top: calc(14.5% + 52px); left: 14.5%; }
+.board-page .board-viewport[data-render="flat"] .game-action-stack {
+  bottom: 14.5%; right: 14.5%; width: clamp(220px, 34%, 300px); max-height: 66%;
+}
+.board-page .board-viewport[data-render="flat"] .mm-center .drawn-card { margin-bottom: 1.2em; }
+@container (max-width: 700px) {
+  .board-page .board-viewport[data-render="flat"] .game-surface-tools { top: 14.5%; right: 14.5%; gap: 4px; }
+  .board-page .board-viewport[data-render="flat"] .game-surface-tools .btn { padding: 6px 8px; font-size: 12px; min-height: 30px; }
+  .board-page .board-viewport[data-render="flat"] .game-action-stack { width: min(60%, 260px); bottom: 14.5%; right: 14.5%; }
+}
+.board-page .board-viewport[data-render="flat"] .game-player-strip { left: 14.5%; top: 14.5%; bottom: auto; max-width: 48%; }
+.board-page .board-viewport[data-render="flat"] .game-roll-dice { bottom: 15.5%; }
+/* The centre text and the caption under the board already say what the game is waiting for. */
+.board-page .board-viewport[data-render="flat"] .game-turn-status { display: none; }
+.board-page .board-viewport[data-render="flat"] .game-dice-entry { top: calc(14.5% + 58px); left: 14.5%; }
+/* Keep the drawn card clear of the decision panel on the right. */
+.board-page .board-viewport[data-render="flat"] .mm-center { align-items: flex-start; padding-left: 4%; text-align: left; }
+.board-page .board-viewport[data-render="flat"] .mm-center .center-phase { max-width: 50%; }
+.board-page .board-viewport[data-render="flat"] .mm-center .drawn-card { margin: .2em 0 1em; max-width: 46%; text-align: center; }
