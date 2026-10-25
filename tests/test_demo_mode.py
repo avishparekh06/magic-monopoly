@@ -108,8 +108,8 @@ def wait_for(cond, tries=60):
 
 
 def test_a_demo_game_is_ready_like_any_saved_game():
-    assert [(p["name"], p["position"]) for p in DEMO_PLAYERS] == [("Player 1", 5), ("Player 2", 3)]
-    assert DEMO_MOVES == [("p2", 1), ("p1", 1)]
+    assert [(p["name"], p["position"]) for p in DEMO_PLAYERS] == [("Player 1", 5), ("Player 2", 1)]
+    assert DEMO_MOVES == [("p2", 2), ("p1", 1)]
     bench = FakeBench()
     with app_client(bench) as c:
         room = demo_room(c)
@@ -127,13 +127,13 @@ def test_opening_the_board_plays_the_scripted_moves_on_the_belt():
         room = demo_room(c)
         assert not [1 for p, q in bench.calls if p == "/board/goto"]          # nothing moves until the board opens
         with open_board(c, room):
-            wait_for(lambda: [p.position for p in room.state.players] == [6, 4])
-            assert [p.position for p in room.state.players] == [6, 4]
+            wait_for(lambda: [p.position for p in room.state.players] == [6, 3])
+            assert [p.position for p in room.state.players] == [6, 3]
             assert room.state.phase.value == "WAITING_FOR_ROLL"
-            # Player 2's belt (axis 0 here) was told it starts on Gingerbread House, then driven to square 4
-            assert ("/board/set", {"square": "3", "axis": "0"}) in bench.calls
-            assert ("/board/goto", {"square": "4", "direction": "auto", "axis": "0"}) in bench.calls
-            assert bench.squares[0] == 4
+            # Player 2's belt (axis 0 here) was told it starts on Black Forest, then driven to square 3
+            assert ("/board/set", {"square": "1", "axis": "0"}) in bench.calls
+            assert ("/board/goto", {"square": "3", "direction": "auto", "axis": "0"}) in bench.calls
+            assert bench.squares[0] == 3
         with open_board(c, room):                                             # reopening does not play it again
             time.sleep(0.3)
         assert len([1 for p, q in bench.calls if p == "/board/goto"]) == 1
@@ -154,8 +154,8 @@ def test_player_1_takes_a_camera_roll_after_the_demo_moves():
                                                   transport=bench.transport()))) as c:
         room = demo_room(c)
         with open_board(c, room):
-            wait_for(lambda: [p.position for p in room.state.players] == [6, 4])
-            assert [p.position for p in room.state.players] == [6, 4]
+            wait_for(lambda: [p.position for p in room.state.players] == [6, 3])
+            assert [p.position for p in room.state.players] == [6, 3]
             r = c.post("/vision/events", json={"type": "dice_rolled", "values": [2, 3], "total": 5, "doubles": False})
             assert r.status_code == 200 and r.json()["sent"]
             wait_for(lambda: room.state.player("p1").position == 11)
@@ -210,9 +210,9 @@ def test_two_lanes_on_the_belt_tool_axes_0_and_2(monkeypatch):
         room = demo_room(c)
         bench.calls.clear()
         with open_board(c, room):
-            wait_for(lambda: [p.position for p in room.state.players] == [6, 4])
-            assert [p.position for p in room.state.players] == [6, 4]
+            wait_for(lambda: [p.position for p in room.state.players] == [6, 3])
+            assert [p.position for p in room.state.players] == [6, 3]
             gotos = [(q["axis"], q["square"]) for p, q in bench.calls if p == "/board/goto"]
-            assert gotos == [("2", "4"), ("0", "6")]
+            assert gotos == [("2", "3"), ("0", "6")]
             assert ("/board/set", {"square": "5", "axis": "0"}) in bench.calls
-            assert ("/board/set", {"square": "3", "axis": "2"}) in bench.calls
+            assert ("/board/set", {"square": "1", "axis": "2"}) in bench.calls
