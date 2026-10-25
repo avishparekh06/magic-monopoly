@@ -1,6 +1,6 @@
 """Muse voice: WAV clip -> transcript -> yes/no decision, with the Muse HTTP call mocked."""
+import asyncio
 import io
-import json
 import struct
 import wave
 
@@ -35,11 +35,10 @@ class FakeMuse:
         return httpx.MockTransport(handler)
 
 
-@pytest.mark.asyncio
-async def test_transcribe_sends_documented_multipart():
+def test_transcribe_sends_documented_multipart():
     fake = FakeMuse("yes please")
     v = MuseVoice(api_key="k", transport=fake.transport())
-    assert await v.transcribe(wav_bytes()) == "yes please"
+    assert asyncio.run(v.transcribe(wav_bytes())) == "yes please"
     req = fake.requests[0]
     assert req.url.path == "/v1/asr/transcribe" and req.headers["authorization"] == "Bearer k"
     body = req.read()
