@@ -165,7 +165,7 @@ def test_lan_base(client):
 
 
 def test_kid_turn_end_to_end_through_stub_bridge(client, game):
-    """Roll -> stub bridge reports move_done -> offer -> Buy -> paid; Grandma's tap via dev panel."""
+    """Roll -> stub bridge reports move_done -> offer -> Buy -> paid at once (no card tap)."""
     gid = game["game_id"]
     with client.websocket_connect(f"/ws/{gid}?role=board") as board, \
          client.websocket_connect(f"/ws/{gid}?seat={seat_token(game, 'p2')}") as maya, \
@@ -179,10 +179,6 @@ def test_kid_turn_end_to_end_through_stub_bridge(client, game):
         offer = recv_until(board, lambda m: m["type"] == "offer")
         assert offer["square"] == 6
         board.send_json({"source": "voice", "text": "yes please"})
-        recv_until(board, lambda m: m["type"] == "payment_requested")
-        board.send_json({"source": "vision", "type": "player_card", "player": "p2"})
-        assert "Maya's card" in recv_until(board, lambda m: m["type"] == "error")["message"]
-        board.send_json({"source": "vision", "type": "player_card", "player": "p1"})
         line = recv_until(board, lambda m: m["type"] == "mirror" and "bought" in m["text"])
         assert "you now have 1400" in line["text"]
 
@@ -199,7 +195,7 @@ def test_kid_turn_end_to_end_through_stub_bridge(client, game):
 
 @pytest.mark.parametrize('answer', ['yes', 'no'])
 def test_board_on_screen_buy_choice_uses_pending_player(client, game, answer):
-    """Board buttons decide for the correct player; buying still waits for payment."""
+    """Board buttons decide for the correct player; a purchase is paid at once."""
     with client.websocket_connect(f"/ws/{game['game_id']}?role=board") as board:
         recv_until(board, is_state)
         board.send_json({'action': 'start', 'force': True})
@@ -211,11 +207,6 @@ def test_board_on_screen_buy_choice_uses_pending_player(client, game, answer):
         board.send_json({'action': 'decision', 'player': 'p1', 'answer': answer})
         state = recv_until(board, is_state)['state']
         if answer == 'yes':
-            assert state['phase'] == 'WAITING_FOR_PAYMENT'
-            assert state['players'][0]['balance'] == 1500
-            assert '6' not in state['owners']
-            board.send_json({'action': 'confirm_payment'})
-            state = recv_until(board, is_state)['state']
             assert state['owners']['6'] == 'p1'
             assert state['players'][0]['balance'] == 1400
         else:
@@ -225,8 +216,9 @@ def test_board_on_screen_buy_choice_uses_pending_player(client, game, answer):
         # A second/stale click cannot buy something or charge again.
         board.send_json({'action': 'decision', 'player': 'p1', 'answer': 'yes'})
         recv_until(board, lambda m: m['type'] == 'error')
-        # The shared board can also present a remote player's pending choice.
-        board.send_json({'source': 'vision', 'type': 'dice', 'value': 8})
+        # The shared board can also present a remote player's pending choice. (Table dice do not
+        # count on a remote player's turn, so the dev "land here" puts Maya on the square.)
+        board.send_json({'action': 'land', 'square': 8})
         recv_until(board, lambda m: m['type'] == 'offer' and m['player'] == 'p2')
         board.send_json({'action': 'decision', 'player': 'p2', 'answer': 'yes'})
         state = recv_until(board, is_state)['state']

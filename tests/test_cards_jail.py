@@ -127,27 +127,22 @@ def test_nearest_well_pays_ten_times_dice():
     assert s.player("p1").balance == 1530
 
 
-def test_collect_from_each_waits_for_grandmas_tap_then_others_auto():
+def test_collect_from_each_is_paid_automatically():
     s = at_turn(started(), "p2")
     s.player("p2").position = 0
     s, _ = kid_rolls(s, "p2", 1, 1)                            # Chest of Spells at 2
-    s, events = read(s, "chest_09")                            # birthday: 10 from each
-    assert s.phase == Phase.WAITING_FOR_PAYMENT and s.pending["payer"] == "p1"
-    s, events = act(s, SYSTEM, "player_card", player="p1")
+    s, events = read(s, "chest_09")                            # birthday: 10 from each, Grandma included
     assert s.player("p2").balance == 1520
     assert s.player("p1").balance == 1490 and s.player("p3").balance == 1490
     assert s.current_player.id == "p3" and s.payment_queue == []
 
 
-def test_grandma_pays_each_with_one_tap_per_payment():
+def test_grandma_pays_each_player_automatically():
     s = started()
     s.player("p1").position = 4
     s, _ = grandma_rolls(s, 3)                                 # Crystal Ball
-    s, _ = read(s, "crystal_15")                                 # pay each player 50
-    assert s.pending["payee"] == "p2"
-    s, _ = act(s, SYSTEM, "player_card", player="p1")
-    assert s.pending["payee"] == "p3"
-    s, _ = act(s, SYSTEM, "player_card", player="p1")
+    s, events = read(s, "crystal_15")                            # pay each player 50
+    assert [e["to"] for e in events if e["type"] == "paid"] == ["p2", "p3"]
     assert s.player("p1").balance == 1400 and s.current_player.id == "p2"
 
 
@@ -171,20 +166,18 @@ def test_bankrupt_while_paying_birthday_money_skips_later_payments():
     s.player("p2").position = 0
     s.player("p3").balance = 5
     s, _ = kid_rolls(s, "p2", 1, 1)
-    s, _ = read(s, "chest_09")
-    s, events = act(s, SYSTEM, "player_card", player="p1")
+    s, events = read(s, "chest_09")
     assert s.player("p3").bankrupt and s.player("p2").balance == 1515
     assert s.current_player.id == "p1"                        # Leo is skipped
 
 
 # --- taxes ----------------------------------------------------------------
 
-def test_grandma_taps_to_pay_tax():
+def test_grandma_pays_tax_automatically():
     s, events = grandma_rolls(started(), 4)                    # King's Tithe
-    assert s.phase == Phase.WAITING_FOR_PAYMENT
-    assert s.pending["payee"] == "bank" and s.pending["amount"] == 200
-    s, _ = act(s, SYSTEM, "player_card", player="p1")
-    assert s.player("p1").balance == 1300
+    paid = next(e for e in events if e["type"] == "paid")
+    assert paid["to"] == "bank" and paid["amount"] == 200
+    assert s.player("p1").balance == 1300 and s.current_player.id == "p2"
 
 
 def test_dragons_toll_kid_pays_automatically():
@@ -252,14 +245,12 @@ def test_third_turn_in_tower_must_pay():
     assert s.phase == Phase.WAITING_FOR_ROLL
 
 
-def test_grandma_pays_fine_by_voice_and_tap():
+def test_grandma_pays_fine_by_voice():
     s = started()
     s.player("p1").in_jail, s.player("p1").position = True, TOWER
     s, events = come_back_to(s, "p1")
     assert s.pending["type"] == "jail"
     s, _ = act(s, SYSTEM, "decision", player="p1", answer="yes")
-    assert s.phase == Phase.WAITING_FOR_PAYMENT and s.pending["reason"] == "jail_fine"
-    s, _ = act(s, SYSTEM, "player_card", player="p1")
     assert not s.player("p1").in_jail and s.phase == Phase.WAITING_FOR_ROLL
     assert s.current_player.id == "p1"
 

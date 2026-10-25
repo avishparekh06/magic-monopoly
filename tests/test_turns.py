@@ -91,12 +91,13 @@ def test_dice_not_visible_keeps_waiting_for_roll():
     assert s.phase == Phase.WAITING_FOR_ROLL and types(events) == ["dice_not_visible"]
 
 
-def test_grandma_cannot_use_roll_button_but_anyone_may_use_the_table_dice():
+def test_grandma_uses_table_dice_and_remote_players_use_their_phone():
     with pytest.raises(EngineError, match="real dice"):
         act(started(), "p1", "roll")
-    s = skip_turn(started())                      # p2 (remote) may roll the real dice too
-    s, events = act(s, SYSTEM, "dice", value=7)
-    assert s.phase == Phase.MOVING and events[-1]["lane"] == 2 and events[-1]["to"] == 7
+    s = skip_turn(started())                      # p2 (remote): table dice don't count on their turn
+    with pytest.raises(EngineError, match="phone"):
+        act(s, SYSTEM, "dice", value=7)
+    assert s.phase == Phase.WAITING_FOR_ROLL
 
 
 def test_not_your_turn():
@@ -136,24 +137,13 @@ def test_moves_wrap_forward_in_move_command():
 
 # --- buying ---------------------------------------------------------------
 
-def test_grandma_buys_by_voice_then_card_tap():
+def test_grandma_buys_by_voice_and_pays_at_once():
     s, _ = grandma_rolls(started(), 6)
     s, events = act(s, SYSTEM, "decision", player="p1", answer="yes")
-    assert s.phase == Phase.WAITING_FOR_PAYMENT
-    assert s.pending["payer"] == "p1" and s.pending["amount"] == 100
-    assert s.player("p1").balance == 1500                      # nothing paid until she taps
-    s, events = act(s, SYSTEM, "player_card", player="p1")
+    assert "payment_requested" not in types(events)            # no card tap on the reader
     assert s.player("p1").balance == 1400 and 6 in s.player("p1").properties
     assert "bought" in types(events)
     assert s.current_player.id == "p2" and s.phase == Phase.WAITING_FOR_ROLL
-
-
-def test_player_card_from_wrong_player_refused():
-    s, _ = grandma_rolls(started(), 6)
-    s, _ = act(s, SYSTEM, "decision", player="p1", answer="yes")
-    with pytest.raises(EngineError, match="Maya's card"):
-        act(s, SYSTEM, "player_card", player="p2")
-    assert s.phase == Phase.WAITING_FOR_PAYMENT
 
 
 def test_player_card_when_nobody_owes_refused():
@@ -161,21 +151,11 @@ def test_player_card_when_nobody_owes_refused():
         act(started(), SYSTEM, "player_card", player="p1")
 
 
-def test_card_tap_applied_once():
-    s, _ = grandma_rolls(started(), 6)
-    s, _ = act(s, SYSTEM, "decision", player="p1", answer="yes")
-    s, _ = act(s, SYSTEM, "player_card", player="p1")
-    with pytest.raises(EngineError):
-        act(s, SYSTEM, "player_card", player="p1")
-    assert s.player("p1").balance == 1400
-
-
-def test_confirm_payment_fallback():
+def test_buy_is_charged_once():
     s, _ = grandma_rolls(started(), 6)
     s, _ = act(s, SYSTEM, "decision", player="p1", answer="yes")
     with pytest.raises(EngineError):
-        act(s, "p2", "confirm_payment")
-    s, _ = act(s, SYSTEM, "confirm_payment")
+        act(s, SYSTEM, "confirm_payment")
     assert s.player("p1").balance == 1400
 
 
@@ -219,14 +199,12 @@ def test_rent_kid_pays_grandma_automatically():
     assert s.current_player.id == "p3"
 
 
-def test_rent_grandma_pays_kid_after_card_tap():
+def test_rent_grandma_pays_kid_automatically():
     s = started()
     s.player("p2").properties = [6]
     s, events = grandma_rolls(s, 6)
-    assert s.phase == Phase.WAITING_FOR_PAYMENT
-    assert s.pending == {"kind": "payment", "payer": "p1", "payee": "p2", "amount": 6,
-                         "reason": "rent", "square": 6}
-    s, _ = act(s, SYSTEM, "player_card", player="p1")
+    paid = next(e for e in events if e["type"] == "paid")
+    assert paid == {"type": "paid", "from": "p1", "to": "p2", "amount": 6, "reason": "rent", "square": 6}
     assert s.player("p1").balance == 1494 and s.player("p2").balance == 1506
 
 

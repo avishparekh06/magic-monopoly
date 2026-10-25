@@ -304,11 +304,13 @@ def _board_roll(s: GameState, actor: str, a: dict, rng: random.Random) -> list[d
 
 
 def _dice(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
-    """The camera read the physical dice (total only). The table dice count for whoever's
-    turn it is, in person or remote: a remote player may still press Roll instead."""
+    """The camera read the physical dice (total only). Table dice count only for an in-person
+    player; remote players roll on their phones, so a stray read on their turn is refused."""
     _require_system(actor)
     _require_phase(s, Phase.WAITING_FOR_ROLL)
     p = s.current_player
+    if p.kind != "in_person":
+        raise EngineError(f"{p.name} rolls on their phone; table dice only count for in-person players")
     value = a.get("value")
     if not isinstance(value, int) or not 2 <= value <= 12:
         raise EngineError("dice total must be 2-12")
@@ -578,13 +580,8 @@ def _payment(payer: str, payee: str, amount: int, reason: str, **extra) -> dict:
 
 
 def _request_payment(s: GameState, pay: dict) -> list[dict]:
-    payer = s.player(pay["payer"])
-    if payer.kind == "in_person" and payer.balance >= pay["amount"]:
-        s.phase = Phase.WAITING_FOR_PAYMENT
-        s.pending = pay
-        return [{"type": "payment_requested", **{k: v for k, v in pay.items() if k not in ("kind", "then")}}]
-    # Remote payments are approved automatically; so is a payment nobody can
-    # cover (bankruptcy is automatic for everyone, Grandma included).
+    # Every payment settles at once, in-person players included: no card tap on the reader.
+    # (WAITING_FOR_PAYMENT / confirm_payment remain only so games saved mid-payment can finish.)
     return _settle(s, pay)
 
 
