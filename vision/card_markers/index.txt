@@ -1,0 +1,35 @@
+  0  crystal_01   Crystal Ball: Mirror, Mirror
+  1  crystal_02   Crystal Ball: Back to Page One
+  2  crystal_03   Crystal Ball: What Big Eyes
+  3  crystal_04   Crystal Ball: Summoned by Maleficent
+  4  crystal_05   Crystal Ball: Shopping Spree
+  5  crystal_06   Crystal Ball: Gift Shop Rush
+  6  crystal_07   Crystal Ball: The Genie's Fine Print
+  7  crystal_08   Crystal Ball: Golden Egg
+  8  crystal_09   Crystal Ball: Flynn Rider to the Rescue
+  9  crystal_10   Crystal Ball: Spoilers!
+ 10  crystal_11   Crystal Ball: Caught by the Witch
+ 11  crystal_12   Crystal Ball: Fee-Fi-Fo-Fum
+ 12  crystal_13   Crystal Ball: Pinocchio's Nose
+ 13  crystal_14   Crystal Ball: New Toy Day
+ 14  crystal_15   Crystal Ball: Belle of the Ball
+ 15  crystal_16   Crystal Ball: The Golden Harp
+ 16  chest_01     Chest of Spells: Genie's Snap
+ 17  chest_02     Chest of Spells: Straw Into Gold
+ 18  chest_03     Chest of Spells: Frog Curse
+ 19  chest_04     Chest of Spells: Pixie Dust
+ 20  chest_05     Chest of Spells: Fairy Godmother's Favor
+ 21  chest_06     Chest of Spells: Maleficent's Curse
+ 22  chest_07     Chest of Spells: Genie's Wish
+ 23  chest_08     Chest of Spells: Sea Witch Refund
+ 24  chest_09     Chest of Spells: Un-Birthday Party
+ 25  chest_10     Chest of Spells: Merlin's Lucky Charm
+ 26  chest_11     Chest of Spells: Poisoned Apple
+ 27  chest_12     Chest of Spells: Ursula's Contract
+ 28  chest_13     Chest of Spells: Lumiere's Tip
+ 29  chest_14     Chest of Spells: Elsa's Blizzard
+ 30  chest_15     Chest of Spells: Mirror's Compliment
+ 31  chest_16     Chest of Spells: Ariel's Treasure
+100  p1           player card p1
+101  p2           player card p2
+102  p3           player card p3

@@ -5,7 +5,7 @@
 //   board.center                // the empty middle; pages put their own content here
 //
 // Layout: an 11x11 CSS grid where only the outer ring holds squares.
-// Square 0 (Castle Gate) is bottom-right; play runs left along the bottom,
+// Square 0 (Once Upon a Time) is bottom-right; play runs left along the bottom,
 // up the left side, right along the top and down the right side.
 
 import { tokenGlyph } from "/static/net.js";
@@ -225,7 +225,7 @@ export function statusText(state, boardData, viewer) {
       return `${name(pend.payer)}, lay your card on the reader to pay 🪙${pend.amount} ${what}`;
     }
     case "WAITING_FOR_CARD": {
-      const deck = pend.deck === "spell" ? "a Spell" : "a Fairy Godmother card";
+      const deck = pend.deck === "crystal" ? "a Crystal Ball card" : "a Chest of Spells card";
       const grandma = state.players[0];
       if (viewer === pend.for) return `${grandma.name} is drawing ${deck} for you…`;
       return `${grandma.name}, please draw ${deck} for ${pend.for === grandma.id ? "yourself" : name(pend.for)}`;

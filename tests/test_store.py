@@ -25,7 +25,7 @@ def state_where(ws, pred):
 
 
 def play_a_bit(client, game):
-    """Start, have Grandma roll a 7 (lands on Spells), draw a collect card. Returns the state."""
+    """Start, have Grandma roll a 7 (lands on Crystal Ball), draw a collect card. Returns the state."""
     token = game["join_links"]["p2"].rsplit("/", 1)[1]
     token3 = game["join_links"]["p3"].rsplit("/", 1)[1]
     with client.websocket_connect(f"/ws/{game['game_id']}?seat={token}") as p2, \
@@ -36,7 +36,7 @@ def play_a_bit(client, game):
         state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL")
         board.send_json({"source": "vision", "type": "dice", "value": 7})
         state_where(board, lambda s: s["phase"] == "WAITING_FOR_CARD")
-        board.send_json({"source": "vision", "type": "card", "id": "spell_08"})   # collect 50
+        board.send_json({"source": "vision", "type": "card", "id": "crystal_08"})   # collect 50
         return state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL" and s["current_player"] == "p2")
 
 

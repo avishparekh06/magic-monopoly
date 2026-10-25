@@ -64,7 +64,7 @@ def test_clip_endpoint_decides_for_the_player_on_offer():
             recv_until(board, lambda m: m["type"] == "state")
             board.send_json({"action": "start", "force": True})
             state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL")
-            board.send_json({"source": "vision", "type": "dice", "value": 3})       # Three Bears' Den, 60 gold
+            board.send_json({"source": "vision", "type": "dice", "value": 3})       # Gingerbread House, 60 gold
             s = state_where(board, lambda s: s["phase"] == "WAITING_FOR_DECISION")
             assert s["pending"]["player"] == "p1"
             r = c.post("/voice/clip", content=wav_bytes()).json()

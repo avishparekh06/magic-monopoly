@@ -87,9 +87,12 @@ Run: `.venv/bin/python -m server.main --sim [--tunnel] [--db games.db]`. Tests: 
   WAITING_FOR_PAYMENT (in-person player's card tap; remote payers settle automatically) / WAITING_FOR_CARD → END_OF_TURN.
   Actions: start, roll, dice, dice_not_visible, move_done, move_failed, retry_move, buy, decline, decision, card,
   player_card, confirm_payment, set_connected. `to_public` / `from_public` round-trip the state as JSON.
-- **`server/rules/monopoly.py` + `board.json` + `cards.json`** — fairy-tale board (Castle Gate = GO, Rapunzel's Tower =
-  jail, Cursed! = go to jail, Fairy Ring = free parking); decks `spell` and `fairy`, ids `spell_01..16`, `fairy_01..16`.
-  **These ids are the contract with the vision module** (`cards/<id>.png` and the ArUco marker map).
+- **`server/rules/monopoly.py` + `board.json` + `cards.json`** — the **print list** board: Once Upon a Time = GO,
+  Rapunzel's Tower = jail, Cursed! = go to jail, Fairy Ring = free parking, 28 named places grouped by tale (Hansel and
+  Gretel … Snow White), four Workshops (the railroads) and two utilities (Magic Lamp, Wishing Well Water Works).
+  Decks `crystal` (Crystal Ball = Chance) and `chest` (Chest of Spells = Community Chest), ids `crystal_01..16`,
+  `chest_01..16`, in the order of the print list. Each card has `marker` (ArUco id). Repair cards use effect `repairs`
+  (0 gold while houses are out of scope). **These ids and markers are the contract with the printed cards and the vision module.**
 - **`server/rooms.py`** — one `GameRoom` per game: the only caller of `apply_action`, under a lock; broadcasts full state +
   events + Mirror lines over WebSocket; routes adapter events back in via `on_adapter_event`. Host and seat tokens live here.
 - **`server/store.py`** — SQLite persistence: one row per applied action with a state snapshot. On startup every unfinished
@@ -128,8 +131,8 @@ Run: `.venv/bin/python -m server.main --sim [--tunnel] [--db games.db]`. Tests: 
    `make_adapters(sim=False)` still builds all of vision/voice/Mirror real adapters at once; keep `--sim` + `--bridge arduino`
    as the demo configuration until those exist.
 2. Decide one-vs-three physical players with the team; the engine currently allows exactly one in-person player.
-3. Print cards with ArUco markers (ids 10–25 spells, 30–45 fairies, 50–52 player cards; see §3) and add `marker` to
-   `cards.json`; put reference photos in `cards/<id>.png`.
+3. Print the cards with their ArUco markers: `vision/make_card_markers.py` writes one PNG per card id and a labelled
+   `vision/card_markers/sheet.png` + `index.txt`. Reference photos in `cards/<id>.png` are only a fallback now.
 4. Muse: `MUSE_API_KEY=... .venv/bin/python scripts/muse_check.py` (chat + transcribe) as soon as the key exists; then
    MuseMirror (narration via chat completions, `muse-spark-1.3`) → images. Voice is done pending that check.
 5. Demo-day runbook: `--tunnel --db games.db`, open `/` on the laptop, scan QR codes, keep the dev panel for manual
@@ -177,9 +180,10 @@ Run: `.venv/bin/python -m server.main --sim [--tunnel] [--db games.db]`. Tests: 
   vocabulary (see §2). The C920 was index 0 last time; `probe.py --list` finds it again.
 
 ### Next
-1. **ArUco-first card reading**: print markers on the new cards (one `DICT_4X4_100` family: 0–3 mat corners, 10–25
-   spells, 30–45 fairies, 50–52 player cards; ~18 mm, white quiet zone, twice per card, matte stock). `cards.py` detects
-   markers first and falls back to ORB. Card ids come from `server/cards.json`.
+1. **Marker scheme (done in code, cards still to print):** `DICT_4X4_250` everywhere. Crystal Ball cards 0–15, Chest of
+   Spells 16–31, player cards 100–102, action-mat corners 200–203 (`make_aruco_sheet.py`). Each marker ~18 mm with a
+   3 mm white quiet zone, printed twice per card (top and bottom edges), matte stock. `cards.py` reads the marker first
+   (ids from `server/cards.json`) and falls back to ORB on `cards/<id>.png`.
 2. Mount the camera over the mat, run `calibrate.py`, set `zones.json`; keep the tray well inside the frame.
 3. Tune `MOTION_THRESH` on real rolls with `live.py`; lock C920 focus/exposure (Logi Tune if `cap.set` is ignored).
 4. Record a clean `.mp4` of rolls and card draws as a regression fixture and demo backup.

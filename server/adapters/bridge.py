@@ -30,7 +30,7 @@ class MoveBridge(ABC):
         carriages physically are. Real hardware must home every lane to Castle
         Gate first (switch, camera mark, or the operator placing tokens by hand
         and zeroing), then drive each lane forward to its square."""
-        log.info("resume: re-zero tokens at Castle Gate, then drive lanes to %s", positions)
+        log.info("resume: re-zero tokens at Once Upon a Time, then drive lanes to %s", positions)
 
 
 class StubBridge(MoveBridge):

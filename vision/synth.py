@@ -87,6 +87,19 @@ def card(title, w=250, h=350, seed=0, color=(230, 215, 180)):
     return img
 
 
+def card_with_marker(title, marker_id, w=250, h=350, seed=0, size=70):
+    """A synthetic card with an ArUco marker (DICT_4X4_250) near the top and bottom edges, as the print spec says."""
+    img = card(title, w, h, seed)
+    d = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_250)
+    m = cv2.cvtColor(cv2.aruco.generateImageMarker(d, marker_id, size), cv2.COLOR_GRAY2BGR)
+    pad = 8
+    for y in (h - size - 2 * pad - 10, 10):
+        x = (w - size) // 2
+        img[y:y + size + 2 * pad, x - pad:x + size + pad] = 255            # white quiet zone
+        img[y + pad:y + pad + size, x:x + size] = m
+    return img
+
+
 def card_zone(card_img=None, px_per_mm=3.0, size_mm=(120, 180), card_mm=(63, 88), angle=4.0, seed=0):
     """Dark card zone with an optional card placed in it at a slight angle."""
     rng = np.random.default_rng(seed)

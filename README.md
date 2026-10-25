@@ -73,14 +73,14 @@ stands in for the camera, microphone and motors:
 | Grandma rolls the dice into the tray | **Camera — dice tray:** pick a total, **Read dice** (or **Dice not visible** to make the Mirror ask for a reroll) |
 | Grandma says "yes" / "no" | **Voice:** **Yes** / **No**, or type what she said and press **Hear** |
 | Grandma lays her player card on the reader to pay | **Camera — reader spot:** **Grandma's card on reader** |
-| Grandma lays a drawn Spell / Fairy Godmother card on the card spot | **Camera — card spot:** pick the card, **Read card** |
+| Grandma lays a drawn Crystal Ball / Chest of Spells card on the card spot | **Camera — card spot:** pick the card, **Read card** |
 | The card tap isn't read | **Payment fallback:** **Confirm payment** |
 | A token gets stuck | **Motors:** **Retry stuck move** |
 
 Kids play from their app: **🎲 Roll**, **Buy** / **No thanks**, and the tower choice. If the camera can't read a
 card drawn for them, their app shows a "which card was it?" list.
 
-Useful starting rolls for Grandma from Castle Gate: **6** = Gingerbread House (buy it), **7** = Spells (card),
+Useful starting rolls for Grandma from Castle Gate: **6** = Royal Ballroom (buy it), **7** = Crystal Ball (card),
 **4** = King's Tithe (tax), **10** = Rapunzel's Tower (just visiting).
 
 ### Text-only demo (no browser)
@@ -121,7 +121,7 @@ Commands: `0 200` (axis 0, 200 steps), `0 -200` (back), `mm 0 40` (40 mm), `pos`
 
 ### 3c. Start the game server with the motors
 
-Place Grandma's token on **Castle Gate** (square 0), then:
+Place Grandma's token on **Once Upon a Time** (square 0), then:
 
 ```bash
 source .venv/bin/activate

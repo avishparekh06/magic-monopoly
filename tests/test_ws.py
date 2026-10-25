@@ -174,7 +174,7 @@ def test_kid_turn_end_to_end_through_stub_bridge(client, game):
         board.send_json({"action": "start"})
         recv_until(maya, lambda m: m["type"] == "turn_started")
 
-        # Grandma's turn: camera reads 6 -> she lands on Gingerbread House.
+        # Grandma's turn: camera reads 6 -> she lands on Royal Ballroom.
         board.send_json({"source": "vision", "type": "dice", "value": 6})
         offer = recv_until(board, lambda m: m["type"] == "offer")
         assert offer["square"] == 6

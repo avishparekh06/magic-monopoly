@@ -5,7 +5,7 @@
   .venv/bin/python vision/calibrate.py --image f  calibrate from a saved frame
 
 Click order: top-left, top-right, bottom-right, bottom-left of the mat (as seen in the camera image).
-With ArUco, put marker 0 at TL, 1 at TR, 2 at BR, 3 at BL; the outermost corner of each marker is used.
+With ArUco, put marker 200 at TL, 201 at TR, 202 at BR, 203 at BL; the outermost corner of each marker is used.
 Then a preview shows the warped mat with the dice and card zones; edit zones.json by hand to adjust them.
 """
 import argparse
@@ -13,6 +13,8 @@ import sys
 import cv2
 import numpy as np
 from zones import Zones, DEFAULT_PATH
+
+MAT_IDS = (200, 201, 202, 203)              # TL, TR, BR, BL (DICT_4X4_250); cards use 0-31, player cards 100-102
 
 
 def open_camera(z):
@@ -67,18 +69,18 @@ def click_corners(frame):
 
 
 def aruco_corners(frame):
-    d = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+    d = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_250)
     det = cv2.aruco.ArucoDetector(d, cv2.aruco.DetectorParameters())
     corners, ids, _ = det.detectMarkers(frame)
     if ids is None:
         return None
     found = {int(i): c.reshape(4, 2) for i, c in zip(ids.ravel(), corners)}
-    if not all(i in found for i in range(4)):
-        print("saw markers", sorted(found), "need 0,1,2,3")
+    if not all(i in found for i in MAT_IDS):
+        print("saw markers", sorted(found), "need", MAT_IDS)
         return None
-    centre = np.mean([found[i].mean(0) for i in range(4)], axis=0)
+    centre = np.mean([found[i].mean(0) for i in MAT_IDS], axis=0)
     out = []
-    for i in range(4):                      # outermost corner of each marker = mat corner
+    for i in MAT_IDS:                       # outermost corner of each marker = mat corner
         c = found[i]
         out.append(c[np.argmax(np.linalg.norm(c - centre, axis=1))].tolist())
     return out
@@ -113,7 +115,7 @@ def main():
             while pts is None:
                 frame = grab(cap)
                 pts = aruco_corners(frame)
-                cv2.imshow("looking for ArUco 0-3 (q to quit)", frame)
+                cv2.imshow("looking for ArUco 200-203 (q to quit)", frame)
                 if cv2.waitKey(200) & 0xFF == ord("q"):
                     sys.exit("cancelled")
             cv2.destroyAllWindows()

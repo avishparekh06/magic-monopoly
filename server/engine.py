@@ -19,7 +19,7 @@ A turn:
         WAITING_FOR_DECISION (unowned: buy yes/no)
         WAITING_FOR_PAYMENT  (Grandma owes: waits for her card tap;
                               remote payers settle immediately)
-        WAITING_FOR_CARD     (Spells / Fairy Godmother: Grandma draws, camera reads)
+        WAITING_FOR_CARD     (Crystal Ball / Chest of Spells: the player draws, camera reads)
         END_OF_TURN --> next player's WAITING_FOR_ROLL
                         (or a pay-the-fine decision if they're in the tower)
 """
@@ -86,10 +86,10 @@ class GameState:
     #   {"kind": "decision", "type": "buy", "player": "p1", "square": 6, "price": 100}
     #   {"kind": "decision", "type": "jail", "player": "p2", "price": 50}
     #   {"kind": "payment", "payer": "p1", "payee": "p2", "amount": 25, "reason": "rent", "square": 6}
-    #   {"kind": "card", "deck": "spell", "for": "p2"}
+    #   {"kind": "card", "deck": "crystal", "for": "p2"}
     pending: dict | None = None
     payment_queue: list[dict] = field(default_factory=list)  # payments still to come this turn
-    last_card: dict | None = None   # {"id": "spell_07", "for": "p2"}: shown in that kid's app
+    last_card: dict | None = None   # {"id": "crystal_07", "for": "p2"}: shown in that kid's app
     winner: str | None = None
 
     def player(self, pid: str) -> Player:
@@ -285,7 +285,7 @@ def _move_done(s: GameState, actor: str, a: dict, rng: random.Random) -> list[di
     p.position = to
     s.pending = None
     events = [{"type": "moved", "player": p.id, "from": frm, "to": to}]
-    if to < frm and not move.get("no_salary"):  # wrapped past 39: passed or landed on Castle Gate
+    if to < frm and not move.get("no_salary"):  # wrapped past 39: passed or landed on Once Upon a Time
         salary = rules.board()["go_salary"]
         p.balance += salary
         events.append({"type": "salary", "player": p.id, "amount": salary})
@@ -344,7 +344,7 @@ def _resolve(s: GameState, p: Player, move: dict) -> list[dict]:
         return events + _request_payment(s, _payment(p.id, BANK, sq["amount"], "tax", square=idx))
     if sq["type"] == "go_to_jail":
         return events + [{"type": "cursed", "player": p.id}] + _send_to_jail(s, p)
-    return events + _end_turn(s)  # Castle Gate, Fairy Ring, just visiting the tower
+    return events + _end_turn(s)  # Once Upon a Time, Fairy Ring, just visiting the tower
 
 
 def _send_to_jail(s: GameState, p: Player) -> list[dict]:
@@ -401,6 +401,14 @@ def _apply_card(s: GameState, p: Player, eff: dict) -> list[dict]:
     if kind == "jail_free":
         p.jail_free_cards += 1
         return [{"type": "got_jail_key", "player": p.id}] + _end_turn(s)
+    if kind == "repairs":
+        # Per-building repair bills. Houses are out of scope in v1, so nobody owns any and the bill is 0.
+        houses = hotels = 0
+        amount = houses * eff["per_house"] + hotels * eff["per_hotel"]
+        events = [{"type": "repairs", "player": p.id, "amount": amount, "houses": houses, "hotels": hotels}]
+        if amount:
+            return events + _request_payment(s, _payment(p.id, BANK, amount, "card"))
+        return events + _end_turn(s)
     raise EngineError(f"unknown card effect: {kind}")
 
 

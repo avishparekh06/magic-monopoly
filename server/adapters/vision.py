@@ -2,7 +2,7 @@
 
 out: {"type": "dice", "value": 7}
    | {"type": "dice_not_visible"}
-   | {"type": "card", "id": "spell_07"}
+   | {"type": "card", "id": "crystal_07"}
    | {"type": "player_card", "player": "p1"}
 
 An adapter pushes reads by awaiting `emit(event)`. It does not decide whether

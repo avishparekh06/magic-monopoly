@@ -9,7 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from ..engine import BANK, GameState
-from ..rules.monopoly import card, square
+from ..rules.monopoly import card, cards, square
 
 
 class Mirror(ABC):
@@ -67,7 +67,7 @@ class TemplateMirror(Mirror):
         return f"Oh dear, {self._name(s, e['player'])}'s token got stuck. Let me give it a nudge..."
 
     def _salary(self, e, s):
-        return (f"{self._name(s, e['player'])} passes the Castle Gate and collects {e['amount']} gold!"
+        return (f"{self._name(s, e['player'])} passes Once Upon a Time and collects {e['amount']} gold!"
                 + self._grandma_balance(s, e["player"]))
 
     def _landed(self, e, s):
@@ -121,13 +121,19 @@ class TemplateMirror(Mirror):
     # --- cards ---
     def _card_requested(self, e, s):
         grandma = s.players[0]
-        article = "a Spell" if e["deck"] == "spell" else "a Fairy Godmother card"
+        article = f"a {cards()['decks'][e['deck']]['name']} card"
         for_whom = "for yourself" if e["player"] == grandma.id else f"for {self._name(s, e['player'])}"
         return f"{grandma.name}, please draw {article} {for_whom} and lay it on the card spot."
 
     def _card_drawn(self, e, s):
         c = card(e["id"])
         return f"{c['title']}! {c['text']}"
+
+    def _repairs(self, e, s):
+        who = self._name(s, e["player"])
+        if not e["amount"]:
+            return f"Repairs are due, but {who} owns no cottages or castles. Nothing to pay!"
+        return f"{who} owes {e['amount']} gold in repairs."
 
     def _got_jail_key(self, e, s):
         return f"{self._name(s, e['player'])} tucks the key away for later."

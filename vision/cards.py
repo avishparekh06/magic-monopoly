@@ -1,14 +1,36 @@
 """Find and identify a card in the top-down card zone. Pure functions, no camera.
 
-CardMatcher(cards_dir).identify(zone_bgr) -> CardResult(card_id, score, second, quad)
+CardMatcher(cards_dir, markers).identify(zone_bgr) -> CardResult(card_id, score, second, quad)
   card_id None  : no card found, or no confident match (reason says which)
-References: cards/<card_id>.png, any size, portrait. Each is matched upright and rotated 180 degrees.
+
+Two ways to identify a card, tried in order:
+  1. ArUco marker printed on the card (DICT_4X4_250; ids from server/cards.json: Crystal Ball 0-15,
+     Chest of Spells 16-31, player cards 100-102). Exact, rotation-proof, no reference images needed.
+  2. ORB feature match against reference images cards/<card_id>.png (upright and rotated 180 degrees),
+     for cards without a visible marker.
 """
 from dataclasses import dataclass
 import glob
+import json
 import os
 import cv2
 import numpy as np
+
+ARUCO_DICT = cv2.aruco.DICT_4X4_250
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CARDS_JSON = os.path.join(ROOT, "server", "cards.json")
+
+
+def load_marker_map(path=CARDS_JSON):
+    """marker id -> card id (game cards) or player id (player cards), from the game's card data."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except OSError:
+        return {}
+    m = {int(c["marker"]): c["id"] for c in data.get("cards", []) if "marker" in c}
+    m.update({int(v): k for k, v in data.get("player_card_markers", {}).items()})
+    return m
 
 CARD_W, CARD_H = 250, 350
 MIN_GOOD = 18           # minimum good ORB matches to accept
@@ -74,7 +96,10 @@ def warp_card(zone_bgr, quad):
 
 
 class CardMatcher:
-    def __init__(self, cards_dir, nfeatures=800):
+    def __init__(self, cards_dir, markers=None, nfeatures=800):
+        self.markers = load_marker_map() if markers is None else markers
+        self.detector = cv2.aruco.ArucoDetector(cv2.aruco.getPredefinedDictionary(ARUCO_DICT),
+                                                cv2.aruco.DetectorParameters())
         self.orb = cv2.ORB_create(nfeatures=nfeatures)
         self.bf = cv2.BFMatcher(cv2.NORM_HAMMING)
         self.refs = {}       # card_id -> list of (kp, des) for 0 and 180 degrees
@@ -104,7 +129,26 @@ class CardMatcher:
             scores.append((cid, max(self._good_matches(des_q, des_r) for _, des_r in variants)))
         return sorted(scores, key=lambda s: -s[1])
 
+    def read_marker(self, zone_bgr):
+        """(card_id, marker corners) for the largest known marker in view, else (None, None)."""
+        corners, ids, _ = self.detector.detectMarkers(zone_bgr)
+        if ids is None or not self.markers:
+            return None, None
+        best = None
+        for c, i in zip(corners, ids.ravel()):
+            cid = self.markers.get(int(i))
+            if cid is None:
+                continue
+            area = cv2.contourArea(c.reshape(4, 2))
+            if best is None or area > best[2]:
+                best = (cid, c.reshape(4, 2), area)
+        return (best[0], best[1]) if best else (None, None)
+
     def identify(self, zone_bgr):
+        cid, mquad = self.read_marker(zone_bgr)
+        if cid is not None:
+            quad = find_card(zone_bgr)
+            return CardResult(cid, 1000, 0, quad if quad is not None else mquad, None, None)
         quad = find_card(zone_bgr)
         if quad is None:
             return CardResult(None, reason="no_card")

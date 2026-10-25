@@ -8,7 +8,7 @@ from tests.test_store import PLAYERS, recv_until, state_where
 def test_translation():
     assert translate_vision_event({"type": "dice_rolled", "values": [3, 4], "total": 7, "doubles": False}) == {"type": "dice", "value": 7}
     assert translate_vision_event({"type": "dice_unclear", "reason": "touching", "seen": []}) == {"type": "dice_not_visible"}
-    assert translate_vision_event({"type": "card_drawn", "card_id": "spell_08", "score": 40}) == {"type": "card", "id": "spell_08"}
+    assert translate_vision_event({"type": "card_drawn", "card_id": "crystal_08", "score": 40}) == {"type": "card", "id": "crystal_08"}
     assert translate_vision_event({"type": "dice_cleared"}) is None
     assert translate_vision_event({"type": "card_removed"}) is None
 
@@ -27,7 +27,7 @@ def test_dice_event_drives_the_game():
             s = state_where(board, lambda s: s["phase"] == "WAITING_FOR_CARD")
             assert s["players"][0]["position"] == 7
             # a card read while a card is wanted
-            c.post("/vision/events", json={"type": "card_drawn", "card_id": "spell_08", "score": 50})
+            c.post("/vision/events", json={"type": "card_drawn", "card_id": "crystal_08", "score": 50})
             s = state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL")
             assert s["players"][0]["balance"] == 1550
             # on the remote player's turn the table dice count for them too (lane 2 moves)

@@ -8,7 +8,7 @@ SPELLS, TITHE, CURSED, TOWER = 7, 4, 30, 10
 
 
 def maya_on_spells():
-    """Maya (p2) rolls from 4 onto Spells; Grandma is asked to draw."""
+    """Maya (p2) rolls from 4 onto a Crystal Ball square; Grandma is asked to draw."""
     s = at_turn(started(), "p2")
     s.player("p2").position = 4
     s, events = kid_rolls(s, "p2", 1, 2)
@@ -24,26 +24,26 @@ def read(s, card_id, actor=SYSTEM):
 def test_landing_on_spells_asks_grandma_to_draw_for_the_kid():
     s, events = maya_on_spells()
     assert s.phase == Phase.WAITING_FOR_CARD
-    assert s.pending == {"kind": "card", "deck": "spell", "for": "p2"}
-    assert {"type": "card_requested", "player": "p2", "deck": "spell"} in events
+    assert s.pending == {"kind": "card", "deck": "crystal", "for": "p2"}
+    assert {"type": "card_requested", "player": "p2", "deck": "crystal"} in events
 
 
 def test_camera_card_read_applies_effect_once():
     s, _ = maya_on_spells()
-    s, events = read(s, "spell_08")                            # Goblin Gold: collect 50
+    s, events = read(s, "crystal_08")                            # Goblin Gold: collect 50
     assert s.player("p2").balance == 1550
-    assert s.last_card == {"id": "spell_08", "for": "p2"}
+    assert s.last_card == {"id": "crystal_08", "for": "p2"}
     assert "card_drawn" in types(events) and s.current_player.id == "p3"
     with pytest.raises(EngineError, match="nobody is drawing"):
-        read(s, "spell_08")
+        read(s, "crystal_08")
 
 
 def test_wrong_deck_refused():
     s, _ = maya_on_spells()
-    with pytest.raises(EngineError, match="Fairy Godmother card"):
-        read(s, "fairy_02")
+    with pytest.raises(EngineError, match="Chest of Spells card"):
+        read(s, "chest_02")
     with pytest.raises(EngineError, match="unknown card"):
-        read(s, "spell_99")
+        read(s, "crystal_99")
 
 
 def test_player_card_is_not_a_game_card():
@@ -55,16 +55,16 @@ def test_player_card_is_not_a_game_card():
 def test_kid_fallback_picker_only_for_the_drawer():
     s, _ = maya_on_spells()
     with pytest.raises(EngineError, match="for Maya"):
-        read(s, "spell_08", actor="p3")
-    s, _ = read(s, "spell_08", actor="p2")
+        read(s, "crystal_08", actor="p3")
+    s, _ = read(s, "crystal_08", actor="p2")
     assert s.player("p2").balance == 1550
 
 
 # --- card effects ---------------------------------------------------------
 
-def test_advance_to_castle_gate_moves_and_pays_salary():
+def test_advance_to_once_upon_a_time_moves_and_pays_salary():
     s, _ = maya_on_spells()
-    s, events = read(s, "spell_01")
+    s, events = read(s, "crystal_02")
     assert s.phase == Phase.MOVING and events[-1]["to"] == 0
     s, events = finish_move(s)
     assert s.player("p2").position == 0 and s.player("p2").balance == 1700
@@ -72,7 +72,7 @@ def test_advance_to_castle_gate_moves_and_pays_salary():
 
 def test_go_back_three_travels_forward_without_salary_and_pays_tax():
     s, _ = maya_on_spells()
-    s, events = read(s, "spell_10")                            # back 3: 7 -> 4 (King's Tithe)
+    s, events = read(s, "crystal_10")                            # back 3: 7 -> 4 (King's Tithe)
     assert events[-1] == {"type": "move", "player": "p2", "lane": 2, "from": SPELLS, "to": TITHE}
     s, events = finish_move(s)
     assert "salary" not in types(events)
@@ -82,7 +82,7 @@ def test_go_back_three_travels_forward_without_salary_and_pays_tax():
 def test_nearest_ride_pays_double_rent():
     s, _ = maya_on_spells()
     s.player("p3").properties = [15]                           # Pumpkin Coach
-    s, _ = read(s, "spell_05")
+    s, _ = read(s, "crystal_05")
     assert s.pending["to"] == 15
     s, _ = finish_move(s)
     assert s.player("p3").balance == 1550                      # 25 x 2
@@ -91,7 +91,7 @@ def test_nearest_ride_pays_double_rent():
 def test_nearest_well_pays_ten_times_dice():
     s, _ = maya_on_spells()                                    # rolled 1 + 2 = 3
     s.player("p1").properties = [12]
-    s, _ = read(s, "spell_07")
+    s, _ = read(s, "crystal_07")
     s, _ = finish_move(s)
     assert s.player("p2").balance == 1500 - 30
     assert s.player("p1").balance == 1530
@@ -100,8 +100,8 @@ def test_nearest_well_pays_ten_times_dice():
 def test_collect_from_each_waits_for_grandmas_tap_then_others_auto():
     s = at_turn(started(), "p2")
     s.player("p2").position = 0
-    s, _ = kid_rolls(s, "p2", 1, 1)                            # Fairy Godmother at 2
-    s, events = read(s, "fairy_07")                            # birthday: 10 from each
+    s, _ = kid_rolls(s, "p2", 1, 1)                            # Chest of Spells at 2
+    s, events = read(s, "chest_09")                            # birthday: 10 from each
     assert s.phase == Phase.WAITING_FOR_PAYMENT and s.pending["payer"] == "p1"
     s, events = act(s, SYSTEM, "player_card", player="p1")
     assert s.player("p2").balance == 1520
@@ -112,8 +112,8 @@ def test_collect_from_each_waits_for_grandmas_tap_then_others_auto():
 def test_grandma_pays_each_with_one_tap_per_payment():
     s = started()
     s.player("p1").position = 4
-    s, _ = grandma_rolls(s, 3)                                 # Spells
-    s, _ = read(s, "spell_15")                                 # pay each player 50
+    s, _ = grandma_rolls(s, 3)                                 # Crystal Ball
+    s, _ = read(s, "crystal_15")                                 # pay each player 50
     assert s.pending["payee"] == "p2"
     s, _ = act(s, SYSTEM, "player_card", player="p1")
     assert s.pending["payee"] == "p3"
@@ -123,13 +123,13 @@ def test_grandma_pays_each_with_one_tap_per_payment():
 
 def test_jail_key_card_is_kept():
     s, _ = maya_on_spells()
-    s, events = read(s, "spell_09")
+    s, events = read(s, "crystal_09")
     assert s.player("p2").jail_free_cards == 1 and "got_jail_key" in types(events)
 
 
 def test_go_to_tower_card():
     s, _ = maya_on_spells()
-    s, _ = read(s, "spell_11")
+    s, _ = read(s, "crystal_11")
     assert s.pending["to"] == TOWER
     s, events = finish_move(s)
     assert s.player("p2").in_jail and s.player("p2").position == TOWER
@@ -141,7 +141,7 @@ def test_bankrupt_while_paying_birthday_money_skips_later_payments():
     s.player("p2").position = 0
     s.player("p3").balance = 5
     s, _ = kid_rolls(s, "p2", 1, 1)
-    s, _ = read(s, "fairy_07")
+    s, _ = read(s, "chest_09")
     s, events = act(s, SYSTEM, "player_card", player="p1")
     assert s.player("p3").bankrupt and s.player("p2").balance == 1515
     assert s.current_player.id == "p1"                        # Leo is skipped
