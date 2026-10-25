@@ -237,6 +237,20 @@ def _set_position(s: GameState, actor: str, a: dict, rng: random.Random) -> list
     return [{"type": "position_set", "player": p.id, "from": frm, "to": square}]
 
 
+def _land(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
+    """Host/debug: pretend the current player just landed on `square` (no roll, no belt, no salary) and
+    resolve it: an offer, rent, a card draw, tax, the tower. For testing cards and rules."""
+    _require_system(actor)
+    _require_phase(s, Phase.WAITING_FOR_ROLL)
+    p = s.current_player
+    square = a.get("square")
+    if not isinstance(square, int) or not 0 <= square < rules.NUM_SQUARES:
+        raise EngineError(f"square must be 0-{rules.NUM_SQUARES - 1}")
+    frm, p.position = p.position, square
+    s.last_roll, s.last_dice = None, None
+    return [{"type": "position_set", "player": p.id, "from": frm, "to": square}] + _resolve(s, p, {})
+
+
 # --- rolling and moving -----------------------------------------------------
 
 def _roll(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
@@ -638,6 +652,7 @@ def _start_turn(s: GameState) -> list[dict]:
 _HANDLERS: dict[str, Handler] = {
     "set_connected": _set_connected,
     "set_position": _set_position,
+    "land": _land,
     "start": _start,
     "roll": _roll,
     "dice": _dice,

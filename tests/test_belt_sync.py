@@ -45,6 +45,15 @@ def test_not_adopted_while_that_token_is_moving():
             c.post("/vision/events", json={"type": "dice_rolled", "values": [3, 3], "total": 6})
             s = state_where(board, lambda s: s["players"][0]["position"] == 6 and s["phase"] != "MOVING")
             assert g.square == 6
-            # a stale report for a token that is not moving is adopted; the game follows the physical side
+            # landed on an unowned place: while the offer is pending the square is part of the action,
+            # so a belt report is shown but not adopted
+            assert s["phase"] == "WAITING_FOR_DECISION"
+            c.post("/belt/position", params={"lane": 1, "square": 9, "game": game["game_id"]})
+            m = recv_until(board, lambda m: m["type"] == "belt_position" and m["square"] == 9)
+            assert m["game_square"] == 6
+            board.send_json({"action": "decision", "player": "p1", "answer": "no"})
+            s = state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL")
+            assert s["players"][0]["position"] == 6
+            # between turns the game follows the physical side
             c.post("/belt/position", params={"lane": 1, "square": 9, "game": game["game_id"]})
             state_where(board, lambda s: s["players"][0]["position"] == 9)

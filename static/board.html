@@ -336,7 +336,9 @@ function render() {
     for (const p of state.players) {
       const inp = h("input", { type: "number", min: 0, max: 39, value: p.position, style: "width:64px", id: `pos-${p.id}` });
       sync.append(h("span", {}, p.name), inp,
-        h("button", { class: "btn small secondary", onclick: () => net.send({ action: "set_position", player: p.id, square: Number(inp.value) }) }, "Set"));
+        h("button", { class: "btn small secondary", onclick: () => net.send({ action: "set_position", player: p.id, square: Number(inp.value) }) }, "Set"),
+        h("button", { class: "btn small secondary", title: "pretend the current player landed here and resolve it (card, offer, rent)",
+          onclick: () => net.send({ action: "land", square: Number(inp.value) }) }, "Land here"));
     }
     sync.append(h("button", { class: "btn small", onclick: () => net.send({ action: "sync_belt" }) }, "Sync lane 1 from belt"));
     sync.append(h("label", { style: "display:inline-flex; gap:6px; align-items:center" },

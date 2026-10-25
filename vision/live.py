@@ -6,6 +6,8 @@
   .venv/bin/python vision/live.py 0 --post --server http://127.0.0.1:8000
   .venv/bin/python vision/live.py 0 --belt                 hardware test: each confirmed roll goes straight to the
                                                            belt step service (BELT_URL/BELT_KEY from .env), no game engine
+  .venv/bin/python vision/live.py 0 --cards --post         read ArUco card markers in the box; a card held still for a
+                                                           few frames is posted as card_drawn (ids from server/cards.json)
 
 Mouse:  drag a box around the dice area (defaults to the whole frame)
 Slider: "die px" = how wide one die looks in pixels at this camera height (match the yellow reference square)
@@ -18,11 +20,13 @@ import sys
 import time
 
 import cv2
+import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from dice import read_dice            # noqa: E402
-from watch import DiceWatcher, Emitter, jpeg_b64  # noqa: E402
+from watch import CardWatcher, DiceWatcher, Emitter, jpeg_b64  # noqa: E402
+from cards import CardMatcher, load_marker_map  # noqa: E402
 from zones import Zones               # noqa: E402
 
 SETTINGS = os.path.join(HERE, "live.json")
@@ -49,6 +53,7 @@ def main():
     post = "--post" in argv
     frames = "--frames" in argv                   # send a picture of the table with each roll
     belt = "--belt" in argv                       # bypass the game: POST <BELT_URL>/step?squares=<total>&key=<BELT_KEY>
+    cards_mode = "--cards" in argv                # read card markers instead of dice
     belt_url = belt_key = None
     if belt:
         env = {}
@@ -125,6 +130,18 @@ def main():
             threading.Thread(target=step_belt, args=(e["total"],), daemon=True).start()   # don't freeze the window
 
     dw = DiceWatcher(1.0, die_mm, on_event)
+    cw = None
+    if cards_mode:
+        matcher = CardMatcher(os.path.join(os.path.dirname(HERE), "cards"))
+        names = {}
+        try:
+            import json as _json
+            data = _json.load(open(os.path.join(os.path.dirname(HERE), "server", "cards.json"), encoding="utf-8"))
+            names = {c["id"]: f"{data['decks'][c['deck']]['name']}: {c['title']}" for c in data["cards"]}
+        except OSError:
+            pass
+        cw = CardWatcher(matcher, on_event)
+        print(f"card mode: {len(matcher.markers)} marker ids known; hold a card still in the box")
     if post:
         print(f"posting confirmed rolls to {server}/vision/events")
     os.makedirs(os.path.join(HERE, "samples"), exist_ok=True)
@@ -150,10 +167,37 @@ def main():
 
         x0, y0, x1, y1 = box if box else [0, 0, W, H]
         region = raw[y0:y1, x0:x1]
+        view = frame.copy()
+        if cw is not None:
+            cw.step(region)
+            res = cw.last
+            cv2.rectangle(view, (x0, y0), (x1, y1), (255, 160, 0), 2)
+            if res is not None and res.quad is not None:
+                cv2.polylines(view, [np.int32(res.quad) + np.int32([x0, y0])], True, (0, 255, 255), 3)
+            cv2.rectangle(view, (0, 0), (W, 110), (0, 0, 0), -1)
+            if res is not None and res.card_id:
+                txt, col = f"{res.card_id}  {names.get(res.card_id, '')}", (0, 255, 0)
+            elif res is not None and res.reason == "no_card":
+                txt, col = "no card", (200, 200, 200)
+            else:
+                txt, col = f"card seen but not identified ({res.reason if res else '-'})", (0, 165, 255)
+            cv2.putText(view, txt, (16, 48), cv2.FONT_HERSHEY_SIMPLEX, 1.1, col, 3)
+            last = events[-1][1] if events else None
+            lt = f"last event: {last['type']} {last.get('card_id', '')}" if last else "last event: -"
+            cv2.putText(view, f"{lt}    reported: {cw.current or '-'}", (16, 92), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+            cv2.putText(view, "drag = card area   r = reset   s = save   q = quit", (16, H - 14), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.imshow(WIN, view)
+            k = cv2.waitKey(1) & 0xFF
+            if k == ord("q"):
+                break
+            if k == ord("r"):
+                box = None; s.pop("box", None); save_settings(s)
+            if k == ord("s"):
+                path = os.path.join(HERE, "samples", f"frame_{int(time.time())}.jpg"); cv2.imwrite(path, raw); print("saved", path)
+            continue
         r = read_dice(region, px_per_mm, die_mm)
         dw.step(region, time.time())
 
-        view = frame.copy()
         # region box, reference die square, per-die boxes with counts
         cv2.rectangle(view, (x0, y0), (x1, y1), (0, 255, 0), 2)
         cv2.rectangle(view, (W - die_px - 20, 20), (W - 20, 20 + die_px), (0, 255, 255), 2)

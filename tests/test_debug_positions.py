@@ -65,3 +65,17 @@ def test_seat_page_cannot_sync():
             assert "board or host" in recv_until(maya, lambda m: m["type"] == "error")["message"]
             maya.send_json({"action": "set_position", "player": "p2", "square": 9})
             assert "host" in recv_until(maya, lambda m: m["type"] == "error")["message"]
+
+
+def test_land_resolves_like_a_real_landing():
+    s = new_game("g", PLAYERS)
+    for p in s.players:
+        p.connected = True
+    s, _ = apply_action(s, SYSTEM, {"action": "start"})
+    s, ev = apply_action(s, SYSTEM, {"action": "land", "square": 7})            # Crystal Ball
+    assert s.phase == Phase.WAITING_FOR_CARD and s.pending == {"kind": "card", "deck": "crystal", "for": "p1"}
+    assert [e["type"] for e in ev] == ["position_set", "landed", "card_requested"]
+    s, ev = apply_action(s, SYSTEM, {"action": "card", "id": "crystal_08"})      # Golden Egg: collect 50
+    assert s.player("p1").balance == 1550
+    with pytest.raises(EngineError):
+        apply_action(s, SYSTEM, {"action": "land", "square": 7})                 # not waiting for a roll now

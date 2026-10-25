@@ -245,8 +245,9 @@ class GameRoom:
                                   "game_square": game_square, "source": source})
         if not (self.debug_sync and player) or game_square == square:
             return
-        pend = self.state.pending or {}
-        if self.state.phase.value == "MOVING" and pend.get("player") == player.id:
+        # Only between turns: while a landing is being resolved (offer, card, payment) or the belt is
+        # still moving, the square is part of the pending action and must not be changed under it.
+        if self.state.phase.value not in ("LOBBY", "WAITING_FOR_ROLL"):
             return
         try:
             await self.dispatch(SYSTEM, {"action": "set_position", "player": player.id, "square": square})
