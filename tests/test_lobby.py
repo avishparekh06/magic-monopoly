@@ -27,7 +27,6 @@ def test_lanes_assigned_in_order():
     SPECS[:1],                                             # alone
     SPECS + [{"name": "Extra", "kind": "remote"}],         # 4 players
     [SPECS[1], SPECS[0]],                                  # Grandma not first
-    [SPECS[0], {"name": "Two", "kind": "in_person"}],      # two in-person
     [SPECS[0], {"name": "", "kind": "remote"}],            # no name
     [SPECS[0], {"name": "Bot", "kind": "robot"}],          # bad kind
     [SPECS[0], {"name": "Bot", "kind": "ai"}],             # AI seats are out for v1
@@ -35,6 +34,12 @@ def test_lanes_assigned_in_order():
 def test_bad_rosters_rejected(specs):
     with pytest.raises(EngineError):
         new_game("g", specs)
+
+
+def test_several_players_at_the_table():
+    s = new_game("g", [SPECS[0], {"name": "Two", "kind": "in_person"}, SPECS[2]])
+    assert [p.kind for p in s.players] == ["in_person", "in_person", "remote"]
+    assert [p.connected for p in s.players] == [True, True, False]   # table players need no phone
 
 
 def test_grandma_ready_kids_not():

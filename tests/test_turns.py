@@ -91,12 +91,12 @@ def test_dice_not_visible_keeps_waiting_for_roll():
     assert s.phase == Phase.WAITING_FOR_ROLL and types(events) == ["dice_not_visible"]
 
 
-def test_grandma_cannot_use_roll_button_and_kids_cannot_use_camera():
+def test_grandma_cannot_use_roll_button_but_anyone_may_use_the_table_dice():
     with pytest.raises(EngineError, match="real dice"):
         act(started(), "p1", "roll")
-    s = skip_turn(started())
-    with pytest.raises(EngineError, match="their app"):
-        act(s, SYSTEM, "dice", value=7)
+    s = skip_turn(started())                      # p2 (remote) may roll the real dice too
+    s, events = act(s, SYSTEM, "dice", value=7)
+    assert s.phase == Phase.MOVING and events[-1]["lane"] == 2 and events[-1]["to"] == 7
 
 
 def test_not_your_turn():

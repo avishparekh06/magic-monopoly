@@ -134,7 +134,8 @@ for (const [n, label] of [[2, "Second player"], [3, "Third player"]]) {
     h("div", { class: "seat-row" },
       h("input", { id: `name${n}`, placeholder: "Name", maxlength: 20 }),
       h("select", { id: `kind${n}`, "aria-label": `${label}: who` },
-        h("option", { value: "remote", selected: n === 2 }, "Grandchild"),
+        h("option", { value: "in_person", selected: n === 2 }, "At the board"),
+        h("option", { value: "remote" }, "Grandchild on a phone"),
         h("option", { value: "empty", selected: n === 3 }, "Empty seat"))));
 }
 

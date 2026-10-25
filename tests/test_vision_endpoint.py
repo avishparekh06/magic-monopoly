@@ -30,11 +30,15 @@ def test_dice_event_drives_the_game():
             c.post("/vision/events", json={"type": "card_drawn", "card_id": "spell_08", "score": 50})
             s = state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL")
             assert s["players"][0]["balance"] == 1550
-            # a stray roll on a remote player's turn is rejected by the engine, not applied
+            # on the remote player's turn the table dice count for them too (lane 2 moves)
             r = c.post("/vision/events", json={"type": "dice_rolled", "values": [1, 1], "total": 2})
-            assert r.status_code == 200          # delivered; the engine's rejection goes to the board page
+            assert r.status_code == 200
+            s = state_where(board, lambda s: s["players"][1]["position"] == 2 and s["phase"] != "MOVING")
+            # but a roll while nobody is waiting for one is rejected by the engine, not applied
+            r = c.post("/vision/events", json={"type": "dice_rolled", "values": [1, 1], "total": 2})
+            assert r.status_code == 200
             err = recv_until(board, lambda m: m["type"] == "error")
-            assert "turn" in err["message"]
+            assert "waiting" in err["message"] or "can't" in err["message"] or "turn" in err["message"]
             # explicit game id works too; unknown id is 404; malformed body is 422
             assert c.post(f"/vision/events?game={game['game_id']}", json={"type": "dice_cleared"}).json()["ignored"] == "dice_cleared"
             assert c.post("/vision/events?game=nope", json={"type": "dice_rolled", "total": 7}).status_code == 404

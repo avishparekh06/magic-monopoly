@@ -109,7 +109,8 @@ class GameState:
 def new_game(game_id: str, specs: list[dict]) -> GameState:
     """Build a game in LOBBY. specs: [{"name": "Grandma", "kind": "in_person"}, ...]
 
-    The first player must be Grandma (in_person); the rest remote.
+    The first player must be in_person (the host at the table). Any other seat may be
+    in_person too (rolls the real dice, no phone needed) or remote (rolls in their app).
     Lanes and ids are assigned in order.
     """
     if not 2 <= len(specs) <= MAX_PLAYERS:
@@ -122,8 +123,6 @@ def new_game(game_id: str, specs: list[dict]) -> GameState:
         name = (spec.get("name") or "").strip()
         if kind not in PLAYER_KINDS:
             raise EngineError(f"unknown player kind: {kind}")
-        if i > 0 and kind == "in_person":
-            raise EngineError("only one in-person player")
         if not name:
             raise EngineError("every player needs a name")
         players.append(Player(
@@ -232,12 +231,11 @@ def _roll(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
 
 
 def _dice(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
-    """The camera read Grandma's physical dice (total only)."""
+    """The camera read the physical dice (total only). The table dice count for whoever's
+    turn it is, in person or remote: a remote player may still press Roll instead."""
     _require_system(actor)
     _require_phase(s, Phase.WAITING_FOR_ROLL)
     p = s.current_player
-    if p.kind != "in_person":
-        raise EngineError(f"it's {p.name}'s turn — they roll in their app")
     value = a.get("value")
     if not isinstance(value, int) or not 2 <= value <= 12:
         raise EngineError("dice total must be 2-12")
@@ -248,8 +246,6 @@ def _dice_not_visible(s: GameState, actor: str, a: dict, rng: random.Random) -> 
     _require_system(actor)
     _require_phase(s, Phase.WAITING_FOR_ROLL)
     p = s.current_player
-    if p.kind != "in_person":
-        raise EngineError(f"it's {p.name}'s turn — they roll in their app")
     return [{"type": "dice_not_visible", "player": p.id}]   # stay in WAITING_FOR_ROLL
 
 

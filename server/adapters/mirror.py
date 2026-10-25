@@ -55,7 +55,7 @@ class TemplateMirror(Mirror):
         p = s.player(e["player"])
         if p.kind == "in_person":
             return f"{p.name}, it's your turn. Roll the dice into the tray!"
-        return f"{p.name}, it's your turn!"
+        return f"{p.name}, it's your turn! Roll the dice into the tray, or tap Roll on your phone."
 
     def _dice_not_visible(self, e, s):
         return f"{self._name(s, e['player'])}, I couldn't quite see the dice. Please roll again!"

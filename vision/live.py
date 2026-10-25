@@ -2,6 +2,8 @@
 
   .venv/bin/python vision/live.py [camera index]        (default: camera.index from zones.json, else 0)
   .venv/bin/python vision/live.py --source clip.mp4
+  .venv/bin/python vision/live.py 0 --post                 also send confirmed rolls to the game server
+  .venv/bin/python vision/live.py 0 --post --server http://127.0.0.1:8000
 
 Mouse:  drag a box around the dice area (defaults to the whole frame)
 Slider: "die px" = how wide one die looks in pixels at this camera height (match the yellow reference square)
@@ -18,7 +20,7 @@ import cv2
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from dice import read_dice            # noqa: E402
-from watch import DiceWatcher         # noqa: E402
+from watch import DiceWatcher, Emitter  # noqa: E402
 from zones import Zones               # noqa: E402
 
 SETTINGS = os.path.join(HERE, "live.json")
@@ -39,8 +41,12 @@ def save_settings(s):
 
 
 def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    source = sys.argv[sys.argv.index("--source") + 1] if "--source" in sys.argv else None
+    argv = sys.argv[1:]
+    source = argv[argv.index("--source") + 1] if "--source" in argv else None
+    server = argv[argv.index("--server") + 1] if "--server" in argv else "http://127.0.0.1:8000"
+    post = "--post" in argv
+    skip = {source, server}
+    args = [a for a in argv if not a.startswith("--") and a not in skip]
     z = Zones.load()
     idx = int(args[0]) if args else z.d["camera"]["index"]
     die_mm = float(z.d["die_mm"])
@@ -77,7 +83,15 @@ def main():
     cv2.createTrackbar("die px", WIN, int(s.get("die_px", 70)), 250, lambda v: None)
 
     events = []
-    dw = DiceWatcher(1.0, die_mm, lambda e: events.append((time.time(), e)))
+    emitter = Emitter(server, post=post)          # prints JSON lines; POSTs to the game server with --post
+
+    def on_event(e):
+        events.append((time.time(), e))
+        emitter(e)
+
+    dw = DiceWatcher(1.0, die_mm, on_event)
+    if post:
+        print(f"posting confirmed rolls to {server}/vision/events")
     os.makedirs(os.path.join(HERE, "samples"), exist_ok=True)
     t0, n = time.time(), 0
     while True:
