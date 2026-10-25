@@ -17,6 +17,11 @@ class Mirror(ABC):
     async def line(self, event: dict, state: GameState) -> str | None:
         ...
 
+    async def narrate(self, events: list[dict], state: GameState) -> str | None:
+        """One Mirror line for a group of events (a roll and everything it led to)."""
+        lines = [await self.line(ev, state) for ev in events]
+        return " ".join(l for l in lines if l) or None
+
 
 class TemplateMirror(Mirror):
     """Stub: one template per event type. Grandma never needs a screen, so
@@ -47,15 +52,12 @@ class TemplateMirror(Mirror):
         return f"{self._name(s, e['player'])}'s reflection has faded... the link will bring them back."
 
     def _game_started(self, e, s):
-        return (f"Mirror, mirror, on the wall... welcome, {s.players[0].name}! "
-                "Your family has come to your table. Let the tale begin!")
+        return "Mirror, mirror, on the wall... welcome, and let the tale begin!"
 
     # --- turns ---
     def _turn_started(self, e, s):
         p = s.player(e["player"])
-        if p.kind == "in_person":
-            return f"{p.name}, it's your turn. Roll the dice into the tray!"
-        return f"{p.name}, it's your turn! Roll the dice into the tray, or tap Roll on your phone."
+        return f"{p.name}, your turn!"
 
     def _dice_not_visible(self, e, s):
         return f"{self._name(s, e['player'])}, I couldn't quite see the dice. Please roll again!"
@@ -76,9 +78,7 @@ class TemplateMirror(Mirror):
     def _offer(self, e, s):
         p = s.player(e["player"])
         place = square(e["square"])["name"]
-        if p.kind == "in_person":
-            return f"{p.name}, would you like to buy {place} for {e['price']} gold? Just say yes or no."
-        return f"{p.name}, would you like to buy {place} for {e['price']} gold?"
+        return f"Buy {place} for {e['price']} gold?"
 
     def _cant_afford(self, e, s):
         return f"{self._name(s, e['player'])} can't afford {square(e['square'])['name']} just yet."
@@ -199,12 +199,14 @@ class MuseMirror(TemplateMirror):
 
     MODEL = "muse-spark-1.3"
     BASE = "https://api.meta.ai/v1"
+    # Not here, so they stay templated: "decided" (a yes is told by the payment that follows, so
+    # Spark must not announce a purchase that has not happened) and "turn_started" (an instruction).
     NARRATE = {"rolled", "landed", "paid", "bought", "card_drawn", "cursed", "jailed", "released",
-               "salary", "bankrupt", "game_over", "turn_started", "repairs", "got_jail_key", "stayed_in_jail",
-               "used_jail_key", "decided", "cant_afford", "move_failed"}
+               "salary", "bankrupt", "game_over", "repairs", "got_jail_key", "stayed_in_jail",
+               "used_jail_key", "cant_afford", "move_failed"}
     SYSTEM = ("You are the Magic Mirror, narrator of a fairy-tale Monopoly game. At the table sits the in-person "
               "player; the other players are grandchildren on phones far away who cannot see the table, so your words "
-              "are their window into the room. One or two short sentences. Warm, a little mischievous, in character, "
+              "are their window into the room. One short sentence, at most 15 words. Warm, a little mischievous, in character, "
               "never explain rules, never break the fourth wall, no emoji, no quotation marks. Address players by name. "
               "If a draft line is given, keep its facts (names, places, amounts) exactly.")
 
@@ -232,6 +234,31 @@ class MuseMirror(TemplateMirror):
             logging.getLogger("mirror").info("muse line failed (%s); using template", e)
             return draft
 
+    async def narrate(self, events: list[dict], state: GameState) -> str | None:
+        """One Spark line for the story events of the group, then the exact templated prompts
+        (buy?, pay?, draw a card) so questions are never reworded."""
+        story = [ev for ev in events if ev.get("type") in self.NARRATE]
+        if len(story) <= 1:
+            return await super().narrate(events, state)       # line() already handles a single event
+        drafts = [await TemplateMirror.line(self, ev, state) for ev in story]
+        asks = [await TemplateMirror.line(self, ev, state) for ev in events if ev.get("type") not in self.NARRATE]
+        draft = " ".join(d for d in drafts if d)
+        try:
+            text = await self.ask(self._prompt_many(story, state, draft)) or draft
+        except Exception as e:
+            self.failures += 1
+            import logging
+            logging.getLogger("mirror").info("muse line failed (%s); using template", e)
+            text = draft
+        return " ".join(t for t in [text, *asks] if t) or None
+
+    def _prompt_many(self, events: list[dict], state: GameState, draft: str) -> str:
+        one = [self._prompt(ev, state, None).split("\n")[1] for ev in events]   # each "Event: {...}" line
+        who = self._prompt(events[0], state, None).split("\n")[0]
+        return (f"{who}\n" + "\n".join(one) + f"\nDraft line: {draft}\n"
+                "These happened one after another in a single move. Tell it as one short sentence, "
+                "at most 15 words. Say the Mirror's line.")
+
     def _prompt(self, event: dict, state: GameState, draft: str | None) -> str:
         who = "; ".join(f"{p.name} ({'at the table' if p.kind == 'in_person' else 'on a phone'}, {p.balance} gold)"
                         for p in state.players)
@@ -247,7 +274,9 @@ class MuseMirror(TemplateMirror):
             ev.update(title=c["title"], text=c["text"])
         return f"Players: {who}.\nEvent: {ev}\nDraft line: {draft or '(none)'}\nSay the Mirror's line."
 
-    async def ask(self, user: str, system: str | None = None, max_tokens: int = 400) -> str:
+    async def ask(self, user: str, system: str | None = None, max_tokens: int = 800) -> str:
+        """Spark's reply, or "" if it was cut off (even at minimal effort it reasons for ~300 tokens first,
+        so a short budget can truncate the line mid-sentence; callers then use the template)."""
         import httpx
         body = {"model": self.MODEL, "max_tokens": max_tokens, "temperature": 0.8, "reasoning_effort": "minimal",
                 "messages": [{"role": "system", "content": system or self.SYSTEM}, {"role": "user", "content": user}]}
@@ -255,8 +284,10 @@ class MuseMirror(TemplateMirror):
             r = await c.post(f"{self.base_url}/chat/completions", json=body,
                              headers={"Authorization": f"Bearer {self.api_key}"})
         r.raise_for_status()
-        content = r.json()["choices"][0]["message"].get("content")
-        return (content or "").strip().strip('"')
+        choice = r.json()["choices"][0]
+        if choice.get("finish_reason") == "length":
+            return ""
+        return (choice["message"].get("content") or "").strip().strip('"')
 
     async def describe_scene(self, jpeg_b64: str, context: str) -> str | None:
         """What the table looks like right now, for the players who cannot see it. None on failure."""

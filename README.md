@@ -453,8 +453,25 @@ locally from `static/fonts/planewalker/`; the original font license is included 
 | `--belt-lanes N` | How many lanes the belt really drives; higher lanes are simulated. |
 | `--debug-sync` | Testing: the game adopts the belt's reported square between turns (polls `/position`, accepts `POST /belt/position`). Also a checkbox in the board dev panel. |
 | `--voice muse` | Yes/no answers through Meta Muse Voice Transcribe from the board page's microphone (`MUSE_API_KEY` in `.env`). |
-| `--mirror muse` | Narration written by Muse Spark with the template lines as fallback. |
+| `--mirror muse` | Narration written by Muse Spark (one short sentence per action) with the template lines as fallback. |
+| `--speech browser` / `--speech elevenlabs` | Who reads the Mirror's lines aloud. `browser` (default) is the laptop's/phone's own voice and costs nothing. `elevenlabs` uses ElevenLabs ("George", `eleven_v4`) and spends credits; needs `ELEVENLABS_API_KEY` in `.env` (run `npx -y @elevenlabs/cli@latest onboard init` once). Falls back to the browser voice if a clip fails. |
 | `--tunnel` / `--public URL` | Public address for phones: start a cloudflared quick tunnel, or use a given base URL. Join links and QR codes use it. |
 | `--db games.db` | SQLite file games are saved to and resumed from. Finished-with games can be ended from the session hub ("End this game"). |
+
+Common ways to run it:
+
+```
+# Practice, no credits: template narrator, browser voice
+.venv/bin/python -m server.main --sim
+
+# Muse narrator, free browser voice
+.venv/bin/python -m server.main --sim --mirror muse
+
+# Full demo: Muse narrator + voice yes/no, ElevenLabs voice, public links, saved games
+.venv/bin/python -m server.main --sim --mirror muse --voice muse --speech elevenlabs --tunnel --db games.db
+
+# Same, with track 1 on the real belt
+.venv/bin/python -m server.main --sim --bridge step --mirror muse --voice muse --speech elevenlabs --tunnel --db games.db
+```
 
 Camera: `vision/live.py 0 --post` (dice), `vision/live.py 0 --cards --post` (ArUco cards), `vision/watch.py --frames` (calibrated mat, posts scene frames for the Mirror). Markers to print: `vision/card_markers/markers_letter.pdf`.

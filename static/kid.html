@@ -92,7 +92,7 @@
 <script type="module">
 import { renderPropertyCards } from '/static/property-cards.js';
 import { mountSessionHub } from "/static/session-hub.js";
-import { connect, toast, h, seatList, tokenDot } from "/static/net.js";
+import { connect, toast, h, seatList, tokenDot, narrate } from "/static/net.js";
 import { loadBoard, createBoardView, statusText } from "/static/board.js";
 
 // URL is /game/<game_id>/join/<seat_token>
@@ -110,8 +110,7 @@ document.getElementById("phone-session-stats").onclick = () => sessionHub.openGa
 // The phone's voice in the room: the Mirror repeats it aloud at the table.
 let speaking = false;
 function speak(text) {
-  if (!speaking || !("speechSynthesis" in window)) return;
-  const u = new SpeechSynthesisUtterance(text); u.rate = 0.95; speechSynthesis.speak(u);
+  if (speaking) narrate(text);
 }
 {
   const input = document.getElementById("say");

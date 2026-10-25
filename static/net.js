@@ -101,3 +101,64 @@ export function tokenDot(p) {
 export function tokenGlyph(p) {
   return (p.name.match(/[\p{L}\p{N}]/u)?.[0] || "?").toUpperCase();
 }
+
+// The Mirror's speaking voice: the best English voice this device has. Downloaded Premium /
+// Enhanced voices first, then natural-sounding defaults; never a novelty voice (Albert, Zarvox, …).
+// Voices load asynchronously, so call this at speak time rather than once at startup.
+const VOICE_PREFS = ["Ava", "Zoe", "Evan", "Nathan", "Allison", "Susan", "Tom", "Serena", "Moira", "Daniel",
+  "Samantha", "Karen", "Google UK English Female", "Google US English"];
+export function narratorVoice() {
+  if (!("speechSynthesis" in window)) return null;
+  const en = speechSynthesis.getVoices().filter((v) => v.lang.startsWith("en"));
+  const rank = (v) => {
+    const q = /premium/i.test(v.name) ? 0 : /enhanced/i.test(v.name) ? 1 : 2;
+    const i = VOICE_PREFS.findIndex((n) => v.name.startsWith(n));
+    return q * 100 + (i < 0 ? 99 : i);
+  };
+  const best = en.sort((a, b) => rank(a) - rank(b))[0];
+  return best && rank(best) % 100 < 99 ? best : null;   // nothing we know: let the browser pick its default
+}
+
+// Speak Mirror lines in order: ElevenLabs audio from the server (GET /tts) when it has a key,
+// otherwise the browser's own voice. Each line's audio is fetched as soon as it is queued, so a
+// line is usually ready by the time the one before it finishes.
+const lines = [];
+let current = null, playing = false;   // current: { audio, done } for the clip being played
+export function narrate(text) {
+  const clip = fetch(`/tts?text=${encodeURIComponent(text)}`)
+    .then((r) => (r.ok ? r.blob() : null)).catch(() => null);
+  lines.push({ text, clip });
+  if (!playing) playNext();
+}
+export function stopNarration() {
+  lines.length = 0;
+  if (current) { current.audio.pause(); current.done(); }
+  if ("speechSynthesis" in window) speechSynthesis.cancel();
+}
+async function playNext() {
+  const line = lines.shift();
+  if (!line) { playing = false; return; }
+  playing = true;
+  const blob = await line.clip;
+  // The browser voice is only for lines the server has no ElevenLabs audio for (no key, or it failed).
+  // A clip that will not play is skipped, never repeated in the browser voice.
+  await (blob ? playBlob(blob) : speakBrowser(line.text)).catch((e) => console.warn("Mirror clip skipped:", e));
+  playNext();
+}
+function playBlob(blob) {
+  const url = URL.createObjectURL(blob);
+  const audio = new Audio(url);           // one element per clip: no events left over from the last one
+  return new Promise((resolve, reject) => {
+    const done = () => { URL.revokeObjectURL(url); current = null; resolve(); };
+    current = { audio, done };
+    audio.onended = done;
+    audio.onerror = () => { URL.revokeObjectURL(url); current = null; reject(audio.error); };
+    audio.play().catch((e) => { URL.revokeObjectURL(url); current = null; reject(e); });
+  });
+}
+function speakBrowser(text) {
+  if (!("speechSynthesis" in window)) return Promise.resolve();
+  const u = new SpeechSynthesisUtterance(text);
+  u.rate = 0.95; u.voice = narratorVoice();
+  return new Promise((resolve) => { u.onend = u.onerror = resolve; speechSynthesis.speak(u); });
+}

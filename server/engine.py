@@ -324,6 +324,7 @@ def _dice_not_visible(s: GameState, actor: str, a: dict, rng: random.Random) -> 
 
 def _start_move(s: GameState, p: Player, total: int, dice: list[int] | None) -> list[dict]:
     s.last_roll, s.last_dice = total, dice
+    s.last_card = None   # the drawn card stays up until someone rolls again (remote turns end the moment it is read)
     rolled = {"type": "rolled", "player": p.id, "value": total, "dice": dice}
     return [rolled] + _begin_move(s, p, (p.position + total) % rules.NUM_SQUARES)
 

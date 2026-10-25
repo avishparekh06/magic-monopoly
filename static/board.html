@@ -122,7 +122,7 @@ import { mountScene } from "/static/scene.js";
 mountScene();
 </script>
 <script type="module">
-import { connect, toast, h, tokenDot } from "/static/net.js";
+import { connect, toast, h, tokenDot, narrate, stopNarration } from "/static/net.js";
 import { loadBoard, createBoardView, statusText } from "/static/board.js";
 import { mountBoardCamera } from "/static/board-camera.js";
 import { mountBoardActions } from "/static/board-actions.js";
@@ -143,14 +143,10 @@ document.getElementById("voice-btn").onclick = (e) => {
   speaking = !speaking;
   e.target.textContent = speaking ? "Mirror is awake" : "Wake the Mirror";
   if (speaking) say("The Mirror is awake.");
-  else speechSynthesis.cancel();
+  else stopNarration();
 };
 function say(text) {
-  if (!speaking || !("speechSynthesis" in window)) return;
-  const u = new SpeechSynthesisUtterance(text);
-  u.rate = 0.95;
-  u.voice = speechSynthesis.getVoices().find((v) => v.lang.startsWith("en")) || null;
-  speechSynthesis.speak(u);
+  if (speaking) narrate(text);
 }
 
 // ---- Muse ears -------------------------------------------------------------

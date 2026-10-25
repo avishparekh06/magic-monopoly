@@ -18,6 +18,7 @@ import secrets
 import time
 from typing import Any, Protocol
 
+from . import tts
 from .adapters import Adapters
 from .engine import SYSTEM, EngineError, GameState, Phase, apply_action, from_public, new_game, to_public
 from .store import Store
@@ -53,6 +54,7 @@ class GameRoom:
         self.seats: dict[str, Socket] = {}       # player id -> its one live socket
         self.viewers: dict[Socket, str] = {}     # host / board sockets -> role
         self._tasks: set[asyncio.Task] = set()
+        self._held_lines: list[dict] = []   # events of a move in progress, narrated when it arrives
         # Ephemeral courtyard presence: never part of rules, saves, or turn history.
         self.lobby_positions = {p.id: {"x": .25 + i * .25, "y": .62, "jump": 0}
                                 for i, p in enumerate(state.players)}
@@ -199,18 +201,21 @@ class GameRoom:
                 self._spawn(self.adapters.bridge.reset([p.lane for p in self.state.players]))
             if ev.get("type") == "move":
                 self._spawn(self._run_move(ev))
-        # Mirror lines are written concurrently when the Mirror is slow (a Muse call is ~1-2 s each) but
-        # spoken in event order. The template Mirror is instant, so it is simply awaited in turn.
-        slow = len(events) > 1 and hasattr(self.adapters.mirror, "ask")
-        pending = [asyncio.create_task(self.adapters.mirror.line(ev, self.state)) for ev in events] if slow else None
-        for i, ev in enumerate(events):
-            try:
-                line = await pending[i] if slow else await self.adapters.mirror.line(ev, self.state)
-            except Exception as e:
-                log.info("mirror failed for %s: %s", ev.get("type"), e)
-                line = None
-            if line:
-                await self.broadcast({"type": "mirror", "text": line})
+        # One Mirror line per action rather than per event: a roll is told together with where it led
+        # (while a token is moving its events are held and told with the arrival), and a turn that ends
+        # is told together with who goes next.
+        group = self._held_lines + events
+        self._held_lines = []
+        if any(ev.get("type") == "move" for ev in events):
+            self._held_lines = group
+            return
+        try:
+            line = await self.adapters.mirror.narrate(group, self.state) if group else None
+        except Exception as e:
+            log.info("mirror failed for %s: %s", [ev.get("type") for ev in group], e)
+            line = None
+        if line:
+            await self.broadcast({"type": "mirror", "text": line})
 
     def _spawn(self, coro) -> None:
         task = asyncio.create_task(coro)
@@ -387,6 +392,8 @@ class GameRoom:
     # --- sending -----------------------------------------------------------
 
     async def broadcast(self, msg: dict) -> None:
+        if msg.get("type") == "mirror":
+            tts.allow(msg.get("text", ""))
         for ws in self.all_sockets():
             await self._safe_send(ws, msg)
 
