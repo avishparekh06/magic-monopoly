@@ -1,4 +1,4 @@
-"""Demo mode: jog Player 2's belt through the belt tool, then Resume (demo) plays the scripted moves."""
+"""Demo mode: jog the belts through the belt tool, resume the demo game, play its forced rolls, reset it."""
 import asyncio
 import time
 
@@ -96,7 +96,7 @@ def demo_room(c):
 
 
 def open_board(c, room):
-    """Open the demo game's board the way the laptop does; its scripted belt moves start by themselves."""
+    """Open the demo game's board the way the laptop does."""
     return c.websocket_connect(f"/ws/{room.game_id}?role=board")
 
 
@@ -107,14 +107,27 @@ def wait_for(cond, tries=60):
         time.sleep(0.1)
 
 
+def two_lane_app(bench, **kw):
+    return create_app(sim=True, move_delay=0, dev=True, bridge="http", lane_axes={1: 0, 2: 2},
+                      bridge_factory=lambda: HttpBeltBridge("http://bench", lanes=0, axes={1: 0, 2: 2},
+                                                            fallback=StubBridge(0), transport=bench.transport()), **kw)
+
+
+def sets(bench, axis, square):
+    return [1 for p, q in bench.calls if p == "/board/set" and q == {"square": str(square), "axis": str(axis)}]
+
+
+def gotos(bench):
+    return [(q["axis"], q["square"]) for p, q in bench.calls if p == "/board/goto"]
+
+
 def test_a_demo_game_is_ready_like_any_saved_game():
-    assert [(p["name"], p["position"]) for p in DEMO_PLAYERS] == [("Player 1", 5), ("Player 2", 1)]
-    assert DEMO_MOVES == [("p2", 2), ("p1", 1)]
-    bench = FakeBench()
-    with app_client(bench) as c:
+    assert [(p["name"], p["position"]) for p in DEMO_PLAYERS] == [("Player 1", 3), ("Player 2", 1)]
+    assert DEMO_MOVES == [] and DEMO_FIRST_PLAYER == "p1"
+    with TestClient(two_lane_app(FakeBench())) as c:
         room = demo_room(c)
-        assert room.state.phase.value == "WAITING_FOR_ROLL" and room.forced_rolls == {"p2": [(1, 1), (1, 1)]}
-        assert room.state.current_player.id == "p2"                       # Player 2 takes the first turn
+        assert room.state.phase.value == "WAITING_FOR_ROLL" and room.state.current_player.id == "p1"
+        assert room.forced_rolls == {"p1": [(1, 1)], "p2": [(2, 4)]}
         games = c.get("/api/games").json()
         assert [g["game_id"] for g in games] == [room.game_id] and games[0]["host_url"]   # shows under Continue game
         assert c.get("/api/config").json()["demo"] is True
@@ -122,72 +135,70 @@ def test_a_demo_game_is_ready_like_any_saved_game():
         assert c.get("/api/games").json() == [] and c.get("/api/config").json()["demo"] is False
 
 
-def test_opening_the_board_plays_the_scripted_moves_on_the_belt():
+def test_opening_the_board_tells_the_belt_where_the_tokens_are_and_moves_nothing():
     bench = FakeBench()
-    with app_client(bench) as c:
+    with TestClient(two_lane_app(bench)) as c:
         room = demo_room(c)
-        assert not [1 for p, q in bench.calls if p == "/board/goto"]          # nothing moves until the board opens
+        assert not sets(bench, 0, 3)
         with open_board(c, room):
-            wait_for(lambda: [p.position for p in room.state.players] == [6, 3])
-            assert [p.position for p in room.state.players] == [6, 3]
-            assert room.state.phase.value == "WAITING_FOR_ROLL"
-            # Player 2's belt (axis 0 here) was told it starts on Black Forest, then driven to square 3
-            assert ("/board/set", {"square": "1", "axis": "0"}) in bench.calls
-            assert ("/board/goto", {"square": "3", "direction": "auto", "axis": "0"}) in bench.calls
-            assert bench.squares[0] == 3
-        with open_board(c, room):                                             # reopening does not play it again
+            wait_for(lambda: sets(bench, 0, 3) and sets(bench, 2, 1))
+            assert sets(bench, 0, 3) and sets(bench, 2, 1)       # Player 1 on Gingerbread House, Player 2 on Black Forest
+            assert gotos(bench) == [] and [p.position for p in room.state.players] == [3, 1]
+        with open_board(c, room):                                 # reopening does not tell it again
             time.sleep(0.3)
-        assert len([1 for p, q in bench.calls if p == "/board/goto"]) == 1
+        assert len(sets(bench, 0, 3)) == 1
 
 
-def test_player_1_takes_a_camera_roll_after_the_demo_moves():
+def test_the_whole_demo_works_forced_rolls_then_a_real_roll():
+    """P1 clicks Roll Dice (forced 2: Gingerbread House -> Geppetto's), declines the offer; P2 rolls on the phone
+    (forced 6: Black Forest -> Crystal Ball) and the card is read; then P1's real roll comes from the camera."""
     bench = FakeBench()
-    moves = []
-
-    class Recording(StubBridge):
-        async def move(self, lane, frm, to):
-            moves.append((lane, frm, to))
-            return await super().move(lane, frm, to)
-
-    with TestClient(create_app(
-            sim=True, move_delay=0, dev=True, virtual_axis=0,
-            bridge_factory=lambda: HttpBeltBridge("http://bench", lanes=0, axes={2: 0}, fallback=Recording(0),
-                                                  transport=bench.transport()))) as c:
+    with TestClient(two_lane_app(bench)) as c:
         room = demo_room(c)
-        with open_board(c, room):
-            wait_for(lambda: [p.position for p in room.state.players] == [6, 3])
-            assert [p.position for p in room.state.players] == [6, 3]
+        with open_board(c, room) as board:
+            wait_for(lambda: sets(bench, 2, 1))
+            # 1. Player 1, from the board's Roll Dice button
+            board.send_json({"action": "board_roll", "target": "p1", "turn": 1})
+            wait_for(lambda: room.state.phase.value == "WAITING_FOR_DECISION")
+            assert room.state.player("p1").position == 5 and room.state.last_roll == 2
+            assert gotos(bench) == [("0", "5")]
+            board.send_json({"action": "decision", "answer": "no"})
+            wait_for(lambda: room.state.current_player.id == "p2" and room.state.phase.value == "WAITING_FOR_ROLL")
+            assert room.state.current_player.id == "p2"
+            # 2. Player 2, on the phone
             token = next(tok for tok, pid in room.seat_tokens.items() if pid == "p2")
-            with c.websocket_connect(f"/ws/{room.game_id}?seat={token}") as phone:       # Player 2's phone goes first
+            with c.websocket_connect(f"/ws/{room.game_id}?seat={token}") as phone:
                 phone.send_json({"action": "roll"})
-                wait_for(lambda: room.state.phase.value == "WAITING_FOR_DECISION")
-                assert room.state.player("p2").position == 5                              # forced 2: Geppetto's Toy Workshop
-                phone.send_json({"action": "decline"})
-                wait_for(lambda: room.state.current_player.id == "p1" and room.state.phase.value == "WAITING_FOR_ROLL")
-            r = c.post("/vision/events", json={"type": "dice_rolled", "values": [2, 3], "total": 5, "doubles": False})
+                wait_for(lambda: room.state.phase.value == "WAITING_FOR_CARD")
+            assert room.state.player("p2").position == 7 and room.state.last_roll == 6
+            assert gotos(bench) == [("0", "5"), ("2", "7")]
+            board.send_json({"action": "card", "id": "crystal_08"})              # the drawn Crystal Ball card (collect 50)
+            wait_for(lambda: room.state.current_player.id == "p1" and room.state.phase.value == "WAITING_FOR_ROLL")
+            assert room.state.player("p2").balance == 1550 and room.state.current_player.id == "p1"
+            # 3. Player 1 rolls the real dice: the camera reads a 3
+            r = c.post("/vision/events", json={"type": "dice_rolled", "values": [1, 2], "total": 3, "doubles": False})
             assert r.status_code == 200 and r.json()["sent"]
-            wait_for(lambda: room.state.player("p1").position == 11)
-            assert room.state.player("p1").position == 11
-            assert (1, 6, 11) in moves
+            wait_for(lambda: room.state.player("p1").position == 8)
+            assert room.state.player("p1").position == 8 and gotos(bench)[-1] == ("0", "8")
+            assert room.forced_rolls == {"p1": [], "p2": []}                       # the forced rolls are used up
 
 
-def test_player_2s_first_two_rolls_are_two_and_two():
-    async def go():
+def test_the_forced_rolls_are_fixed_and_used_up_once():
+    async def first_roll(first, who, action):
         room = await GameRoom.create(DEMO_PLAYERS, make_adapters(True, 0), 7, None)
         room.forced_rolls = {pid: list(r) for pid, r in DEMO_FORCED_ROLLS.items()}
-        await room.dispatch(SYSTEM, {"action": "start", "force": True, "first": DEMO_FIRST_PLAYER})
-        assert room.state.current_player.id == "p2"
-        events = await room.dispatch("p2", {"action": "roll"})
-        return room, events
+        await room.dispatch(SYSTEM, {"action": "start", "force": True, "first": first})
+        events = await room.dispatch(*action(room))
+        return room, next(e for e in events if e["type"] == "rolled")
 
-    room, events = asyncio.run(go())
-    rolled = next(e for e in events if e["type"] == "rolled")
-    assert rolled["value"] == 2 and rolled["dice"] == [1, 1]
-    assert room.forced_rolls["p2"] == [(1, 1)]                                # the second forced roll (2 again) is still to come
+    room, rolled = asyncio.run(first_roll("p1", "p1", lambda r: (SYSTEM, {"action": "board_roll", "target": "p1", "turn": 1})))
+    assert rolled["value"] == 2 and rolled["dice"] == [1, 1] and room.forced_rolls["p1"] == []
+    room, rolled = asyncio.run(first_roll("p2", "p2", lambda r: ("p2", {"action": "roll"})))
+    assert rolled["value"] == 6 and rolled["dice"] == [2, 4] and room.forced_rolls["p2"] == []
 
 
 def test_the_board_offers_each_remote_player_an_invite_link():
-    with app_client(FakeBench()) as c:
+    with TestClient(two_lane_app(FakeBench())) as c:
         room = demo_room(c)
         players = c.get(f"/api/games/{room.game_id}/invites").json()["players"]
         assert [p["id"] for p in players] == ["p2"]
@@ -200,30 +211,20 @@ def test_demo_resume_endpoint_needs_dev():
         assert c.post("/api/demo/resume").status_code == 404
 
 
-def test_two_lanes_on_the_belt_tool_axes_0_and_2(monkeypatch):
-    """Player 1 drives axis 0, Player 2 axis 2: the jog buttons, the starts and the scripted moves all follow."""
+def test_the_jog_buttons_and_the_lineup_follow_axes_0_and_2(monkeypatch):
+    """Player 1 drives axis 0, Player 2 axis 2: the jog buttons and the starts all follow."""
     bench = FakeBench()
     import server.jog as jog
     real = jog.httpx.AsyncClient
     monkeypatch.setattr(jog.httpx, "AsyncClient", lambda **kw: real(**{**kw, "transport": bench.transport()}))
-    app = create_app(sim=True, move_delay=0, dev=True, bridge="http", lane_axes={1: 0, 2: 2},
-                     bridge_factory=lambda: HttpBeltBridge("http://bench", lanes=0, axes={1: 0, 2: 2},
-                                                           fallback=StubBridge(0), transport=bench.transport()))
-    with TestClient(app) as c:
+    with TestClient(two_lane_app(bench)) as c:
         assert c.get("/api/config").json()["jog_players"] == [1, 2]
         assert c.post("/jog/nudge", params={"steps": 50, "player": 1}).status_code == 200
         assert c.post("/jog/nudge", params={"steps": 50, "player": 2}).status_code == 200
         assert c.post("/jog/nudge", params={"steps": 50, "player": 3}).status_code == 422
         assert [q["axis"] for p, q in bench.calls if p == "/jog"] == ["0", "2"]
-        room = demo_room(c)
-        bench.calls.clear()
-        with open_board(c, room):
-            wait_for(lambda: [p.position for p in room.state.players] == [6, 3])
-            assert [p.position for p in room.state.players] == [6, 3]
-            gotos = [(q["axis"], q["square"]) for p, q in bench.calls if p == "/board/goto"]
-            assert gotos == [("2", "3"), ("0", "6")]
-            assert ("/board/set", {"square": "5", "axis": "0"}) in bench.calls
-            assert ("/board/set", {"square": "1", "axis": "2"}) in bench.calls
+        assert c.post("/jog/home", params={"square": 3, "player": 1}).status_code == 200
+        assert sets(bench, 0, 3)
 
 
 def test_a_played_demo_game_is_replayed_fresh_after_a_restart(tmp_path):
@@ -231,44 +232,33 @@ def test_a_played_demo_game_is_replayed_fresh_after_a_restart(tmp_path):
     played before the restart gives a fresh demo from the lined-up squares instead."""
     db = str(tmp_path / "games.db")
     bench = FakeBench()
-    with TestClient(create_app(sim=True, move_delay=0, dev=True, virtual_axis=0, db_path=db,
-                               bridge_factory=lambda: HttpBeltBridge("http://bench", lanes=0, axes={2: 0},
-                                                                     fallback=StubBridge(0), transport=bench.transport()))) as c:
+    with TestClient(two_lane_app(bench, db_path=db)) as c:
         old = demo_room(c)
-        with open_board(c, old):
-            wait_for(lambda: [p.position for p in old.state.players] == [6, 3])
+        with open_board(c, old) as board:
+            board.send_json({"action": "board_roll", "target": "p1", "turn": 1})
+            wait_for(lambda: old.state.player("p1").position == 5)
         old_id = old.game_id
-        assert [p.position for p in old.state.players] == [6, 3]
+        assert old.state.player("p1").position == 5
 
     bench2 = FakeBench()
-    with TestClient(create_app(sim=True, move_delay=0, dev=True, virtual_axis=0, db_path=db,
-                               bridge_factory=lambda: HttpBeltBridge("http://bench", lanes=0, axes={2: 0},
-                                                                     fallback=StubBridge(0), transport=bench2.transport()))) as c:
-        # startup restored the old game without pushing its squares to the belt tool
-        assert not [1 for p, q in bench2.calls if p == "/board/set" and q["square"] == "3"]
+    with TestClient(two_lane_app(bench2, db_path=db)) as c:
+        assert not sets(bench2, 0, 5)                  # startup did not push the old game's squares to the belt tool
         r = c.get(f"/board/{old_id}", follow_redirects=False)
         assert r.status_code == 302 and r.headers["location"] != f"/board/{old_id}"
         new_id = r.headers["location"].rsplit("/", 1)[1]
         fresh = c.app.state.rooms[new_id]
-        assert is_fresh_demo(fresh.state) and fresh.forced_rolls == {"p2": [(1, 1), (1, 1)]}
-        # a fresh demo opens normally, and a game already running this session is not replaced on reload
+        assert is_fresh_demo(fresh.state) and fresh.forced_rolls == {"p1": [(1, 1)], "p2": [(2, 4)]}
         assert c.get(f"/board/{new_id}", follow_redirects=False).status_code == 200
-        with open_board(c, fresh):
-            wait_for(lambda: [p.position for p in fresh.state.players] == [6, 3])
-        assert c.get(f"/board/{new_id}", follow_redirects=False).status_code == 200
-
-
-def two_lane_app(bench, **kw):
-    return create_app(sim=True, move_delay=0, dev=True, bridge="http", lane_axes={1: 0, 2: 2},
-                      bridge_factory=lambda: HttpBeltBridge("http://bench", lanes=0, axes={1: 0, 2: 2},
-                                                            fallback=StubBridge(0), transport=bench.transport()), **kw)
+        with open_board(c, fresh) as board:
+            board.send_json({"action": "board_roll", "target": "p1", "turn": 1})
+            wait_for(lambda: fresh.state.player("p1").position == 5)
+        assert c.get(f"/board/{new_id}", follow_redirects=False).status_code == 200   # a running game is not replaced
 
 
 def test_muse_can_be_switched_on_and_off(monkeypatch):
     from server.adapters.mirror import MuseMirror, TemplateMirror
     from server.adapters.voice import MuseVoice, StubVoice
-    app = create_app(sim=True, move_delay=0, dev=True, virtual_axis=0)
-    with TestClient(app) as c:
+    with TestClient(two_lane_app(FakeBench())) as c:
         room = demo_room(c)
         assert c.get("/api/config").json()["muse"] is False and isinstance(room.adapters.voice, StubVoice)
         monkeypatch.delenv("MUSE_API_KEY", raising=False)
@@ -291,14 +281,13 @@ def test_arrows_nudge_a_token_forward_and_back():
     with TestClient(two_lane_app(bench)) as c:
         room = demo_room(c)
         with open_board(c, room):
-            wait_for(lambda: [p.position for p in room.state.players] == [6, 3])
-            bench.calls.clear()
+            wait_for(lambda: sets(bench, 2, 1))
             r = c.post("/api/demo/step", params={"game": room.game_id, "player": "p1", "squares": 1})
-            assert r.json() == {"player": "p1", "square": 7} and room.state.player("p1").position == 7
+            assert r.json() == {"player": "p1", "square": 4} and room.state.player("p1").position == 4
             assert c.post("/api/demo/step", params={"game": room.game_id, "player": "p1", "squares": -1}).status_code == 200
-            assert room.state.player("p1").position == 6
-            assert [(q["axis"], q["square"]) for p, q in bench.calls if p == "/board/goto"] == [("0", "7"), ("0", "6")]
-            assert c.post("/api/demo/step", params={"game": room.game_id, "player": "p2", "squares": -1}).json()["square"] == 2
+            assert room.state.player("p1").position == 3
+            assert gotos(bench) == [("0", "4"), ("0", "3")]
+            assert c.post("/api/demo/step", params={"game": room.game_id, "player": "p2", "squares": -1}).json()["square"] == 0
             assert c.post("/api/demo/step", params={"game": room.game_id, "player": "p1", "squares": 5}).status_code == 422
             assert c.post("/api/demo/step", params={"game": room.game_id, "player": "p9", "squares": 1}).status_code == 422
 
@@ -307,14 +296,18 @@ def test_reset_drives_the_tokens_home_and_starts_a_fresh_demo():
     bench = FakeBench()
     with TestClient(two_lane_app(bench)) as c:
         old = demo_room(c)
-        with open_board(c, old):
-            wait_for(lambda: [p.position for p in old.state.players] == [6, 3])
+        with open_board(c, old) as board:
+            wait_for(lambda: sets(bench, 2, 1))
+            board.send_json({"action": "board_roll", "target": "p1", "turn": 1})
+            wait_for(lambda: old.state.phase.value == "WAITING_FOR_DECISION")
+            board.send_json({"action": "decision", "answer": "no"})
+            wait_for(lambda: old.state.current_player.id == "p2")
         bench.calls.clear()
         r = c.post("/api/demo/reset", params={"game": old.game_id}).json()
         assert r["game_id"] != old.game_id and r["board_url"] == f"/board/{r['game_id']}"
-        assert [(q["axis"], q["square"]) for p, q in bench.calls if p == "/board/goto"] == [("0", "5"), ("2", "1")]
+        assert gotos(bench) == [("0", "3")]                       # Player 1 drove back 5 -> 3; Player 2 never left square 1
         fresh = c.app.state.rooms[r["game_id"]]
-        assert is_fresh_demo(fresh.state) and fresh.forced_rolls == {"p2": [(1, 1), (1, 1)]}
+        assert is_fresh_demo(fresh.state) and fresh.forced_rolls == {"p1": [(1, 1)], "p2": [(2, 4)]}
         assert old.game_id not in c.app.state.rooms
         status = {g["game_id"]: g["status"] for g in c.get("/api/games").json()}
         assert status[old.game_id] == "abandoned" and status[r["game_id"]] == "active"

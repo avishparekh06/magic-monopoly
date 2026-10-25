@@ -1,5 +1,5 @@
-// Demo panel for the home page (only in demo mode): jog each belt by hand onto its square (Player 1 on Geppetto's Toy
-// Workshop, Player 2 on Black Forest). The demo game is an ordinary saved game: "Continue game" opens its board, which
+// Demo panel for the home page (only in demo mode): jog each belt by hand onto its square (Player 1 on Gingerbread
+// House, Player 2 on Black Forest). The demo game is an ordinary saved game: "Continue game" opens its board, which
 // plays the first moves on the belt.
 import { h } from "/static/net.js";
 
@@ -16,7 +16,7 @@ export async function mountDemoPanel() {
 
   const players = config.jog_players?.length ? config.jog_players : [1];
   // Where each player is lined up by hand before Resume (demo): square ids from server/board.json.
-  const START = { 1: { square: 5, name: "Geppetto's Toy Workshop" }, 2: { square: 1, name: "Black Forest" } };
+  const START = { 1: { square: 3, name: "Gingerbread House" }, 2: { square: 1, name: "Black Forest" } };
   let direction = "forward", player = players[0];
   const status = h("p", { style: "margin:6px 0 0;font-size:.85em;min-height:1.2em" });
   const say = (text, bad) => { status.textContent = text; status.style.color = bad ? "#b3261e" : "inherit"; };
