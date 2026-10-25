@@ -77,5 +77,8 @@ def test_land_resolves_like_a_real_landing():
     assert [e["type"] for e in ev] == ["position_set", "landed", "card_requested"]
     s, ev = apply_action(s, SYSTEM, {"action": "card", "id": "crystal_08"})      # Golden Egg: collect 50
     assert s.player("p1").balance == 1550
+    assert s.current_player.id == "p2"                                          # the card ended p1's turn
+    s, _ = apply_action(s, SYSTEM, {"action": "land", "square": 4})               # p2 "lands" on King's Tithe
+    assert s.player("p2").position == 4 and s.player("p2").balance == 1300        # remote: tax settles at once
     with pytest.raises(EngineError):
-        apply_action(s, SYSTEM, {"action": "land", "square": 7})                 # not waiting for a roll now
+        apply_action(s, SYSTEM, {"action": "land", "square": 40})
