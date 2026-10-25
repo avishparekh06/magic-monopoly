@@ -65,3 +65,24 @@ cv2.putText(page, "Magic Mirror Monopoly card markers - print at 100% (no scalin
             (x0, page.shape[0] - int(0.3 * DPI)), cv2.FONT_HERSHEY_SIMPLEX, 0.8, 0, 2, cv2.LINE_AA)
 cv2.imwrite(os.path.join(OUT, "print_letter_300dpi.png"), page)
 print("wrote print_letter_300dpi.png (US Letter, print at 100%)")
+
+
+# ---- page 2: the four action-mat corner markers at 50 mm, and a 2-page PDF (1-bit, prints at true size) ----
+mat = np.full((int(11 * DPI), int(8.5 * DPI)), 255, np.uint8)
+side, labels = int(50 * MM), {200: "200  TOP-LEFT of the mat", 201: "201  TOP-RIGHT", 202: "202  BOTTOM-RIGHT", 203: "203  BOTTOM-LEFT"}
+for k, mid in enumerate((200, 201, 202, 203)):
+    r, c = divmod(k, 2)
+    x, y = int(0.75 * DPI) + c * int(95 * MM), int(0.9 * DPI) + r * int(100 * MM)
+    mat[y:y + side, x:x + side] = cv2.aruco.generateImageMarker(d, mid, side)
+    cv2.putText(mat, labels[mid], (x, y + side + 60), cv2.FONT_HERSHEY_SIMPLEX, 1.1, 0, 2, cv2.LINE_AA)
+cv2.putText(mat, "Action-mat corner markers (DICT_4X4_250). Print at 100%: each square is 50 mm. Keep the white border.",
+            (int(0.5 * DPI), mat.shape[0] - int(0.6 * DPI)), cv2.FONT_HERSHEY_SIMPLEX, 0.9, 0, 2, cv2.LINE_AA)
+cv2.imwrite(os.path.join(OUT, "mat_corners_letter_300dpi.png"), mat)
+try:
+    from PIL import Image
+    p1 = Image.fromarray(page).convert("1")
+    p2 = Image.fromarray(mat).convert("1")
+    p1.save(os.path.join(OUT, "markers_letter.pdf"), "PDF", resolution=DPI, save_all=True, append_images=[p2])
+    print("wrote markers_letter.pdf (2 pages, US Letter, print at 100%)")
+except ImportError:
+    print("pillow not installed: skipped the PDF (pip install pillow)")

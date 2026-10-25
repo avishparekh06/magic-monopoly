@@ -7,6 +7,7 @@ pyserial
 # Vision (vision/)
 opencv-contrib-python
 numpy
+pillow
 requests
 # Tests
 pytest==9.1.1
