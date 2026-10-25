@@ -243,7 +243,10 @@ def _start(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
     missing = [p.name for p in s.players if not p.connected]
     if missing and not a.get("force"):
         raise EngineError("still waiting for " + ", ".join(missing))
-    s.current = 0
+    first = a.get("first")        # optional: the player id who takes the first turn (default: the first seat)
+    if first is not None and first not in [p.id for p in s.players]:
+        raise EngineError(f"no player {first} to go first")
+    s.current = [p.id for p in s.players].index(first) if first is not None else 0
     s.turn = 1
     return [{"type": "game_started", "players": [p.id for p in s.players]}] + _start_turn(s)
 

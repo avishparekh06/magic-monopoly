@@ -22,7 +22,7 @@ from pydantic import BaseModel
 
 from .adapters import BRIDGES, MIRRORS, VOICES, make_adapters
 from .adapters.mirror import TemplateMirror
-from .demo import DEMO_FORCED_ROLLS, DEMO_MOVES, DEMO_PLAYERS, is_fresh_demo
+from .demo import DEMO_FIRST_PLAYER, DEMO_FORCED_ROLLS, DEMO_MOVES, DEMO_PLAYERS, is_fresh_demo
 from .engine import SYSTEM, EngineError, new_game, to_public
 from .rooms import GameRoom
 from .rules.monopoly import board, cards
@@ -168,7 +168,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         room.dev = dev
         arm_demo(room)
         rooms[room.game_id] = room
-        await room.dispatch(SYSTEM, {"action": "start", "force": True})
+        await room.dispatch(SYSTEM, {"action": "start", "force": True, "first": DEMO_FIRST_PLAYER})
         return room
 
     @asynccontextmanager

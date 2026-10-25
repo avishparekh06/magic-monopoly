@@ -284,3 +284,12 @@ def test_shared_board_roll_rejects_stale_turns_and_player_impersonation():
     assert next_turn.phase == Phase.WAITING_FOR_ROLL
     with pytest.raises(EngineError, match='different turn'):
         act(next_turn, SYSTEM, 'board_roll', Dice(), target='p1', turn=state.turn)
+
+
+def test_start_can_name_who_goes_first():
+    s = new_game("g", [{"name": "A", "kind": "in_person"}, {"name": "B", "kind": "remote"}])
+    s, events = apply_action(s, SYSTEM, {"action": "start", "force": True, "first": "p2"})
+    assert s.current_player.id == "p2" and events[1] == {"type": "turn_started", "player": "p2"}
+    s2 = new_game("g", [{"name": "A", "kind": "in_person"}, {"name": "B", "kind": "remote"}])
+    with pytest.raises(EngineError, match="no player"):
+        apply_action(s2, SYSTEM, {"action": "start", "force": True, "first": "p9"})

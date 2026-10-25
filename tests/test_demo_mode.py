@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from server.adapters.bridge import HttpBeltBridge, MoveBridge, StubBridge
 from server.adapters import make_adapters
-from server.demo import DEMO_FORCED_ROLLS, DEMO_MOVES, DEMO_PLAYERS, is_fresh_demo
+from server.demo import DEMO_FIRST_PLAYER, DEMO_FORCED_ROLLS, DEMO_MOVES, DEMO_PLAYERS, is_fresh_demo
 from server.engine import SYSTEM
 from server.rooms import GameRoom
 from server.main import create_app
@@ -113,7 +113,8 @@ def test_a_demo_game_is_ready_like_any_saved_game():
     bench = FakeBench()
     with app_client(bench) as c:
         room = demo_room(c)
-        assert room.state.phase.value == "WAITING_FOR_ROLL" and room.forced_rolls == {"p2": [(1, 3)]}
+        assert room.state.phase.value == "WAITING_FOR_ROLL" and room.forced_rolls == {"p2": [(1, 1), (1, 1)]}
+        assert room.state.current_player.id == "p2"                       # Player 2 takes the first turn
         games = c.get("/api/games").json()
         assert [g["game_id"] for g in games] == [room.game_id] and games[0]["host_url"]   # shows under Continue game
         assert c.get("/api/config").json()["demo"] is True
@@ -156,6 +157,13 @@ def test_player_1_takes_a_camera_roll_after_the_demo_moves():
         with open_board(c, room):
             wait_for(lambda: [p.position for p in room.state.players] == [6, 3])
             assert [p.position for p in room.state.players] == [6, 3]
+            token = next(tok for tok, pid in room.seat_tokens.items() if pid == "p2")
+            with c.websocket_connect(f"/ws/{room.game_id}?seat={token}") as phone:       # Player 2's phone goes first
+                phone.send_json({"action": "roll"})
+                wait_for(lambda: room.state.phase.value == "WAITING_FOR_DECISION")
+                assert room.state.player("p2").position == 5                              # forced 2: Geppetto's Toy Workshop
+                phone.send_json({"action": "decline"})
+                wait_for(lambda: room.state.current_player.id == "p1" and room.state.phase.value == "WAITING_FOR_ROLL")
             r = c.post("/vision/events", json={"type": "dice_rolled", "values": [2, 3], "total": 5, "doubles": False})
             assert r.status_code == 200 and r.json()["sent"]
             wait_for(lambda: room.state.player("p1").position == 11)
@@ -163,19 +171,19 @@ def test_player_1_takes_a_camera_roll_after_the_demo_moves():
             assert (1, 6, 11) in moves
 
 
-def test_player_2s_first_roll_is_four():
+def test_player_2s_first_two_rolls_are_two_and_two():
     async def go():
         room = await GameRoom.create(DEMO_PLAYERS, make_adapters(True, 0), 7, None)
         room.forced_rolls = {pid: list(r) for pid, r in DEMO_FORCED_ROLLS.items()}
-        await room.dispatch(SYSTEM, {"action": "start", "force": True})
-        room.state.current = 1                                                # Player 2's turn
+        await room.dispatch(SYSTEM, {"action": "start", "force": True, "first": DEMO_FIRST_PLAYER})
+        assert room.state.current_player.id == "p2"
         events = await room.dispatch("p2", {"action": "roll"})
         return room, events
 
     room, events = asyncio.run(go())
     rolled = next(e for e in events if e["type"] == "rolled")
-    assert rolled["value"] == 4 and rolled["dice"] == [1, 3]
-    assert room.forced_rolls["p2"] == []                                      # used up: later rolls are random
+    assert rolled["value"] == 2 and rolled["dice"] == [1, 1]
+    assert room.forced_rolls["p2"] == [(1, 1)]                                # the second forced roll (2 again) is still to come
 
 
 def test_the_board_offers_each_remote_player_an_invite_link():
