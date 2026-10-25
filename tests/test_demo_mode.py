@@ -113,7 +113,7 @@ def test_a_demo_game_is_ready_like_any_saved_game():
     bench = FakeBench()
     with app_client(bench) as c:
         room = demo_room(c)
-        assert room.state.phase.value == "WAITING_FOR_ROLL" and room.forced_rolls == {"p2": [(1, 2)]}
+        assert room.state.phase.value == "WAITING_FOR_ROLL" and room.forced_rolls == {"p2": [(1, 3)]}
         games = c.get("/api/games").json()
         assert [g["game_id"] for g in games] == [room.game_id] and games[0]["host_url"]   # shows under Continue game
         assert c.get("/api/config").json()["demo"] is True
@@ -163,7 +163,7 @@ def test_player_1_takes_a_camera_roll_after_the_demo_moves():
             assert (1, 6, 11) in moves
 
 
-def test_player_2s_first_roll_is_three():
+def test_player_2s_first_roll_is_four():
     async def go():
         room = await GameRoom.create(DEMO_PLAYERS, make_adapters(True, 0), 7, None)
         room.forced_rolls = {pid: list(r) for pid, r in DEMO_FORCED_ROLLS.items()}
@@ -174,7 +174,7 @@ def test_player_2s_first_roll_is_three():
 
     room, events = asyncio.run(go())
     rolled = next(e for e in events if e["type"] == "rolled")
-    assert rolled["value"] == 3 and rolled["dice"] == [1, 2]
+    assert rolled["value"] == 4 and rolled["dice"] == [1, 3]
     assert room.forced_rolls["p2"] == []                                      # used up: later rolls are random
 
 

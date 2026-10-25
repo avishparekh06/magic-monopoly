@@ -10,8 +10,8 @@ DEMO_PLAYERS = [
 # and Player 2 on square 3 (Gingerbread House), and Player 1 then rolls by camera.
 DEMO_MOVES = [("p2", 2), ("p1", 1)]
 
-# Player 2's first roll is fixed: dice 1 and 2, a total of 3.
-DEMO_FORCED_ROLLS = {"p2": [(1, 2)]}
+# Player 2's first roll is fixed: dice 1 and 3, a total of 4. From Gingerbread House (3) that lands on Crystal Ball (Chance, 7).
+DEMO_FORCED_ROLLS = {"p2": [(1, 3)]}
 
 
 def is_fresh_demo(state) -> bool:
