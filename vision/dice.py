@@ -103,7 +103,9 @@ def count_pips(tray_bgr, rect):
 def read_dice(tray_bgr, px_per_mm, die_mm=19.0, expected=2):
     dice, touching, bw, noise = find_dice(tray_bgr, px_per_mm, die_mm)
     debug = {"mask": bw, "noise_blobs": noise}
-    if touching:
+    # An oversized blob (two dice in contact, or a hand) only blocks the read when we do not
+    # also see the expected number of clean dice: a hand resting elsewhere in the tray is ignored.
+    if touching and len(dice) < expected:
         return DiceResult([], "touching", [d for d in dice], debug)
     if not dice:
         return DiceResult([], "empty", [], debug)

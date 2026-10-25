@@ -37,3 +37,17 @@ def test_three_dice_is_count_mismatch():
 def test_doubles_and_total():
     r = read_dice(synth.tray([6, 6], PX, seed=3), PX)
     assert r.ok and r.doubles and r.total == 12
+
+
+def test_hand_elsewhere_in_tray_does_not_block_two_clean_dice():
+    import cv2
+    img = synth.tray([2, 5], PX, size_mm=(200, 200), seed=4)
+    # a pale "hand": a big bright rectangle in a corner, far from the dice
+    cv2.rectangle(img, (5, 5), (int(60 * PX), int(40 * PX)), (210, 200, 195), -1)
+    r = read_dice(img, PX)
+    assert r.ok and sorted(r.values) == [2, 5], (r.values, r.reason)
+
+
+def test_touching_pair_alone_is_still_unclear():
+    r = read_dice(synth.tray([3, 4], PX, touching=True), PX)
+    assert r.reason == "touching"
