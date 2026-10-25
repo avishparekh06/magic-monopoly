@@ -455,17 +455,18 @@ locally from `static/fonts/planewalker/`; the original font license is included 
 | `--voice muse` | Yes/no answers through Meta Muse Voice Transcribe from the board page's microphone (`MUSE_API_KEY` in `.env`). |
 | `--mirror muse` | Narration written by Muse Spark (one short sentence per action) with the template lines as fallback. |
 | `--speech browser` / `--speech elevenlabs` | Who reads the Mirror's lines aloud. `browser` (default) is the laptop's/phone's own voice and costs nothing. `elevenlabs` uses ElevenLabs ("George", `eleven_v4`) and spends credits; needs `ELEVENLABS_API_KEY` in `.env` (run `npx -y @elevenlabs/cli@latest onboard init` once). Falls back to the browser voice if a clip fails. |
+| `--dev` | Show the board page's dev panel (manual dice and cards, yes/no, confirm payment, motors, token positions). Without it the board is clean for the demo; the stuck-move popup still appears. |
 | `--tunnel` / `--public URL` | Public address for phones: start a cloudflared quick tunnel, or use a given base URL. Join links and QR codes use it. |
 | `--db games.db` | SQLite file games are saved to and resumed from. Finished-with games can be ended from the session hub ("End this game"). |
 
 Common ways to run it:
 
 ```
-# Practice, no credits: template narrator, browser voice
-.venv/bin/python -m server.main --sim
+# Practice, no credits: template narrator, browser voice, dev panel
+.venv/bin/python -m server.main --sim --dev
 
-# Muse narrator, free browser voice
-.venv/bin/python -m server.main --sim --mirror muse
+# Muse narrator, free browser voice, dev panel
+.venv/bin/python -m server.main --sim --mirror muse --dev
 
 # Full demo: Muse narrator + voice yes/no, ElevenLabs voice, public links, saved games
 .venv/bin/python -m server.main --sim --mirror muse --voice muse --speech elevenlabs --tunnel --db games.db

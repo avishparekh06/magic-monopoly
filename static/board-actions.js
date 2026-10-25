@@ -5,17 +5,19 @@ import { statusText } from '/static/board.js';
 import { mountBoardPlayers } from '/static/board-players.js';
 import { mountSessionHub } from '/static/session-hub.js';
 
-export function mountBoardActions(viewport, board, cards, send) {
+// dev: show the manual stand-ins for the camera and card reader (server --dev).
+export function mountBoardActions(viewport, board, cards, send, { dev = false } = {}) {
   let state = null, connected = false, busy = false, receipt = null, error = '';
   let pendingKey = '', diceRolling = false, waitingForDice = false, lastDigitalRoll = null;
-  const status = h('div', { class: 'game-turn-status', role: 'status' });
+  const status = h('div', { class: 'game-turn-status', role: 'status', hidden: true });   // the board centre says it already
   const content = h('section', { id: 'turn-card', class: 'game-action-card', 'aria-label': 'Current board action' });
   const errorEl = h('p', { class: 'game-action-error', role: 'alert', hidden: true });
   const fullscreen = h('button', { id: 'game-fullscreen', class: 'btn small secondary', type: 'button', 'aria-pressed': 'false' }, 'Fullscreen');
   const view = h('button', { id: 'game-map-toggle', class: 'btn small secondary', type: 'button' }, 'Full board');
   const library = mountSessionHub({ parent: viewport });
   const players = mountBoardPlayers(viewport, board, () => library.openGame(state.game_id));
-  const browse = h('button', { id: 'game-players', class: 'btn small secondary', type: 'button', onclick: () => players.open(), title: 'Players, owned properties, game history and stats' }, 'Players & stats');
+  // In fullscreen the sidebar is out of view, so this is how players and their places are reached.
+  const browse = h('button', { id: 'game-players', class: 'btn small secondary', type: 'button', onclick: () => players.open(), title: 'Players, owned properties, game history and stats' }, 'Players');
   const reset = h('button', { id: 'game-reset-view', class: 'btn small secondary game-reset-view', type: 'button', title: 'Reset camera (R)' }, 'Reset view');
   view.title = 'Switch between the board map and following the token (M)';
   const tools = h('div', { class: 'game-surface-tools' }, view, reset, browse, fullscreen);
@@ -30,7 +32,7 @@ export function mountBoardActions(viewport, board, cards, send) {
   const fallback = h('div', { class: 'game-dice-fallback', 'aria-hidden': 'true' });
   let settleTimer = null, resultTimer = null, fallbackSquare = null;
 
-  const overlay = h('div', { class: 'game-overlay' }, status, tools, h('div', { class: 'game-action-stack' }, errorEl, content), players.strip, rollButton, rollResult, fallback);
+  const overlay = h('div', { class: 'game-overlay' }, status, tools, h('div', { class: 'game-action-stack' }, errorEl, content), rollButton, rollResult, fallback);
   viewport.append(overlay);
   // Overlay interactions must not orbit the camera or trigger keyboard shortcuts.
   for (const event of ['pointerdown', 'keydown', 'wheel']) overlay.addEventListener(event, e => {
@@ -87,7 +89,6 @@ export function mountBoardActions(viewport, board, cards, send) {
     if (state.phase === 'WAITING_FOR_DECISION' && p?.kind === 'decision') {
       if (p.type === 'buy') {
         body = [...deed(board.squares[p.square], p.player),
-          paragraph(`${name(p.player)} has ${player(p.player).balance} gold. Would you like to buy this place?`),
           h('div', { class: 'game-action-buttons' },
             button(`Buy · ${p.price} gold`, 'turn-buy', { action: 'decision', player: p.player, answer: 'yes' }),
             button('No thanks', 'turn-decline', { action: 'decision', player: p.player, answer: 'no' }, true))];
@@ -102,8 +103,8 @@ export function mountBoardActions(viewport, board, cards, send) {
       body = [...heading(`${name(p.payer)} · ${reasons[p.reason] || 'Payment'}`, `${p.amount} gold`),
         p.square != null ? paragraph(board.squares[p.square].name) : null,
         paragraph(`To ${p.payee === 'bank' ? 'the bank' : name(p.payee)}. Present ${name(p.payer)}'s player card to the reader.`),
-        h('details', { class: 'game-manual-input' }, h('summary', {}, 'Card reader not available?'),
-          paragraph('Use the existing manual payment fallback.'), button('Confirm payment', 'turn-confirm', { action: 'confirm_payment' }))];
+        dev ? h('details', { class: 'game-manual-input' }, h('summary', {}, 'Card reader not available?'),
+          paragraph('Use the existing manual payment fallback.'), button('Confirm payment', 'turn-confirm', { action: 'confirm_payment' })) : null];
     } else if (state.phase === 'WAITING_FOR_CARD' && p?.kind === 'card') {
       const deck = cards.decks[p.deck];
       const picker = h('select', { id: 'turn-card-picker', 'aria-label': 'Physical card drawn' },
@@ -114,7 +115,7 @@ export function mountBoardActions(viewport, board, cards, send) {
       } }, 'Show this card');
       body = [...heading(`${name(p.for)} draws a card`, deck.name, deck.color),
         paragraph('Draw a physical card and hold it to the camera. Its text will appear here when read.'),
-        h('details', { class: 'game-manual-input' }, h('summary', {}, 'Choose a card manually (simulation)'), picker, readButton)];
+        dev ? h('details', { class: 'game-manual-input' }, h('summary', {}, 'Choose a card manually (simulation)'), picker, readButton) : null];
     } else if (state.phase === 'LOBBY') {
       const waiting = state.players.filter(p => !p.connected);
       body = [...heading('A new story awaits', 'Ready to play?'), paragraph(waiting.length ? `Waiting for ${waiting.map(p => p.name).join(', ')}.` : 'Everyone is here.'),
@@ -130,7 +131,7 @@ export function mountBoardActions(viewport, board, cards, send) {
     content.hidden = diceRolling || moving || (!body.length && !receiptNodes.length);
     const oldDice = overlay.querySelector('.game-dice-entry');
     oldDice?.remove();
-    if (state.phase === 'WAITING_FOR_ROLL') {
+    if (dev && state.phase === 'WAITING_FOR_ROLL') {
       const dice = h('select', { 'aria-label': 'Dice total', id: 'turn-dice-total' },
         Array.from({ length: 11 }, (_, i) => h('option', { value: i + 2 }, `${i + 2}`)));
       const submit = h('button', { id: 'turn-dice-read', type: 'button', class: 'btn small secondary', disabled: busy || !connected, onclick: () => {
@@ -222,6 +223,7 @@ export function mountBoardActions(viewport, board, cards, send) {
   });
   return {
     openStats() { if (state) library.openGame(state.game_id); },
+    openPlayer(id) { players.open(id); },
     update(s) {
       const key = JSON.stringify([s.phase, s.turn, s.pending]);
       if (key !== pendingKey) { busy = false; error = ''; pendingKey = key; }

@@ -30,6 +30,10 @@
     .places li { display: flex; gap: 10px; align-items: center; padding: 6px 0; }
     .places .swatch { width: 14px; height: 14px; border-radius: 4px; flex: none; }
     .lobby-hero { text-align: center; padding: 24px 0; }
+    .mirror-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .mirror-head h3 { margin: 0; }
+    .mirror .log li:nth-child(n+4) { display: none; }
+    .say summary { cursor: pointer; color: var(--ink-dim); padding: 6px 0; }
     .lobby-hero .big { font-family: var(--font-game); font-size: 30px; color: var(--gold); }
   </style>
 </head>
@@ -68,24 +72,27 @@
         </div>
       </div>
 
-      <button class="btn secondary" id="phone-session-stats" type="button">Game history &amp; stats</button>
       <div id="picker-slot"></div>
       <div id="card-slot"></div>
 
       <div class="panel property-collection">
-        <h3>My cards</h3>
+        <h3>My places</h3>
         <div id="places"></div>
       </div>
 
-      <div class="panel">
-        <h3>The Mirror says…</h3>
-        <div class="pair" style="margin:8px 0">
-          <input id="say" class="grow" maxlength="160" placeholder="Say something to the table…" autocomplete="off">
-          <button class="btn" id="say-btn" type="button">Say it</button>
-        </div>
-        <button class="btn small secondary" id="speak-btn" type="button">Read the Mirror aloud</button>
+      <div class="panel mirror">
+        <div class="mirror-head"><h3>The Mirror</h3>
+          <button class="btn small secondary" id="speak-btn" type="button">Voice off</button></div>
         <ul class="log" id="log"></ul>
+        <details class="say">
+          <summary>Send a message to the table</summary>
+          <div class="pair" style="margin:8px 0">
+            <input id="say" class="grow" maxlength="160" placeholder="Say something to the table…" autocomplete="off">
+            <button class="btn" id="say-btn" type="button">Say it</button>
+          </div>
+        </details>
       </div>
+      <button class="btn small secondary" id="phone-session-stats" type="button">Game history &amp; stats</button>
     </section>
   </div>
 
@@ -118,7 +125,7 @@ function speak(text) {
   document.getElementById("say-btn").onclick = send;
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
   document.getElementById("speak-btn").onclick = (e) => {
-    speaking = !speaking; e.target.textContent = speaking ? "🔊 Mirror speaking" : "🔊 Read the Mirror aloud";
+    speaking = !speaking; e.target.textContent = speaking ? "Voice on" : "Voice off";
     if (speaking) speak("The Mirror is listening.");
   };
 }
@@ -172,7 +179,10 @@ function render() {
     ? (state.winner === me ? "You won! " : "The tale is told!")
     : myTurn ? "Your turn! " : `${current.name}'s turn`;
 
-  document.getElementById("status").textContent = statusText(state, boardData, me);
+  // Only what this player has to do; other players' prompts (e.g. Grandma's "say yes or no") stay off this phone.
+  const status = document.getElementById("status");
+  status.textContent = myTurn ? statusText(state, boardData, me) : "";
+  status.hidden = !status.textContent;
   document.getElementById("where").textContent = mine.in_jail
     ? " You're locked in Rapunzel's Tower"
     : `You're at ${boardData.squares[mine.position].name}`;
@@ -180,8 +190,9 @@ function render() {
   // Buttons only light up when the engine is waiting on *me*.
   const moving = board.hasMotion();
   const deciding = state.phase === "WAITING_FOR_DECISION" && state.pending?.player === me;
-  document.getElementById("roll").disabled = !(myTurn && state.phase === "WAITING_FOR_ROLL" && !moving);
-  document.getElementById("roll").hidden = deciding;
+  const canRoll = myTurn && state.phase === "WAITING_FOR_ROLL";
+  document.getElementById("roll").disabled = !canRoll || moving;
+  document.getElementById("roll").hidden = !canRoll;
   document.getElementById("decide").hidden = !deciding;
   if (deciding && state.pending.type === "jail") {
     document.getElementById("buy").textContent = `Pay ${state.pending.price} gold and leave`;
@@ -204,7 +215,7 @@ function render() {
   const places = document.getElementById("places");
   const openSquare = places.querySelector('.property-deed[open]')?.dataset.square;
   const showMoney = places.querySelector('.player-money')?.open ?? true;
-  places.replaceChildren(renderPropertyCards(boardData, mine, { openSquare, showMoney }));
+  places.replaceChildren(renderPropertyCards(boardData, mine, { openSquare, showMoney, money: false }));
 }
 
 // "Which card was it?" — only if the camera can't read the card Grandma drew

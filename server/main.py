@@ -105,7 +105,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
                voice: str = "stub", voice_factory=None, mirror: str = "template",
                mirror_factory=None, belt_url: str | None = None, belt_lanes: int = 1,
                bridge_factory=None, belt_key: str | None = None, debug_sync: bool = False,
-               speech: str = "browser") -> FastAPI:
+               speech: str = "browser", dev: bool = False) -> FastAPI:
     """db_path: SQLite file that games are saved to and resumed from on startup.
     ":memory:" (the default, used by tests) keeps nothing across restarts.
     bridge: "stub" fakes moves; "arduino" drives lane 1 through arduino/server.py.
@@ -114,7 +114,8 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     voice: "stub" (dev-panel buttons) or "muse" (Meta Muse Voice Transcribe via /voice/clip).
     voice_factory: tests pass a callable returning a Voice to stand in for `voice`.
     mirror: "template" or "muse" (Meta Muse Spark writes the narrator's lines, templates as fallback).
-    speech: "browser" (the device's own voice, free) or "elevenlabs" (ElevenLabs reads the Mirror's lines)."""
+    speech: "browser" (the device's own voice, free) or "elevenlabs" (ElevenLabs reads the Mirror's lines).
+    dev: show the board page's dev panel (manual dice, cards, voice, payments, motors)."""
     tts.use(speech == "elevenlabs")
     rooms: dict[str, GameRoom] = {}
 
@@ -386,6 +387,11 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             raise HTTPException(502, f"text-to-speech failed: {e}")
         return Response(mp3, media_type="audio/mpeg", headers={"cache-control": "private, max-age=3600"})
 
+    @app.get("/api/config")
+    async def config():
+        """What the pages should show: the board's dev panel only in dev mode."""
+        return {"dev": dev}
+
     @app.get("/api/lan")
     async def lan(request: Request):
         """Where phones should point: the public tunnel if there is one, else the LAN address."""
@@ -489,6 +495,9 @@ def main() -> None:
     parser.add_argument("--speech", choices=("browser", "elevenlabs"), default="browser",
                         help="browser: the laptop's/phone's own voice (free); elevenlabs: ElevenLabs reads the Mirror's "
                              "lines (uses credits; ELEVENLABS_API_KEY in .env)")
+    parser.add_argument("--dev", action="store_true",
+                        help="show the board page's dev panel (manual dice, cards, voice, payments, motors); "
+                             "off = a clean board for the demo")
     parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite file games are saved to and resumed from")
     parser.add_argument("--tunnel", action="store_true", help="start a cloudflared tunnel and use its public URL in links")
     parser.add_argument("--public", default=None, help="public base URL to use in links instead (e.g. an ngrok address)")
@@ -498,7 +507,7 @@ def main() -> None:
     uvicorn.run(create_app(sim=args.sim, seed=args.seed, db_path=args.db, bridge=args.bridge, public=args.public,
                            tunnel_port=args.port if args.tunnel else None, voice=args.voice, mirror=args.mirror,
                            belt_url=args.belt_url, belt_lanes=args.belt_lanes, belt_key=args.belt_key,
-                           debug_sync=args.debug_sync, speech=args.speech),
+                           debug_sync=args.debug_sync, speech=args.speech, dev=args.dev),
                 host=args.host, port=args.port)
 
 

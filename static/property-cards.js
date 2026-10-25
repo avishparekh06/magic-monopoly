@@ -22,9 +22,10 @@ export function propertyRent(board, square, owned) {
     : { value: `${board.utility_multiplier[count - 1]} per dice point`, count };
 }
 
-export function renderPropertyCards(board, player, { openSquare, showMoney = true } = {}) {
+// money: false leaves out the illustrated gold notes (the phone already shows the balance in its header).
+export function renderPropertyCards(board, player, { openSquare, showMoney = true, money = true } = {}) {
   const owned = new Set(player.properties || []), groupName = `property-hand-${++galleryId}`;
-  const gallery = h('div', { class: 'property-hand' }, renderPlayerMoney(player, { open: showMoney }));
+  const gallery = h('div', { class: 'property-hand' }, money ? renderPlayerMoney(player, { open: showMoney }) : null);
   const groups = new Map();
   for (const square of board.squares.filter(s => ownable(s) && owned.has(s.id))) {
     const key = square.group || square.type;
