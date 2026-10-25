@@ -162,6 +162,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
 
     def arm_demo(room: GameRoom) -> None:
         room.forced_rolls = {pid: list(rolls) for pid, rolls in DEMO_FORCED_ROLLS.items()}
+        room.require_joined = True
 
     async def new_demo_room() -> GameRoom:
         """A started game with Player 1 and 2 on their lined-up squares. It is saved like any other game, so it

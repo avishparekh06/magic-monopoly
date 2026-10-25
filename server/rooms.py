@@ -64,6 +64,7 @@ class GameRoom:
         self.belt_positions: dict[int, int] = {}  # lane -> square the physical side last reported
         self.debug_sync = False                   # adopt the belt's square automatically (testing)
         self.forced_rolls: dict[str, list[tuple[int, int]]] = {}   # demo: a player's next roll(s), as dice pairs
+        self.require_joined = False               # demo: a remote player must have joined (scanned the QR code) to take a turn
         self.demo_started = False                 # demo: the scripted belt moves were kicked off for this game
         self.dev = False                          # server --dev: the board's on-screen dice may roll
         self._poll_task: asyncio.Task | None = None
@@ -203,6 +204,10 @@ class GameRoom:
                 pid = action.get("target")
                 action = {"action": "set_attendance", "target": pid, "kind": action.get("kind"),
                           "connected": isinstance(pid, str) and pid in self.seats}
+            if self.require_joined and action.get("action") in ("roll", "board_roll"):
+                cur = self.state.current_player
+                if cur.kind == "remote" and not cur.connected:
+                    raise EngineError(f"{cur.name} has not joined yet: scan the invite QR code on the board first")
             forced = self.forced_rolls.get(self.state.current_player.id) if action.get("action") in ("roll", "board_roll") else None
             next_state, events = apply_action(self.state, actor, action, _Dice(forced[0]) if forced else self.rng)
             if forced:

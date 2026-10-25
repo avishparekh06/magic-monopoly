@@ -165,7 +165,10 @@ def test_the_whole_demo_works_forced_rolls_then_a_real_roll():
             board.send_json({"action": "decision", "answer": "no"})
             wait_for(lambda: room.state.current_player.id == "p2" and room.state.phase.value == "WAITING_FOR_ROLL")
             assert room.state.current_player.id == "p2"
-            # 2. Player 2, on the phone
+            # 2. Player 2, on the phone: the board cannot roll for a virtual player who has not scanned the QR code
+            board.send_json({"action": "board_roll", "target": "p2", "turn": room.state.turn})
+            time.sleep(0.3)
+            assert room.state.phase.value == "WAITING_FOR_ROLL" and room.state.player("p2").position == 1
             token = next(tok for tok, pid in room.seat_tokens.items() if pid == "p2")
             with c.websocket_connect(f"/ws/{room.game_id}?seat={token}") as phone:
                 phone.send_json({"action": "roll"})
@@ -311,3 +314,28 @@ def test_reset_drives_the_tokens_home_and_starts_a_fresh_demo():
         assert old.game_id not in c.app.state.rooms
         status = {g["game_id"]: g["status"] for g in c.get("/api/games").json()}
         assert status[old.game_id] == "abandoned" and status[r["game_id"]] == "active"
+
+
+def test_a_virtual_player_must_scan_the_qr_code_before_taking_a_turn():
+    from server.engine import EngineError
+
+    async def go():
+        room = await GameRoom.create(DEMO_PLAYERS, make_adapters(True, 0), 7, None)
+        room.require_joined = True
+        await room.dispatch(SYSTEM, {"action": "start", "force": True, "first": "p2"})
+        try:
+            await room.dispatch(SYSTEM, {"action": "board_roll", "target": "p2", "turn": 1})
+            return None
+        except EngineError as e:
+            refused = str(e)
+        room.state.player("p2").connected = True                  # the phone joined through the QR code
+        await room.dispatch(SYSTEM, {"action": "board_roll", "target": "p2", "turn": 1})
+        return refused, room.state.player("p2").position
+
+    refused, _ = asyncio.run(go())
+    assert "scan the invite QR code" in refused
+
+
+def test_the_demo_players_are_one_real_dice_roller_and_one_virtual_player():
+    kinds = {d["name"]: d["kind"] for d in DEMO_PLAYERS}
+    assert kinds == {"Player 1": "in_person", "Player 2": "remote"}

@@ -299,6 +299,7 @@ export function statusText(state, boardData, viewer) {
   switch (state.phase) {
     case "LOBBY": return "";
     case "WAITING_FOR_ROLL":
+      if (viewer === "board" && cur.kind === "remote" && !cur.connected) return `${cur.name} has not joined yet. Scan the invite QR code to take the turn.`;
       if (viewer === "board") return `${cur.name}'s turn. Choose Roll Dice${cur.kind === "in_person" ? " or roll into the physical tray." : " here, or roll on their phone."}`;
       if (cur.kind === "in_person") return `${cur.name}, roll the dice into the tray`;
       return viewer === cur.id ? "Tap Roll!" : `Waiting for ${cur.name} to roll`;
