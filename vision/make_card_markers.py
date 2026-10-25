@@ -44,45 +44,62 @@ with open(os.path.join(OUT, "index.txt"), "w", encoding="utf-8") as f:
 print(f"wrote {len(items)} markers to {OUT} (sheet.png, index.txt)")
 
 
-# ---- print-ready page: US Letter at 300 dpi, every marker exactly 18 mm wide with a 3 mm quiet zone ----
-DPI = 300
-MM = DPI / 25.4
-MARK = int(18 * MM)
-QUIET = int(3 * MM)
-CELL_W, CELL_H = int(28 * MM), int(34 * MM)          # marker + quiet zone + label
-page = np.full((int(11 * DPI), int(8.5 * DPI)), 255, np.uint8)
-cols = int((8.5 * DPI - 0.5 * DPI) // CELL_W)
-x0 = y0 = int(0.25 * DPI)
-for k, (marker, cid, label) in enumerate(items):
+# ---- print-ready PDF (vector): US Letter, card markers 18 mm, mat corners 50 mm ----
+# Drawn as filled rectangles (one per run of black cells), so it is tiny and prints crisp at any resolution.
+import pymupdf
+
+PT = 72 / 25.4                                   # points per mm
+
+
+def draw_marker(page, mid, x_mm, y_mm, size_mm):
+    bits = cv2.aruco.generateImageMarker(d, mid, 6)          # 6x6 cells including the black border
+    cell = size_mm / 6
+    for r in range(6):
+        c = 0
+        while c < 6:
+            if bits[r, c] == 0:
+                c0 = c
+                while c < 6 and bits[r, c] == 0:
+                    c += 1
+                page.draw_rect(pymupdf.Rect((x_mm + c0 * cell) * PT, (y_mm + r * cell) * PT,
+                                            (x_mm + c * cell) * PT, (y_mm + (r + 1) * cell) * PT),
+                               color=None, fill=(0, 0, 0), width=0)
+            else:
+                c += 1
+
+
+doc = pymupdf.open()
+page = doc.new_page(width=612, height=792)
+cols, cw, ch, x0, y0 = 7, 28, 34, 10, 12
+for k, (mid, cid, label) in enumerate(items):
     r, c = divmod(k, cols)
-    x, y = x0 + c * CELL_W, y0 + r * CELL_H
-    if y + CELL_H > page.shape[0]:
-        break
-    m = cv2.aruco.generateImageMarker(d, marker, MARK)
-    page[y + QUIET:y + QUIET + MARK, x + QUIET:x + QUIET + MARK] = m
-    cv2.putText(page, f"{marker} {cid}", (x, y + 2 * QUIET + MARK + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55, 0, 1, cv2.LINE_AA)
-cv2.putText(page, "Magic Mirror Monopoly card markers - print at 100% (no scaling): each square is 18 mm",
-            (x0, page.shape[0] - int(0.3 * DPI)), cv2.FONT_HERSHEY_SIMPLEX, 0.8, 0, 2, cv2.LINE_AA)
-cv2.imwrite(os.path.join(OUT, "print_letter_300dpi.png"), page)
-print("wrote print_letter_300dpi.png (US Letter, print at 100%)")
-
-
-# ---- page 2: the four action-mat corner markers at 50 mm, and a 2-page PDF (1-bit, prints at true size) ----
-mat = np.full((int(11 * DPI), int(8.5 * DPI)), 255, np.uint8)
-side, labels = int(50 * MM), {200: "200  TOP-LEFT of the mat", 201: "201  TOP-RIGHT", 202: "202  BOTTOM-RIGHT", 203: "203  BOTTOM-LEFT"}
+    x, y = x0 + c * cw + 3, y0 + r * ch + 3
+    draw_marker(page, mid, x, y, 18)
+    page.insert_text(((x - 1) * PT, (y + 18 + 5) * PT), f"{mid} {cid}", fontsize=6, fontname="helv")
+page.insert_text((10 * PT, 270 * PT), "Magic Mirror Monopoly card markers (DICT_4X4_250). Print at 100% / actual size: "
+                 "each square is 18 mm. Keep the white border.", fontsize=8, fontname="helv")
+page2 = doc.new_page(width=612, height=792)
+corner_labels = {200: "200  TOP-LEFT of the mat", 201: "201  TOP-RIGHT", 202: "202  BOTTOM-RIGHT", 203: "203  BOTTOM-LEFT"}
 for k, mid in enumerate((200, 201, 202, 203)):
     r, c = divmod(k, 2)
-    x, y = int(0.75 * DPI) + c * int(95 * MM), int(0.9 * DPI) + r * int(100 * MM)
-    mat[y:y + side, x:x + side] = cv2.aruco.generateImageMarker(d, mid, side)
-    cv2.putText(mat, labels[mid], (x, y + side + 60), cv2.FONT_HERSHEY_SIMPLEX, 1.1, 0, 2, cv2.LINE_AA)
-cv2.putText(mat, "Action-mat corner markers (DICT_4X4_250). Print at 100%: each square is 50 mm. Keep the white border.",
-            (int(0.5 * DPI), mat.shape[0] - int(0.6 * DPI)), cv2.FONT_HERSHEY_SIMPLEX, 0.9, 0, 2, cv2.LINE_AA)
-cv2.imwrite(os.path.join(OUT, "mat_corners_letter_300dpi.png"), mat)
-try:
-    from PIL import Image
-    p1 = Image.fromarray(page).convert("1")
-    p2 = Image.fromarray(mat).convert("1")
-    p1.save(os.path.join(OUT, "markers_letter.pdf"), "PDF", resolution=DPI, save_all=True, append_images=[p2])
-    print("wrote markers_letter.pdf (2 pages, US Letter, print at 100%)")
-except ImportError:
-    print("pillow not installed: skipped the PDF (pip install pillow)")
+    x, y = 25 + c * 100, 25 + r * 105
+    draw_marker(page2, mid, x, y, 50)
+    page2.insert_text((x * PT, (y + 50 + 8) * PT), corner_labels[mid], fontsize=11, fontname="helv")
+page2.insert_text((15 * PT, 255 * PT), "Action-mat corner markers (DICT_4X4_250). Print at 100%: each square is 50 mm. "
+                  "Keep white space around them.", fontsize=9, fontname="helv")
+page2.insert_text((15 * PT, 262 * PT), "Tape them flat at the four corners of the dice/card mat as labelled, as seen from the camera.",
+                  fontsize=9, fontname="helv")
+pdf = os.path.join(OUT, "markers_letter.pdf")
+doc.save(pdf, garbage=4, deflate=True, clean=True)
+
+# self-check: render and detect every marker back
+det = cv2.aruco.ArucoDetector(d, cv2.aruco.DetectorParameters())
+found = []
+for pg in pymupdf.open(pdf):
+    pix = pg.get_pixmap(dpi=150)
+    img = np.frombuffer(pix.samples, np.uint8).reshape(pix.height, pix.width, pix.n)
+    corners, ids, _ = det.detectMarkers(cv2.cvtColor(img, cv2.COLOR_RGB2BGR) if pix.n == 3 else img)
+    found += ids.ravel().tolist() if ids is not None else []
+expected = sorted(m for m, _, _ in items) + [200, 201, 202, 203]
+assert sorted(found) == expected, (sorted(found), expected)
+print(f"wrote {pdf} ({os.path.getsize(pdf)} bytes); all {len(expected)} markers detected from the render")
