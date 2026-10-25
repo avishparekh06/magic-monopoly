@@ -89,3 +89,23 @@ def test_offer_says_price_balance_and_asks_yes_or_no():
     assert line.startswith(f"{p.name}, you have the option to purchase ")
     assert "for 120 gold" in line and f"Your balance is {p.balance} gold." in line
     assert line.endswith("Would you like to purchase this property? Yes or no?")
+
+
+def test_in_person_players_draw_their_own_card_and_the_host_draws_for_remote_ones():
+    import asyncio
+    s = started_state()
+    ask = lambda pid: asyncio.run(TemplateMirror().line({"type": "card_requested", "player": pid, "deck": "crystal"}, s))
+    assert ask("p2").startswith("Grandma, please draw a ") and "for Maya" in ask("p2")
+    s.player("p2").kind = "in_person"
+    assert ask("p2").startswith("Maya, please draw a ") and "for yourself" in ask("p2")
+
+
+def test_every_in_person_player_hears_their_balance():
+    import asyncio
+    s = started_state()
+    s.player("p2").kind = "in_person"
+    paid = {"type": "paid", "from": "p2", "to": "p3", "amount": 10, "reason": "rent", "square": 1}
+    line = asyncio.run(TemplateMirror().line(paid, s))
+    assert line.endswith(f"Maya, you now have {s.player('p2').balance} gold.")
+    s.player("p2").kind = "remote"
+    assert "you now have" not in asyncio.run(TemplateMirror().line(paid, s))

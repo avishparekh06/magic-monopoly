@@ -98,7 +98,7 @@ def test_join_broadcasts_to_everyone_and_start(client, game):
                 assert "welcome" in greeting["text"].lower()
 
 
-def test_kid_disconnect_and_rejoin(client, game):
+def test_remote_disconnect_and_rejoin(client, game):
     gid, tok = game["game_id"], seat_token(game, "p2")
     with client.websocket_connect(f"/ws/{gid}?role=board") as board:
         recv_until(board, is_state)
@@ -132,7 +132,7 @@ def game_state(client, gid):
         return recv_until(b, is_state)
 
 
-def test_kid_cannot_act_as_someone_else_or_start(client, game):
+def test_remote_cannot_act_as_someone_else_or_start(client, game):
     gid = game["game_id"]
     with client.websocket_connect(f"/ws/{gid}?seat={seat_token(game, 'p2')}") as maya:
         recv_until(maya, is_state)
@@ -164,7 +164,7 @@ def test_lan_base(client):
     assert base.startswith("http://") and "localhost" not in base
 
 
-def test_kid_turn_end_to_end_through_stub_bridge(client, game):
+def test_remote_turn_end_to_end_through_stub_bridge(client, game):
     """Roll -> stub bridge reports move_done -> offer -> Buy -> paid at once (no card tap)."""
     gid = game["game_id"]
     with client.websocket_connect(f"/ws/{gid}?role=board") as board, \

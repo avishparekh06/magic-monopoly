@@ -1,11 +1,11 @@
 """Play a game in the terminal: a demo fallback that needs no browser or hardware.
 
-    python -m server.cli                       # Grandma, Maya, Leo
-    python -m server.cli Grandma Maya --seed 3
+    python -m server.cli                       # Ava (in person), Maya, Leo
+    python -m server.cli Ava Maya --seed 3
 
 Uses the real engine and the template Mirror. Moves finish instantly (as
-if the motors were done), Grandma's dice are typed in (or random), and
-her card tap is a keypress.
+if the motors were done), the in-person player's dice are typed in (or
+random), and their card tap is a keypress.
 """
 from __future__ import annotations
 
@@ -79,8 +79,8 @@ def next_input(state: GameState, rng: random.Random) -> tuple[str, dict]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Play Magic Mirror Monopoly in the terminal")
-    parser.add_argument("names", nargs="*", default=["Grandma", "Maya", "Leo"],
-                        help="first name is Grandma (in person); the rest are remote players")
+    parser.add_argument("names", nargs="*", default=["Ava", "Maya", "Leo"],
+                        help="the first name plays in person (the board host); the rest are remote players")
     parser.add_argument("--seed", type=int, default=None)
     args = parser.parse_args()
     rng = random.Random(args.seed)

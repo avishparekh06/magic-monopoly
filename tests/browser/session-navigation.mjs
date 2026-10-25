@@ -167,7 +167,7 @@ try {
  await evaluate('document.getElementById("home-play").click()');await waitFor('!!document.querySelector(".hub-play-start")');
  if(!await evaluate(`[...document.querySelectorAll('a.hub-save-slot')].every(card=>card.querySelectorAll('.hub-slot-action').length===1&&!card.querySelector('button'))`))throw Error('Continue picker must have one selected save and one resume action');
  await clickText('New game');await waitFor('document.getElementById("create").hidden===false');
- if(await evaluate('document.getElementById("grandma").value')!=='New Wanderer')throw Error('New game lost signed-in name');
+ if(await evaluate('document.getElementById("host-name").value')!=='New Wanderer')throw Error('New game lost signed-in name');
  await evaluate('document.getElementById("name2").value="Guest";document.getElementById("create").requestSubmit()');
  await waitFor('new URLSearchParams(location.search).has("host") && !!document.querySelector(".guest-attendance")');
  const created=await evaluate('new URLSearchParams(location.search).get("game")');

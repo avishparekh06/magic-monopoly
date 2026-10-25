@@ -1,4 +1,4 @@
-"""Voice: Grandma's spoken yes/no answers.
+"""Voice: spoken yes/no answers from the in-person player whose decision it is.
 
 out: {"type": "decision", "player": "p1", "answer": "yes"}
 """

@@ -1,4 +1,4 @@
-// Shared 2D board renderer, used by the board laptop page and the kid app.
+// Shared 2D board renderer, used by the board laptop page and the phone page.
 //
 //   const board = createBoardView(containerEl, await loadBoard());
 //   board.render(state);        // call on every state message
@@ -275,7 +275,7 @@ function injectStyles() {
 }
 
 // One sentence describing what the game is waiting for, from `viewer`'s
-// point of view ("board" for the laptop, or a player id for a kid's phone).
+// point of view ("board" for the laptop, or a player id for a remote player's phone).
 export function statusText(state, boardData, viewer) {
   const name = (pid) => state.players.find((p) => p.id === pid)?.name ?? "the bank";
   const cur = state.players.find((p) => p.id === state.current_player);
@@ -312,9 +312,11 @@ export function statusText(state, boardData, viewer) {
     }
     case "WAITING_FOR_CARD": {
       const deck = pend.deck === "crystal" ? "a Crystal Ball card" : "a Chest of Spells card";
-      const grandma = state.players[0];
-      if (viewer === pend.for) return `${grandma.name} is drawing ${deck} for you…`;
-      return `${grandma.name}, please draw ${deck} for ${pend.for === grandma.id ? "yourself" : name(pend.for)}`;
+      // In-person players draw their own card; the host (seat 1, always in person) draws for remote players.
+      const lander = state.players.find((p) => p.id === pend.for);
+      const drawer = lander?.kind === "in_person" ? lander : state.players[0];
+      if (viewer === pend.for && drawer !== lander) return `${drawer.name} is drawing ${deck} for you…`;
+      return `${drawer.name}, please draw ${deck} for ${drawer === lander ? "yourself" : name(pend.for)}`;
     }
     case "GAME_OVER": return `${name(state.winner)} wins the kingdom!`;
     default: return "";

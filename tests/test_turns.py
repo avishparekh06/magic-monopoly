@@ -39,12 +39,12 @@ def finish_move(s):
     return act(s, SYSTEM, "move_done", lane=p.lane, square=s.pending["to"])
 
 
-def grandma_rolls(s, total):
+def host_rolls(s, total):
     s, _ = act(s, SYSTEM, "dice", value=total)
     return finish_move(s)
 
 
-def kid_rolls(s, pid, d1, d2):
+def remote_rolls(s, pid, d1, d2):
     s, _ = act(s, pid, "roll", Dice(d1, d2))
     return finish_move(s)
 
@@ -62,7 +62,7 @@ def at_turn(s, pid):
 
 # --- rolling --------------------------------------------------------------
 
-def test_grandma_camera_roll_moves_and_waits_for_move_done():
+def test_host_camera_roll_moves_and_waits_for_move_done():
     s, events = act(started(), SYSTEM, "dice", value=6)
     assert s.phase == Phase.MOVING
     assert events[-1] == {"type": "move", "player": "p1", "lane": 1, "from": 0, "to": 6}
@@ -91,7 +91,7 @@ def test_dice_not_visible_keeps_waiting_for_roll():
     assert s.phase == Phase.WAITING_FOR_ROLL and types(events) == ["dice_not_visible"]
 
 
-def test_grandma_uses_table_dice_and_remote_players_use_their_phone():
+def test_host_uses_table_dice_and_remote_players_use_their_phone():
     with pytest.raises(EngineError, match="real dice"):
         act(started(), "p1", "roll")
     s = skip_turn(started())                      # p2 (remote): table dice don't count on their turn
@@ -105,7 +105,7 @@ def test_not_your_turn():
         act(started(), "p2", "roll", Dice(1, 2))
 
 
-def test_kid_roll_uses_injected_dice():
+def test_remote_roll_uses_injected_dice():
     s, events = act(skip_turn(started()), "p2", "roll", Dice(2, 3))
     assert s.last_roll == 5 and s.last_dice == [2, 3]
     assert events[-1]["to"] == 5 and events[-1]["lane"] == 2
@@ -122,7 +122,7 @@ def test_move_failed_then_retry():
 def test_passing_go_pays_salary():
     s = started()
     s.player("p1").position = 36
-    s, events = grandma_rolls(s, 6)                            # 36 -> 2, wraps
+    s, events = host_rolls(s, 6)                            # 36 -> 2, wraps
     assert s.player("p1").position == 2
     assert {"type": "salary", "player": "p1", "amount": 200} in events
     assert s.player("p1").balance == 1700
@@ -137,8 +137,8 @@ def test_moves_wrap_forward_in_move_command():
 
 # --- buying ---------------------------------------------------------------
 
-def test_grandma_buys_by_voice_and_pays_at_once():
-    s, _ = grandma_rolls(started(), 6)
+def test_host_buys_by_voice_and_pays_at_once():
+    s, _ = host_rolls(started(), 6)
     s, events = act(s, SYSTEM, "decision", player="p1", answer="yes")
     assert "payment_requested" not in types(events)            # no card tap on the reader
     assert s.player("p1").balance == 1400 and 6 in s.player("p1").properties
@@ -152,21 +152,21 @@ def test_player_card_when_nobody_owes_refused():
 
 
 def test_buy_is_charged_once():
-    s, _ = grandma_rolls(started(), 6)
+    s, _ = host_rolls(started(), 6)
     s, _ = act(s, SYSTEM, "decision", player="p1", answer="yes")
     with pytest.raises(EngineError):
         act(s, SYSTEM, "confirm_payment")
     assert s.player("p1").balance == 1400
 
 
-def test_grandma_declines():
-    s, _ = grandma_rolls(started(), 6)
+def test_host_declines():
+    s, _ = host_rolls(started(), 6)
     s, events = act(s, SYSTEM, "decision", player="p1", answer="no")
     assert s.player("p1").properties == [] and s.current_player.id == "p2"
 
 
-def test_kid_buy_is_paid_automatically():
-    s, _ = kid_rolls(skip_turn(started()), "p2", 1, 2)        # Three Bears' Den, 60
+def test_remote_buy_is_paid_automatically():
+    s, _ = remote_rolls(skip_turn(started()), "p2", 1, 2)        # Three Bears' Den, 60
     with pytest.raises(EngineError, match="Maya's decision"):
         act(s, "p3", "buy", square=3)
     s, events = act(s, "p2", "buy", square=3)
@@ -175,7 +175,7 @@ def test_kid_buy_is_paid_automatically():
 
 
 def test_buy_wrong_square_refused():
-    s, _ = kid_rolls(skip_turn(started()), "p2", 1, 2)
+    s, _ = remote_rolls(skip_turn(started()), "p2", 1, 2)
     with pytest.raises(EngineError, match="not the place"):
         act(s, "p2", "buy", square=1)
 
@@ -183,26 +183,26 @@ def test_buy_wrong_square_refused():
 def test_cant_afford_skips_offer():
     s = skip_turn(started())
     s.player("p2").balance = 50
-    s, events = kid_rolls(s, "p2", 1, 2)
+    s, events = remote_rolls(s, "p2", 1, 2)
     assert "cant_afford" in types(events) and s.current_player.id == "p3"
 
 
 # --- rent -------------------------------------------------------------------
 
-def test_rent_kid_pays_grandma_automatically():
+def test_rent_remote_pays_host_automatically():
     s = at_turn(started(), "p2")
     s.player("p1").properties = [6]                            # Gingerbread House, rent 6
-    s, events = kid_rolls(s, "p2", 2, 4)
+    s, events = remote_rolls(s, "p2", 2, 4)
     paid = next(e for e in events if e["type"] == "paid")
     assert paid == {"type": "paid", "from": "p2", "to": "p1", "amount": 6, "reason": "rent", "square": 6}
     assert s.player("p1").balance == 1506 and s.player("p2").balance == 1494
     assert s.current_player.id == "p3"
 
 
-def test_rent_grandma_pays_kid_automatically():
+def test_rent_host_pays_remote_automatically():
     s = started()
     s.player("p2").properties = [6]
-    s, events = grandma_rolls(s, 6)
+    s, events = host_rolls(s, 6)
     paid = next(e for e in events if e["type"] == "paid")
     assert paid == {"type": "paid", "from": "p1", "to": "p2", "amount": 6, "reason": "rent", "square": 6}
     assert s.player("p1").balance == 1494 and s.player("p2").balance == 1506
@@ -211,14 +211,14 @@ def test_rent_grandma_pays_kid_automatically():
 def test_color_group_doubles_rent():
     s = at_turn(started(), "p2")
     s.player("p1").properties = [6, 8, 9]                      # whole light-blue group
-    s, _ = kid_rolls(s, "p2", 2, 4)
+    s, _ = remote_rolls(s, "p2", 2, 4)
     assert s.player("p1").balance == 1512
 
 
 def test_railroad_rent_scales_with_count():
     s = at_turn(started(), "p2")
     s.player("p3").properties = [5, 15]                        # two rides -> 50
-    s, _ = kid_rolls(s, "p2", 2, 3)
+    s, _ = remote_rolls(s, "p2", 2, 3)
     assert s.player("p3").balance == 1550
 
 
@@ -226,14 +226,14 @@ def test_utility_rent_uses_dice():
     s = at_turn(started(), "p2")
     s.player("p2").position = 5
     s.player("p3").properties = [12]                           # one utility -> 4x dice
-    s, _ = kid_rolls(s, "p2", 3, 4)
+    s, _ = remote_rolls(s, "p2", 3, 4)
     assert s.player("p3").balance == 1500 + 28
 
 
 def test_own_property_is_free():
     s = at_turn(started(), "p2")
     s.player("p2").properties = [6]
-    s, events = kid_rolls(s, "p2", 2, 4)
+    s, events = remote_rolls(s, "p2", 2, 4)
     assert "paid" not in types(events) and s.player("p2").balance == 1500
 
 
@@ -243,7 +243,7 @@ def test_bankrupt_on_rent_hands_over_everything():
     s.player("p2").position = 33
     s.player("p2").balance = 30
     s.player("p2").properties = [1]
-    s, events = kid_rolls(s, "p2", 3, 3)
+    s, events = remote_rolls(s, "p2", 3, 3)
     assert s.player("p2").bankrupt and s.player("p2").properties == []
     assert s.player("p1").balance == 1530
     assert "bankrupt" in types(events) and s.current_player.id == "p3"
@@ -254,7 +254,7 @@ def test_bankruptcy_skips_turn_and_ends_game():
     s, _ = apply_action(new_game("g", specs), SYSTEM, {"action": "start", "force": True})
     s.player("p2").properties = [6]
     s.player("p1").balance = 3
-    s, events = grandma_rolls(s, 6)                            # can't cover 6: no tap, automatic
+    s, events = host_rolls(s, 6)                            # can't cover 6: no tap, automatic
     assert s.phase == Phase.GAME_OVER and s.winner == "p2"
     assert "payment_requested" not in types(events)
 

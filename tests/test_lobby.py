@@ -42,7 +42,7 @@ def test_several_players_at_the_table():
     assert [p.connected for p in s.players] == [True, True, False]   # table players need no phone
 
 
-def test_grandma_ready_kids_not():
+def test_host_ready_remote_players_not():
     s = new_game("g", SPECS)
     assert [p.connected for p in s.players] == [True, False, False]
 
@@ -64,7 +64,7 @@ def test_force_start():
     assert s.phase == Phase.WAITING_FOR_ROLL
 
 
-def test_kid_cannot_start_or_fake_presence():
+def test_remote_cannot_start_or_fake_presence():
     s = new_game("g", SPECS)
     with pytest.raises(EngineError):
         apply_action(s, "p2", {"action": "start", "force": True})
