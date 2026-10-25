@@ -274,3 +274,7 @@
 /* Quieter chips and tools inside the centre. */
 .board-page .board-viewport:not([data-render="3d"]) .game-player-chip { font-size: .85em; padding: 4px 8px; }
 .board-page .board-viewport:not([data-render="3d"]) .game-surface-tools .btn { font-size: 12px; min-height: 30px; padding: 5px 9px; }
+/* While a decision/receipt panel is showing bottom-right, keep the centre's title, card and status out from under it. */
+.board-page .board-viewport:not([data-render="3d"]):has(.game-action-card:not([hidden])) .mm-center { padding-right: 50%; padding-left: 2%; }
+.board-page .board-viewport:not([data-render="3d"]):has(.game-action-card:not([hidden])) .mm-center .drawn-card { max-width: 92%; }
+.board-page .board-viewport:not([data-render="3d"]):has(.game-action-card:not([hidden])) .mm-center .center-phase { max-width: 94%; }
