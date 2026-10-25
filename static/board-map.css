@@ -1,0 +1,148 @@
+/* Screen-readable tabletop map. The 3D scene has its own materials and geometry. */
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board.mm-board {
+  border: 1px solid #ad8963; background: #ad9779; gap: 1px; padding: 2px;
+  box-shadow: 0 0 0 3px #805439, 0 5px 14px #24130d66, 0 22px 50px 12px #24130d70, 0 0 46px 10px #24130d45;
+}
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-sq { border: 0; background: #eee7d5; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-sq[data-kind="go"] { background: #dce8c9; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-sq[data-deck="crystal"] { background: #e1dced; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-sq[data-deck="chest"] { background: #ecd9dd; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-sq[data-kind="jail"],
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-sq[data-kind="free_parking"] { background: #e6dce8; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-sq[data-kind="go_to_jail"] { background: #dce5da; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-band { flex-basis: 8%; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-name { color: #493b38; text-align: center; hyphens: auto; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-price { color: #705b43; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-icon { font-size: .85em; flex-shrink: 0; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .corner .mm-icon { font-size: 1em; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-icon :is(img,svg) { display: block; width: 1.2em; height: 1.2em; object-fit: contain; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-center { background: #233d60; box-shadow: none; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board .mm-center::before { content: ''; position: absolute; inset: 0; border: 0; border-radius: 0; background: url('/static/art/board-frame.svg?v=paisley-2') center / 100% 100% no-repeat, url('/static/art/board-center-tower.svg?v=lavender-1') center / 100% 100% no-repeat; pointer-events: none; z-index: -1; }
+.phone-page #board .mm-center { position: relative; isolation: isolate; }
+.mm-deck-zones { position: relative; grid-area: 2 / 2 / 11 / 11; pointer-events: none; z-index: 0; }
+.mm-deck-zone { position: absolute; width: 23%; height: 15%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .45em; transform: rotate(-35deg); border: 1px solid #af996b; background: #eee9d6; color: #354659; font: .72em/1.1 var(--font-game); text-align: center; }
+.mm-deck-zone > span:first-child { font-size: 1em; }
+.mm-deck-crystal { left: 18%; top: 27%; }
+.mm-deck-chest { right: 18%; bottom: 27%; }
+.board-viewport[data-render="3d"] .mm-deck-zones { visibility: hidden; }
+
+
+/* Translucent red ink lets the tower show through while lettering stays crisp. */
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-page) #board :is(.center-logo, .phone-board-brand) {
+  background: radial-gradient(#3b24171c 1px, transparent 1.4px) 0 0 / 5px 5px, #a8392dba;
+}
+.map-zoom-controls { display: flex; align-items: center; gap: 4px; flex: none; }
+.map-zoom-controls[hidden] { display: none; }
+.map-zoom-controls .btn { min-width: 44px; min-height: 44px; }
+.map-zoom-controls .btn:nth-child(2) { min-width: 56px; }
+.phone-map-tools { display: flex; justify-content: flex-end; margin: 0 0 12px; }
+.phone-map-viewport { position: relative; width: 100%; aspect-ratio: 1; container-type: size; }
+.phone-page .phone-map-viewport #board { width: 100%; }
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-map-viewport)[data-map-zoom]:not([data-map-zoom="1"]) {
+  display: block; overflow: hidden; overscroll-behavior: contain; touch-action: none; cursor: grab;
+  box-sizing: border-box;
+  padding-inline: var(--map-pan-x, 0px);
+  padding-block: var(--map-pan-y, 0px);
+}
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-map-viewport)[data-map-zoom]:not([data-map-zoom="1"]) #board {
+  width: calc(min(100cqw, 100cqh) * var(--map-zoom)); max-width: none; margin: 0;
+}
+@media (orientation: landscape) and (max-height: 600px) and (min-width: 600px) {
+  .phone-page #game > .phone-map-viewport { grid-column: 1; grid-row: 2 / span 10; }
+  .phone-page #game > .phone-map-tools { grid-column: 1; grid-row: 1; }
+}
+
+.board-page .board-viewport:fullscreen .game-surface-tools { flex-wrap: wrap; justify-content: flex-end; }
+
+/* In the wooden 2D view, Home uses the same cream as the Players panel. */
+.board-page:has(.board-viewport:not([data-render="3d"])) .board-home {
+  background: var(--parchment); color: var(--ink); border-color: #c6aa78;
+  box-shadow: 0 2px 0 var(--paper-shadow);
+}
+
+/* The wooden tabletop surrounds the map; the map itself keeps its navy center. */
+body.board-page:has(.board-viewport:not([data-render="3d"])),
+.board-page .board-viewport:not([data-render="3d"]):is(:fullscreen, :-webkit-full-screen),
+body.phone-page:has(#game:not([hidden])) {
+  background: repeating-linear-gradient(178deg, transparent 0 11px, #683c221a 11px 12px), linear-gradient(#28170e14, #28170e14), #ce996f;
+}
+body.board-page:has(.board-viewport:not([data-render="3d"])) > .scene,
+body.phone-page:has(#game:not([hidden])) > .scene { visibility: hidden; }
+
+:is(.board-page .board-viewport:not([data-render="3d"]), .phone-map-viewport)[data-map-zoom]:not([data-map-zoom="1"]) #board { cursor: grab; user-select: none; -webkit-user-select: none; }
+:is(.board-page .board-viewport, .phone-map-viewport).map-panning #board { cursor: grabbing; }
+.mm-deck-chest { opacity: 1; }
+
+.phone-page .map-zoom-controls .btn:nth-child(2) { min-width: 38px; padding-inline: 5px; font-size: 12px; }
+
+/* The toolbar uses the same soft pink as Chest of Spells spaces. */
+.board-page .game-board-toolbar .game-surface-tools .btn,
+.board-page .board-viewport:fullscreen .game-surface-tools .btn,
+.phone-page .phone-map-tools .map-zoom-controls .btn {
+  background: #ecd9dd; color: #623751; border-color: #b997a4;
+}
+
+.board-page .board-masthead .board-heading-note :is(.board-home, .mirror-fab) {
+  background: var(--parchment); color: #62445e; border-color: #c6aa78;
+}
+/* Keep the wide shadow below the toolbar, with space for the board's rim. */
+.board-page .board-viewport:not([data-render="3d"]):not(:fullscreen),
+.phone-map-viewport { clip-path: inset(-4px -100px -100px -100px); }
+.board-page .game-board-toolbar { position: relative; z-index: 6; }
+.board-page .game-board-toolbar .map-zoom-controls .btn,
+.board-page .board-viewport:fullscreen .map-zoom-controls .btn,
+.phone-page .phone-map-tools .map-zoom-controls .btn {
+  min-width: 30px; width: 30px; min-height: 32px; height: 32px; padding: 3px; font-size: 15px;
+}
+.board-page .game-board-toolbar .map-zoom-controls .btn:nth-child(2),
+.board-page .board-viewport:fullscreen .map-zoom-controls .btn:nth-child(2),
+.phone-page .phone-map-tools .map-zoom-controls .btn:nth-child(2) {
+  width: auto; min-width: 34px; padding-inline: 4px; font-size: 12px;
+}
+
+:is(.board-page .board-viewport, .phone-map-viewport).map-panning { cursor: grabbing; }
+
+/* The last dice total has a readable home outside the decorative map. */
+.last-roll-badge { display: inline-flex; align-items: center; align-self: center; min-height: 32px; padding: 6px 10px; border: 1px solid #bca179; border-radius: 5px; background: #fff2d5; color: #49354e; font: 16px/1.2 var(--font-game); white-space: nowrap; }
+.last-roll-badge[hidden] { display: none; }
+.board-page .game-surface-tools { align-items: center; }
+.phone-map-tools { align-items: center; justify-content: space-between; gap: 8px; }
+
+/* Expand/collapse lives in the board corner in either rendering mode. */
+.board-page #game-fullscreen.game-fullscreen-icon {
+  position: absolute; right: 8px; bottom: 8px; z-index: 25; pointer-events: auto;
+  --fullscreen-size: clamp(24px, min(4.5cqw, 4.5cqh), 36px);
+  display: grid; place-items: center; width: var(--fullscreen-size); height: var(--fullscreen-size); min-width: 0; min-height: 0;
+  padding: 0; border: 1px solid #bca179; border-radius: 5px;
+  background: #fff2d5ed; color: #62445e; box-shadow: 0 2px 6px #24130d33;
+}
+.game-fullscreen-icon svg { display: block; width: 62%; height: 62%; }
+@media (pointer: coarse) {
+  .game-fullscreen-icon::before { content: ''; position: absolute; inset: -10px; }
+}
+
+/* 2D fullscreen keeps the dice total beside the map; 3D retains its toolbar. */
+.board-page .board-viewport:fullscreen { --fullscreen-roll-side: clamp(96px, 11vw, 150px); }
+.board-page .board-viewport:fullscreen:not([data-render="3d"]) .game-surface-tools > :is(.btn, .map-zoom-controls) { display: none; }
+.board-page .board-viewport:fullscreen:not([data-render="3d"]) .game-surface-tools {
+  top: 0; right: 12px; left: auto; transform: none; width: calc(var(--fullscreen-roll-side) - 12px); max-width: calc(var(--fullscreen-roll-side) - 12px);
+}
+.board-page .board-viewport:fullscreen:not([data-render="3d"]) .last-roll-badge { white-space: nowrap; text-align: center; font-size: clamp(12px, 1.3vw, 16px); }
+.board-page .board-viewport:fullscreen:not([data-render="3d"]) {
+  --fullscreen-map-size: min(calc(100cqw - 24px), calc(100cqh - 24px));
+}
+.board-page .board-viewport:fullscreen:not([data-render="3d"])[data-map-zoom] #board {
+  width: calc(var(--fullscreen-map-size) * var(--map-zoom, 1));
+}
+.board-page .board-viewport:fullscreen:not([data-render="3d"])[data-map-zoom="1"] #board { translate: none; }
+.board-page .board-viewport:fullscreen:not([data-render="3d"]) .game-overlay {
+  width: var(--fullscreen-map-size); height: var(--fullscreen-map-size); left: 50%;
+}
+.board-page .board-viewport:fullscreen:not([data-render="3d"]) .game-surface-tools { left: calc(100% + 12px); right: auto; }
+
+/* Narrow fullscreen screens put the badge just above the corner instead of
+   shifting or shrinking the centered board to make a sidebar. */
+@media (max-aspect-ratio: 4/3) {
+  .board-page .board-viewport:fullscreen:not([data-render="3d"]) { --fullscreen-map-size: min(calc(100cqw - 24px), calc(100cqh - 104px)); }
+  .board-page .board-viewport:fullscreen:not([data-render="3d"]) .game-surface-tools { left: auto; right: 0; top: -42px; width: auto; }
+}

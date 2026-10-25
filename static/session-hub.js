@@ -3,7 +3,7 @@ import { h } from '/static/net.js';
 import { avatarSvg } from '/static/avatars.js';
 
 // Version the shared component stylesheet so an older cached page cannot render new markup unstyled.
-const saveStyles = '/static/session-hub.css?v=account-forms-7';
+const saveStyles = '/static/session-hub.css?v=hackily-case-1';
 if (![...document.querySelectorAll('link[rel="stylesheet"]')].some(link => link.getAttribute('href') === saveStyles)) {
   const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = saveStyles;
   document.head.append(link);
@@ -127,7 +127,7 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
     return catalog;
   }
   function resumeUrl(game) {
-    if (game.status === 'over') return null;
+    if (['over', 'abandoned'].includes(game.status)) return null;
     if (game.resume_url) return game.resume_url;
     if (game.host_url) return game.phase === 'LOBBY' ? game.host_url : game.board_url;
     return null;
@@ -184,14 +184,35 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
     const grid = h('div', { class: 'hub-save-grid', 'aria-label': 'Saved games' });
     saves.forEach((game, index) => {
       const waiting = game.phase === 'LOBBY';
-      grid.append(h('a', { class: 'hub-save-slot', href: resumeUrl(game), 'data-game': game.game_id },
+      const slot = h('a', { class: 'hub-save-slot', href: resumeUrl(game), 'data-game': game.game_id },
         gameCover(game, index),
         h('span', { class: 'hub-slot-content' },
           h('span', { class: 'hub-slot-label' }, index === 0 ? 'Most recent' : 'Saved game'),
           h('strong', { class: 'hub-slot-names' }, game.players.map(player => player.name).join(' & ')),
           h('span', { class: 'hub-slot-turn' }, waiting ? 'In lobby' : `Turn ${game.turn}`),
           h('time', { datetime: new Date(game.updated_at * 1000).toISOString() }, date(game.updated_at)),
-          h('span', { class: 'hub-slot-action' }, waiting ? 'Continue lobby' : 'Continue game'))));
+          h('span', { class: 'hub-slot-action' }, waiting ? 'Continue lobby' : 'Continue game')));
+      const entry = h('div', { class: 'hub-save-entry' }, slot);
+      const ctx = contextFor(game);
+      if (ctx.host) {
+        let busy = false;
+        const message = error('');
+        const remove = button('Delete game', async () => {
+          if (busy || !confirm('Are you sure?\n\nPermanently delete this saved game and its history? Its contribution to overall stats will be removed. Player accounts are kept. This cannot be undone.')) return;
+          busy = true; remove.disabled = true;
+          try {
+            await api(`/api/games/${game.game_id}/delete?host=${encodeURIComponent(ctx.host)}`, {});
+            if (entry.isConnected) await hub.openPlay();
+          } catch (e) {
+            message.textContent = e.message; busy = false; remove.disabled = game.phase === 'MOVING';
+          }
+        }, 'secondary hub-delete-game hub-save-delete');
+        remove.setAttribute('aria-label', `Delete saved game: ${game.players.map(p => p.name).join(' & ')}`);
+        remove.disabled = game.phase === 'MOVING';
+        if (remove.disabled) remove.title = 'Available when the current token move finishes';
+        entry.append(remove, message);
+      }
+      grid.append(entry);
     });
     // Empty placeholders match the save-slot layout; they never replace or limit real saved games.
     for (let index = saves.length; index < 3; index++) {
@@ -253,7 +274,7 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
         const intro = h('p', { class: 'hub-subtle' });
         function drawList() {
           const collection = user && historyScope === 'mine' ? games.filter(g => ownIds.has(g.game_id)) : games;
-          const filtered = collection.filter(g => historyFilter === 'all' || (historyFilter === 'over' ? g.status === 'over' : g.status !== 'over'));
+          const filtered = collection.filter(g => historyFilter === 'all' || (historyFilter === 'over' ? g.status === 'over' : !['over', 'abandoned'].includes(g.status)));
           intro.textContent = user ? `${historyScope === 'mine' ? user.display_name + '’s saved games.' : 'All available games.'} Open a game to see results or continue playing.` : 'Open a game to see results or continue playing. Sign in under Overall stats to track your results.';
           count.textContent = `${filtered.length} ${filtered.length === 1 ? 'game' : 'games'} · Most recent first`;
           list.replaceChildren(showCatalog(filtered, 'history'));
@@ -385,16 +406,45 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
         const winner = names.get(stats.winner);
         const header = h('div', { class: 'hub-game-summary' },
           h('p', { class: 'hub-game-names' }, stats.players.map(p => p.name).join(' · ')),
-          h('p', {}, winner ? `${winner} won` : stats.phase === 'GAME_OVER' ? 'Finished · result not recorded' : stats.phase === 'LOBBY' ? 'Waiting for players' : `In progress${game ? ` · Turn ${game.turn}` : ''}`),
+          h('p', {}, game?.status === 'abandoned' ? 'Ended by host' : winner ? `${winner} won` : stats.phase === 'GAME_OVER' ? 'Finished · result not recorded' : stats.phase === 'LOBBY' ? 'Waiting for players' : `In progress${game ? ` · Turn ${game.turn}` : ''}`),
           game ? h('p', { class: 'hub-subtle' }, date(game.created_at)) : null,
           game && resumeUrl(game) ? h('a', { class: 'btn', href: resumeUrl(game) }, game.phase === 'LOBBY' ? 'Continue lobby' : 'Continue game') : null,
-          // The host can end a game for good: it stops being resumed on restart and its links die; history stays.
-          game && ctx.host && game.status !== 'over' && game.status !== 'abandoned'
-            ? button('End this game', async () => {
-                if (!confirm('End this game for everyone? Its history is kept, but it cannot be continued.')) return;
-                try { await api(`/api/games/${id}/abandon?host=${encodeURIComponent(ctx.host)}`, {}); hub.openGame(id, ctx, returnTo); }
-                catch (e) { alert(e.message); }
-              }, 'secondary') : null);
+          context.showOptions ? h('a', { class: 'btn secondary', href: '/' }, 'Exit to home') : null,
+          context.showOptions ? h('p', { class: 'hub-subtle' }, 'Progress saves automatically. Exit to home keeps this game available to continue; it does not pause other players.') : null,
+          game && ctx.host ? (() => {
+            let busy = false;
+            const buttons = [];
+            const moving = stats.phase === 'MOVING' && game.status === 'active';
+            const action = (label, operation, confirmation) => {
+              const control = button(label, async () => {
+                if (busy || !confirm(`Are you sure?\n\n${confirmation}`)) return;
+                busy = true; buttons.forEach(button => { button.disabled = true; });
+                try {
+                  const response = await api(`/api/games/${id}/${operation}?host=${encodeURIComponent(ctx.host)}`, {});
+                  if (!fresh(ticket)) return;
+                  if (operation === 'reset') location.assign(response.host_url);
+                  else if (operation === 'delete') await returnTo();
+                  else await hub.openGame(id, ctx, returnTo);
+                } catch (e) {
+                  message.textContent = e.message; busy = false;
+                  buttons.forEach(button => { button.disabled = moving && button.dataset.operation !== 'abandon'; });
+                }
+              }, operation === 'delete' ? 'secondary hub-delete-game' : 'secondary');
+              control.dataset.operation = operation;
+              control.disabled = moving && operation !== 'abandon';
+              buttons.push(control); return control;
+            };
+            const message = error('');
+            const options = disclosure('Game options',
+              h('div', { class: 'hub-game-options' },
+                action('Reset game', 'reset', 'This clears this game’s progress, history and stats, keeps players and linked accounts, and returns everyone to the lobby. Return physical pieces to Start before starting again.'),
+                !['over', 'abandoned'].includes(game.status)
+                  ? action('End game', 'abandon', 'This stops play for everyone and keeps the game’s history and recorded stats. No winner is assigned.') : null,
+                action('Delete game', 'delete', 'This permanently deletes this game and all its history, including its contribution to overall stats. Player accounts are kept. This cannot be undone.')),
+              moving ? h('p', { class: 'hub-subtle' }, 'Reset and delete become available when the current token move finishes.') : null, message);
+            options.open = !!context.showOptions;
+            return options;
+          })() : null);
         const playerCards = [...stats.players].sort((a,b) => stats.phase === 'GAME_OVER' ? (a.placement ?? Infinity) - (b.placement ?? Infinity) : 0).map(p => h('details', { class: 'hub-player-stats', 'data-player': p.id },
           h('summary', {}, ledgerPortrait(p), h('span', { class: 'hub-player-name' }, h('strong', {}, p.name),
             h('span', { class: 'hub-subtle' }, p.placement != null ? `Finish #${p.placement}` : stats.phase === 'GAME_OVER' ? 'Finish not recorded' : stats.phase === 'LOBBY' ? 'Waiting to start' : p.bankrupt ? 'Out' : 'Still playing')),

@@ -41,6 +41,8 @@ class GameRoom:
         self.adapters = adapters
         self.rng = rng
         self.store = store
+        self.closed = False
+        self.generation = 0
         self.seq = seq                      # number of actions applied so far (0 = just created)
         self.updated_at = time.time()       # last action; picks "the game being played" among several
         self.host_token = host_token or secrets.token_urlsafe(9)
@@ -175,6 +177,8 @@ class GameRoom:
     async def dispatch(self, actor: str, action: dict) -> list[dict]:
         """Apply an action and broadcast the result. Raises EngineError if illegal."""
         async with self.lock:
+            if self.closed:
+                raise EngineError("this game has ended")
             attendance = action.get("action") == "set_attendance"
             if attendance:
                 pid = action.get("target")
@@ -211,10 +215,34 @@ class GameRoom:
                 for ws, role in list(self.viewers.items()):
                     if role == "host":
                         await self._safe_send(ws, {"type": "join_links", "join_links": self.join_links()})
-        await self._react(events)
+        if not self.closed:
+            await self._react(events)
         return events
 
+    def cancel_background(self) -> None:
+        if self._poll_task:
+            self._poll_task.cancel()
+            self._poll_task = None
+        for task in list(self._tasks):
+            task.cancel()
+        self._held_lines.clear()
+
+    async def close_game(self, message: str) -> None:
+        self.closed = True
+        self.generation += 1
+        self.cancel_background()
+        sockets = list(self.all_sockets())
+        self.seats.clear()
+        self.viewers.clear()
+        for ws in sockets:
+            await self._safe_send(ws, {"type": "error", "message": message, "fatal": True})
+            try:
+                await ws.close(code=4410)
+            except Exception:
+                pass
+
     async def _react(self, events: list[dict]) -> None:
+        generation = self.generation
         # Hardware first: the belt starts moving (and game-start resets happen) before any narration is awaited.
         for ev in events:
             if ev.get("type") == "game_started":   # tokens were placed on the start square by hand
@@ -236,7 +264,7 @@ class GameRoom:
         except Exception as e:
             log.info("mirror failed for %s: %s", [ev.get("type") for ev in group], e)
             line = None
-        if line:
+        if line and not self.closed and generation == self.generation:
             await self.broadcast({"type": "mirror", "text": line})
 
     def _spawn(self, coro) -> None:

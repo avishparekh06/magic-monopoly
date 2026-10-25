@@ -7,6 +7,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import hmac
+import random
+import time
 import logging
 import socket
 from contextlib import asynccontextmanager
@@ -19,7 +22,7 @@ from pydantic import BaseModel
 
 from .adapters import BRIDGES, MIRRORS, VOICES, make_adapters
 from .adapters.mirror import TemplateMirror
-from .engine import SYSTEM, EngineError
+from .engine import SYSTEM, EngineError, new_game, to_public
 from .rooms import GameRoom
 from .rules.monopoly import board, cards
 from .store import Store
@@ -265,28 +268,68 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             await room.belt_reported(lane, square, source="push")
         return {"ok": True, "games": [r.game_id for r in targets]}
 
+    management_lock = asyncio.Lock()
+
+    async def manage_game(game_id: str, host: str, request: Request, operation: str):
+        same_origin(request)
+        async with management_lock:
+            room = rooms.get(game_id)
+            async with room.lock if room else asyncio.Lock():
+                saved = store.game(game_id)
+                if not saved:
+                    raise HTTPException(404, "no such game")
+                if not hmac.compare_digest(host.encode(), saved["host_token"].encode()):
+                    raise HTTPException(403, "wrong host token")
+                state = room.state if room else None
+                if operation != 'end' and state and state.phase.value == 'MOVING':
+                    raise HTTPException(409, "Wait for the current token move to finish before resetting or deleting this game.")
+                if operation == 'reset':
+                    snapshot = to_public(state) if state else saved['state']
+                    specs = [{'name': player['name'], 'kind': player['kind']} for player in snapshot['players']]
+                    fresh_state = new_game(game_id, specs)
+                    for player in fresh_state.players:
+                        player.connected = player.kind == 'in_person' or bool(room and player.id in room.seats)
+                    if not room:
+                        room = GameRoom(fresh_state, adapters(), random.Random(saved['seed']), store,
+                                        host_token=saved['host_token'], seat_tokens=saved['seat_tokens'])
+                        await room._start_adapters()
+                    store.reset_game(game_id, specs, to_public(fresh_state))
+                    room.cancel_background()
+                    room.generation += 1
+                    room.state = fresh_state
+                    room.seq = 0
+                    room.rng.seed(saved['seed'])
+                    room.dev = dev
+                    room.debug_sync = False
+                    room.belt_positions.clear()
+                    room.lobby_positions = {p.id: {'x': .25 + i * .25, 'y': .62, 'jump': 0} for i, p in enumerate(fresh_state.players)}
+                    room._lobby_sent.clear()
+                    room._lobby_jumped.clear()
+                    room.updated_at = time.time()
+                    rooms[game_id] = room
+                    await room.broadcast({'type': 'state', 'state': to_public(fresh_state)})
+                    await room.broadcast({'type': 'lobby_presence', 'players': room.lobby_positions})
+                    return {'ok': True, 'game_id': game_id, 'status': 'active', 'host_url': f'/?game={game_id}&host={room.host_token}'}
+                if operation == 'delete':
+                    store.delete_game(game_id)
+                else:
+                    store.set_status(game_id, 'abandoned')
+                if room:
+                    await room.close_game('This game was deleted by the host.' if operation == 'delete' else 'This game was ended by the host.')
+                    rooms.pop(game_id, None)
+                return {'ok': True, 'game_id': game_id, 'status': 'deleted' if operation == 'delete' else 'abandoned'}
+
     @app.post("/api/games/{game_id}/abandon")
-    async def abandon_game(game_id: str, host: str):
-        """Host gives up on a game: it stops being resumed on restart, its links die, its history stays."""
-        room = rooms.get(game_id)
-        saved = store.game(game_id)
-        token = room.host_token if room else (saved or {}).get("host_token")
-        if token is None:
-            raise HTTPException(404, "no such game")
-        if host != token:
-            raise HTTPException(403, "wrong host token")
-        if room:
-            if room._poll_task:
-                room._poll_task.cancel()
-            for ws in room.all_sockets():
-                await room._safe_send(ws, {"type": "error", "message": "this game was ended by the host", "fatal": True})
-                try:
-                    await ws.close(code=4410)
-                except Exception:
-                    pass
-            rooms.pop(game_id, None)
-        store.set_status(game_id, "abandoned")
-        return {"ok": True, "game_id": game_id, "status": "abandoned"}
+    async def abandon_game(game_id: str, host: str, request: Request):
+        return await manage_game(game_id, host, request, 'end')
+
+    @app.post("/api/games/{game_id}/reset")
+    async def reset_game(game_id: str, host: str, request: Request):
+        return await manage_game(game_id, host, request, 'reset')
+
+    @app.post("/api/games/{game_id}/delete")
+    async def delete_game(game_id: str, host: str, request: Request):
+        return await manage_game(game_id, host, request, 'delete')
 
     @app.get("/api/games")
     async def list_games(request: Request):

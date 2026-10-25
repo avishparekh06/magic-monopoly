@@ -498,3 +498,14 @@ Marker **9** (`crystal_10`, Crystal Ball card 10, **Spoilers!**) now means
 card's instruction text; the original `design/All Cards.pdf` still describes the
 older backwards action. Forward movement resolves the destination normally and
 collects 200 gold if it passes Once Upon a Time.
+
+### Reset, end and delete a saved game
+
+Open **Game history & stats → Games → a game → Game options** on the host device.
+**Reset game** clears that match's progress, history and stats and returns to the
+lobby, keeping the roster, invitation links and linked accounts. Put physical
+pieces back on Start before starting again. **End game** stops play and keeps
+history and recorded stats, without assigning a winner. **Delete game** permanently
+removes the match, history and contributions to overall stats; accounts and other
+games remain. Each action asks for confirmation. Reset and delete wait for a
+pending token move to finish. Guest players do not see these host controls.

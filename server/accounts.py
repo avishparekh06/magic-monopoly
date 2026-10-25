@@ -134,7 +134,7 @@ class Accounts:
             host = self.owner(game['game_id']) == account_id
             resume = None
             host_url = f'/?game={game["game_id"]}&host={game["host_token"]}' if host else None
-            if game['status'] != 'over':
+            if game['status'] not in ('over', 'abandoned'):
                 if host:
                     resume = host_url if state['phase'] == 'LOBBY' else f'/board/{game["game_id"]}'
                 elif p and p['kind'] == 'remote':
@@ -172,7 +172,7 @@ class Accounts:
             roll_sum += stats['roll_total']
             best_roll = max(best_roll or 0, stats['best_roll'] or 0) or None
             purchases.update({int(k): v for k, v in stats['property_purchases'].items()})
-        return {**totals, 'games_played': len(started), 'completed_games': len(finished), 'active_games': len(started)-len(finished),
+        return {**totals, 'games_played': len(started), 'completed_games': len(finished), 'active_games': sum(g['status'] == 'active' for g in started),
                 'waiting_games': len(participating)-len(started), 'wins': wins,
                 'win_rate': round(100*wins/len(decided), 1) if decided else None, 'result_games': len(decided),
                 'average_placement': round(sum(placements)/len(placements), 2) if placements else None,

@@ -44,7 +44,7 @@ try {
  if(await evaluate(visible('#home-menu > button'))!==2)throw Error('Home has more than two actions');
  await evaluate('document.getElementById("home-play").click()');await waitFor('document.querySelectorAll("a.hub-save-slot").length===2');
  if(!await evaluate(`(()=>{const art=[...document.querySelectorAll('a.hub-save-slot .hub-slot-art')];return art[0].dataset.theme==='snow-white'&&art[1].dataset.theme==='sleeping-beauty'&&new Set(art.map(el=>getComputedStyle(el).backgroundImage)).size===art.length})()`))throw Error('Saved games need different fairy-tale covers');
- if(!await evaluate(`document.querySelectorAll('.hub-save-grid > .hub-save-slot').length===3&&document.querySelectorAll('.hub-save-slot.is-empty').length===1&&!document.querySelector('.hub-save-preview')`))throw Error('Save screen must show tall slots with an empty placeholder');
+ if(!await evaluate(`document.querySelectorAll('.hub-save-grid .hub-save-slot').length===3&&document.querySelectorAll('.hub-save-slot.is-empty').length===1&&!document.querySelector('.hub-save-preview')`))throw Error('Save screen must show tall slots with an empty placeholder');
  if(!await evaluate(`document.querySelector('.hub-save-slot[data-game="career_active"]').getAttribute('href')==='/board/career_active'&&document.querySelector('.hub-save-slot[data-game="career_waiting"]').getAttribute('href').includes('game=career_waiting')`))throw Error('Saved game/lobby resume links are wrong');
  await evaluate(`const slot=document.querySelector('a.hub-save-slot');window.firstSave=slot.dataset.game;slot.focus();slot.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))`);
  if(!await evaluate(`document.activeElement.matches('a.hub-save-slot')&&document.activeElement.dataset.game!==window.firstSave`))throw Error('Keyboard navigation did not move to next save');
@@ -115,10 +115,19 @@ try {
  if((await(await fetch(api+'/api/games')).json()).length!==count)throw Error('Resume created another game');
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
  await waitFor('document.body.classList.contains("phone-page") && !!document.querySelector(".phone-player-crest svg")');
- for(const [width,height] of [[390,844],[320,720]]){
+ if(!await evaluate(`(()=>{const center=document.querySelector('#board .mm-center');const art=getComputedStyle(center,'::before').backgroundImage;return art.includes('board-frame.svg')&&art.includes('board-center-tower.svg')&&getComputedStyle(center).backgroundColor==='rgb(35, 61, 96)'})()`))throw Error('Invite-link board missing shared map artwork');
+ for(const [width,height] of [[390,844],[320,720],[844,390]]){
    await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:true});await pause(100);
    if(!await evaluate(`(()=>{const header=document.getElementById('header'),portrait=document.querySelector('.phone-player-crest svg');return !!document.querySelector('.phone-brand .banner')&&getComputedStyle(header).backgroundColor==='rgb(255, 242, 213)'&&getComputedStyle(document.getElementById('banner')).borderRadius==='6px'&&portrait.getBoundingClientRect().width<=42&&document.documentElement.scrollWidth<=innerWidth+1&&document.getElementById('conn').hidden})()`))throw Error('Joined phone page lost storybook theme or overflows at '+width);
+   const portrait=height>width;
+   if(!await evaluate(`(()=>{const hint=document.querySelector('#game .mobile-play-hint'),roll=document.getElementById('roll');return (getComputedStyle(hint).display!=='none')===${portrait}&&parseFloat(getComputedStyle(roll).minHeight)>=44})()`))throw Error('Phone hint or touch target incorrect at '+width);
+   if(!portrait&&!await evaluate(`(()=>{const board=document.getElementById('board').getBoundingClientRect(),actions=document.querySelector('.actions').getBoundingClientRect();return board.right<=actions.left&&board.width>300})()`))throw Error('Landscape phone layout did not use two columns');
+
  }
+ const phoneMapWidth=await evaluate('document.getElementById("board").getBoundingClientRect().width');
+ await evaluate(`document.querySelector('[aria-label="Zoom in on 2D board"]').click()`);await pause(150);
+ if(!await evaluate(`document.getElementById('board').getBoundingClientRect().width>${phoneMapWidth}*1.2&&document.documentElement.scrollWidth<=innerWidth+1`))throw Error('Invite-link map zoom overflows or does not enlarge');
+ await evaluate(`document.querySelector('[aria-label="Reset 2D zoom to fit board"]').click()`);
  await send('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
  await fs.writeFile('/private/tmp/magic-monopoly-joined-phone.png',Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'));
  await evaluate('document.getElementById("phone-session-stats").click()');await waitFor('!!document.querySelector(".hub-player-stats")');
@@ -193,6 +202,36 @@ try {
  await waitFor('document.getElementById("session-hub-title").textContent==="Stats account linked"');
  if(!await evaluate(`(async()=>{const roster=await(await fetch('/api/games/'+new URLSearchParams(location.search).get('game')+'/accounts?host='+new URLSearchParams(location.search).get('host'))).json();return roster.players.p2.username==='career_link_created'&&(await(await fetch('/api/auth/me')).json()).account.username==='career_new'})()`))throw Error('New player account was not linked or replaced the signed-in host');
  console.log('PASS: Sign-in and creation modes are explicit; password confirmation/visibility work; new accounts register and link without changing the host login');
+ await clickText('Done');await waitFor('!document.getElementById("session-hub").open');
+ await send('Page.navigate',{url:api+'/?history=1'});await waitFor(`!!document.querySelector('[data-game="${created}"] button')`);
+ await evaluate(`document.querySelector('[data-game="${created}"] button').click()`);await waitFor('!!document.querySelector(".hub-game-options")');
+ await evaluate(`document.querySelector('.hub-game-options').closest('details').open=true;window.confirm=()=>false`);
+ for(const label of ['Reset game','End game','Delete game'])await clickText(label,'.hub-game-options button');
+ if(!await evaluate(`document.getElementById('session-hub-title').textContent==='Game details'`))throw Error('Cancelling game options should leave the game unchanged');
+ if((await(await fetch(api+'/api/games')).json()).find(game=>game.game_id===created).status!=='active')throw Error('Cancelled option changed game status');
+ await evaluate('window.confirm=()=>true');await clickText('Reset game','.hub-game-options button');
+ await waitFor('new URLSearchParams(location.search).has("host") && !!document.querySelector(".guest-attendance")');
+ const resetState=await(await fetch(api+'/api/games/'+created+'/stats')).json();
+ if(resetState.phase!=='LOBBY'||resetState.players.some(player=>player.balance!==1500||player.bought!==0))throw Error('UI reset failed to restore starting state');
+ await send('Page.navigate',{url:api+'/?history=1'});await waitFor(`!!document.querySelector('[data-game="${created}"] button')`);
+ await evaluate(`document.querySelector('[data-game="${created}"] button').click()`);await waitFor('!!document.querySelector(".hub-game-options")');
+ await evaluate(`document.querySelector('.hub-game-options').closest('details').open=true;window.confirm=()=>true`);await clickText('End game','.hub-game-options button');
+ await waitFor('document.querySelector(".hub-game-summary")?.innerText.includes("Ended by host")');
+ if(!await evaluate(`!document.querySelector('.hub-game-summary a')&&!!document.querySelector('.hub-game-options [data-operation=reset]')&&!!document.querySelector('.hub-game-options [data-operation=delete]')`))throw Error('Ended game still resumes or lost its reset/delete controls');
+ await evaluate(`document.querySelector('.hub-game-options').closest('details').open=true;window.confirm=()=>true`);await clickText('Delete game','.hub-game-options button');
+ await waitFor(`!!document.querySelector('#hub-tab-games')&&!document.querySelector('[data-game="${created}"]')`);
+ if((await fetch(api+'/api/games/'+created+'/stats')).status!==404)throw Error('Deleted game still has stats');
+ if((await(await fetch(api+'/api/games')).json()).every(game=>game.game_id!=='career_active'))throw Error('Deleting one game removed another');
+ console.log('PASS: Host game options confirm or cancel correctly; Reset returns to the lobby, End preserves history without resuming, and Delete removes only the selected game');
+ await send('Page.navigate',{url:api+'/'});await waitFor('document.getElementById("home-menu")?.hidden===false');
+ await evaluate('document.getElementById("home-play").click()');await waitFor(`!!document.querySelector('.hub-save-slot[data-game="career_waiting"]')`);
+ await evaluate(`window.confirm=()=>false;document.querySelector('.hub-save-slot[data-game="career_waiting"]').closest('.hub-save-entry').querySelector('.hub-save-delete').click()`);
+ if((await fetch(api+'/api/games/career_waiting/stats')).status!==200)throw Error('Cancel deleted a save');
+ if(!await evaluate(`!document.querySelector('.hub-save-slot[data-game="career_waiting"] .hub-save-delete')`))throw Error('Delete button is nested in Continue link');
+ await evaluate(`window.confirm=()=>true;document.querySelector('.hub-save-slot[data-game="career_waiting"]').closest('.hub-save-entry').querySelector('.hub-save-delete').click()`);
+ await waitFor(`document.getElementById('session-hub').dataset.screen==='play'&&!document.querySelector('.hub-save-slot[data-game="career_waiting"]')`);
+ if((await fetch(api+'/api/games/career_waiting/stats')).status!==404||(await fetch(api+'/api/games/career_active/stats')).status!==200)throw Error('Save picker deleted the wrong game');
+ console.log('PASS: Continue playing offers separate Delete controls, cancellation keeps the save, and deletion removes only the selected game');
  console.log('PASS: Failed loads keep navigation; account creation, new games, editable lobby continuation and 320px layouts work');
 }catch(e){
  console.error(e);

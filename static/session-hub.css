@@ -159,3 +159,54 @@
 .session-hub .hub-password-help { font-size: 14px; line-height: 1.4; color: #75634f; margin: -5px 0 0; }
 .hub-account-modes { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 8px; }
 .session-hub .hub-account-modes [aria-pressed="true"] { background: #62445e; color: #fff2d5; border-color: #62445e; box-shadow: 0 2px 0 #382737; }
+
+.hub-game-options { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.hub-game-options .btn { flex: none; }
+.session-hub .hub-delete-game { color: #8a3049; border-color: #a96068; }
+
+/* Home menu: a finished parchment card with a clear, compact action hierarchy. */
+#home-menu {
+  gap: 12px; padding: 30px 26px 22px; border: 1px solid #c4a77b;
+  border-radius: 14px; background: linear-gradient(145deg, #fff4da, #f3e4c4);
+  box-shadow: inset 0 0 0 4px #fff7e54d, 0 8px 0 #1e122833, 0 18px 36px #07102733;
+}
+#home-menu::before, #home-menu::after { display: none; }
+#home-menu h2 { margin: 0; color: #62445e; font-size: clamp(29px, 4vw, 36px); line-height: 1.15; text-wrap: balance; }
+#home-menu > .home-menu-note { margin: 0; font-size: 16px; line-height: 1.45; color: #75604f; }
+#home-menu > .home-menu-note:first-of-type { padding-bottom: 18px; margin-bottom: 2px; border-bottom: 1px solid #cbb48c; }
+#home-menu > .btn { display: flex; align-items: center; justify-content: center; border-radius: 8px; margin: 0; padding: 12px 18px; line-height: 1.2; }
+#home-menu > .btn.wood { min-height: 66px; margin-top: 4px; font-size: 29px; border-width: 2px; box-shadow: 0 4px 0 var(--wood-edge); }
+#home-menu > .btn.ink { min-height: 52px; margin-top: 6px; border: 1px solid #bba181; background: #fff8e8; color: #62445e; font-size: 20px; box-shadow: 0 2px 0 #cbb48c66; }
+#home-menu > .btn.ink:hover { background: #ead6df; border-color: #b67899; }
+#home-menu #home-account-note { margin-top: 8px; padding-top: 16px; border-top: 1px solid #cbb48c; color: #75604f; font-size: 14px; line-height: 1.5; text-wrap: pretty; }
+@media (max-width: 450px) {
+  #home-menu { padding: 24px 20px 18px; gap: 10px; }
+  #home-menu > .btn.wood { min-height: 60px; font-size: 26px; }
+  #home-menu > .btn.ink { font-size: 18px; }
+  #home-menu > .home-menu-note { font-size: 15px; }
+}
+@media (min-width: 960px) {
+  .page #home-menu { padding: 34px 34px 26px; gap: 16px; }
+  .page #home-menu h2 { font-size: 42px; }
+  .page #home-menu > .home-menu-note { font-size: 18px; }
+  .page #home-menu > .btn.wood { min-height: 72px; font-size: 32px; }
+  .page #home-menu > .btn.ink { min-height: 56px; font-size: 22px; }
+  .page #home-menu #home-account-note { font-size: 15px; }
+}
+
+#home-menu .home-account-entry { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 8px; padding-top: 16px; border-top: 1px solid #cbb48c; }
+#home-menu .home-account-entry #home-account-note { border: 0; padding: 0; margin: 0; text-align: left; }
+#home-menu .home-account-entry .btn { flex: none; min-height: 44px; padding: 8px 15px; border: 1px solid #b997a4; border-radius: 6px; background: #ecd9dd; color: #623751; font-size: 17px; }
+@media (max-width: 370px) {
+  #home-menu .home-account-entry { flex-wrap: wrap; justify-content: center; }
+  #home-menu .home-account-entry #home-account-note { text-align: center; }
+}
+
+.hub-save-entry { min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.hub-save-entry > .hub-save-slot { flex: 1; }
+.session-hub .hub-save-delete { align-self: flex-end; min-height: 36px; padding: 6px 12px; font-size: 14px; background: #dc9a54; color: #3b2417; border-color: #b38d4d; }
+.hub-save-entry > .hub-error:empty { display: none; }
+
+/* Planewalker's capital H resembles lowercase h; use a clear drawn capital. */
+#home-menu h2 .hackily-initial { display: inline-block; position: relative; width: .7em; color: transparent; }
+#home-menu h2 .hackily-initial svg { position: absolute; left: 0; bottom: .08em; width: .7em; height: .8em; }

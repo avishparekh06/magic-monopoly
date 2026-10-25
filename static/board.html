@@ -7,20 +7,21 @@
   <link rel="stylesheet" href="/static/typography.css">
   <title>Magic Mirror — Board</title>
   <link rel="stylesheet" href="/static/style.css">
-  <link rel="stylesheet" href="/static/fairytale.css">
-  <link rel="stylesheet" href="/static/board-theme.css">
-  <link rel="stylesheet" href="/static/session-hub.css?v=account-forms-7">
+  <link rel="stylesheet" href="/static/fairytale.css?v=mobile-2">
+  <link rel="stylesheet" href="/static/board-theme.css?v=centered-players-1">
+  <link rel="stylesheet" href="/static/session-hub.css?v=hackily-case-1">
   <link rel="stylesheet" href="/static/property-cards.css">
+  <link rel="stylesheet" href="/static/board-map.css?v=center-fullscreen-4">
   <style>
     /* Clean board: the Mirror sits beside Home in the top bar that opens its actions, players are
        clickable, and the dev panel is a corner popup (--dev only). */
     .mirror-fab { position: relative; flex: none; width: 44px; height: 44px; padding: 0;
-      border-radius: 50%; border: 3px solid #d5b56a; background: radial-gradient(circle at 35% 30%, #fffaf0, #cfe3ef 45%, #7f9fbd);
-      box-shadow: 0 4px 14px #0008; cursor: pointer; display: grid; place-items: center; }
+      border-radius: 50%; border: 1px solid #c6aa78; background: var(--parchment); color: #62445e;
+      box-shadow: none; cursor: pointer; display: grid; place-items: center; }
     .mirror-fab svg { width: 28px; height: 28px; }
     .board-page > .board-masthead { z-index: 35; }
-    .board-page .board-heading-note { position: relative; }
-    .board-page .board-home { min-height: 44px; }
+    .board-page .board-heading-note { position: relative; align-items: center; }
+    .board-page .board-heading-note :is(.board-home, .mirror-fab) { box-sizing: border-box; height: 44px; min-height: 44px; margin: 0; flex-shrink: 0; }
     .mirror-fab.on { box-shadow: 0 0 0 4px #f4c95d88, 0 0 22px #f4c95dcc; }
     .mirror-fab.speaking { animation: mirror-glow 1.2s ease-out; }
     .mirror-fab.needs-mic { animation: mirror-glow 1.2s ease-out infinite; }   /* a yes/no is waiting and the mic is off */
@@ -49,7 +50,6 @@
       box-shadow: none; border: 2px solid var(--logo-ivory);
     }
     .board-page .board-viewport:not([data-render="3d"]):has(.game-action-card:not([hidden])) #board .mm-center { padding: 0; }
-    .board-page #board .mm-center .dice { position: absolute; left: 5%; bottom: 4%; margin: 0; }   /* clear of the logo and the action card */   /* toolbar and caption rows are hidden */
     .dev-toggle { position: fixed; right: 96px; bottom: 32px; z-index: 30; }
     .board-page .dev-popup { position: fixed; right: 18px; bottom: 96px; z-index: 30; width: min(440px, calc(100vw - 32px));
       max-height: calc(100vh - 96px); overflow-y: auto; }
@@ -60,14 +60,22 @@
 </head>
 <body class="board-page">
   <header class="board-masthead">
+    <aside class="player-summary" aria-label="Players">
+      <div class="panel">
+        <h2>Players</h2>
+        <ul class="players" id="players"></ul>
+      </div>
+
+    </aside>
     <div class="board-heading-note" style="margin-left:auto">
       <a class="btn small board-home" href="/" aria-label="Back to homepage">← Home</a>
       <span class="conn pill cam-pill" id="cam" role="status" hidden></span>
 
-  <button class="mirror-fab" id="mirror-toggle" type="button" aria-label="The Mirror: voice, microphone and recent lines" aria-expanded="false" aria-controls="mirror-menu">
-    <svg viewBox="0 0 40 40" aria-hidden="true"><ellipse cx="20" cy="16" rx="11" ry="13" fill="#e8f2f8" stroke="#8a6a2e" stroke-width="2.5"/>
-      <path d="M14 10q3-4 7-4" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"/>
-      <path d="M20 29v8m-4 0h8" stroke="#8a6a2e" stroke-width="3" stroke-linecap="round"/></svg>
+  <button class="mirror-fab" id="mirror-toggle" type="button" aria-label="Voice and microphone controls" title="Voice and microphone" aria-expanded="false" aria-controls="mirror-menu">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="9" y="2.5" width="6" height="12" rx="3"/>
+      <path d="M5.5 10.5v1a6.5 6.5 0 0 0 13 0v-1M12 18v3.5M8.5 21.5h7"/>
+    </svg>
   </button>
   <div class="panel mirror-menu" id="mirror-menu" hidden>
     <div class="mirror-head"><h2>The Mirror</h2>
@@ -83,8 +91,8 @@
     <main class="board-stage" aria-label="Game board">
       <div class="board-view-toolbar" hidden>
         <div class="board-view-switch" role="group" aria-label="Board view">
-          <button type="button" class="btn small" id="view-follow" aria-pressed="true" aria-controls="board-viewport">Change to 3D view</button>
-          <button type="button" class="btn small secondary" id="view-full" aria-pressed="false" aria-controls="board-viewport">Full board</button>
+          <button type="button" class="btn small" id="view-follow" aria-pressed="true" aria-controls="board-viewport">3D view</button>
+          <button type="button" class="btn small secondary" id="view-full" aria-pressed="false" aria-controls="board-viewport">2D view</button>
         </div>
         <span id="board-view-location" class="board-view-location">All 40 spaces</span>
       </div>
@@ -92,13 +100,7 @@
       <p id="board-view-status" class="board-caption" role="status" hidden></p>
     </main>
 
-    <aside>
-      <div class="panel">
-        <h2>Players</h2>
-        <ul class="players" id="players"></ul>
-      </div>
 
-    </aside>
   </div>
 
   <button class="btn small secondary dev-toggle" id="dev-toggle" type="button" hidden>Dev</button>
@@ -159,8 +161,8 @@ mountScene();
 import { connect, toast, h, narrate, stopNarration, onNarration, isNarrating } from "/static/net.js";
 import { characterSvg } from "/static/avatars.js";
 import { loadBoard, createBoardView } from "/static/board.js";
-import { mountBoardCamera } from "/static/board-camera.js";
-import { mountBoardActions } from "/static/board-actions.js";
+import { mountBoardCamera } from "/static/board-camera.js?v=view-labels-2";
+import { mountBoardActions } from "/static/board-actions.js?v=pinned-fullscreen-3";
 
 const gameId = location.pathname.split("/")[2];
 const [boardData, cardData, config] = await Promise.all([loadBoard(), fetch("/api/cards").then(r => r.json()),
@@ -314,7 +316,7 @@ function addRaw(msg) {
 
 // ---- connection -----------------------------------------------------------
 const net = connect(`/ws/${gameId}?role=board`, {
-  onState: (s) => { state = s; addRaw({ type: "state", phase: s.phase }); render(); maybeListen(); },
+  onState: (s) => { document.body.classList.toggle("gameplay-focus", s.phase !== "LOBBY" && s.phase !== "GAME_OVER"); state = s; addRaw({ type: "state", phase: s.phase }); render(); maybeListen(); },
   onMessage: (m) => {
     addRaw(m);
     if (m.type === "belt_position") { belt[m.lane] = m; render(); }
@@ -404,11 +406,9 @@ function render() {
       h("div", { class: "center-phase" }, waiting.length ? `Waiting for ${waiting.join(" and ")}…` : "Everyone is here!"),
       h("button", { class: "btn", disabled: waiting.length > 0, onclick: () => net.send({ action: "start" }) }, "Start the game"));
   } else {
-    // Only the title and the last roll: the action card shows any choice or drawn card.
-    const roll = state.last_roll;
+    // The last roll lives in the toolbar; choices and drawn cards use the action card.
     c.replaceChildren(
       h("h1", { class: "banner center-logo" }, "MONOPOLY"),
-      roll ? h("div", { class: "dice" }, `Roll: ${roll}`) : "",
       h("div", { class: "cam-line", id: "cam-line", hidden: true }));
     renderCamera();
   }
