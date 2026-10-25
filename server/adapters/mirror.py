@@ -141,6 +141,11 @@ class TemplateMirror(Mirror):
     def _position_set(self, e, s):
         return f"A wave of the wand: {self._name(s, e['player'])}'s token now stands on {square(e['to'])['name']}."
 
+    def _card_unreadable(self, e, s):
+        who = s.player(e["player"])
+        where = "the dev panel" if who.kind == "in_person" else "your phone"
+        return f"I cannot make out that card. {who.name}, pick it in {where}."
+
     def _got_jail_key(self, e, s):
         return f"{self._name(s, e['player'])} tucks the key away for later."
 

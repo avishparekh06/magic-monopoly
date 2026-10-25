@@ -45,7 +45,7 @@ class StubVoice(Voice):
             raise ValueError(f"couldn't hear a yes or no in {msg.get('text')!r}")
         if self._emit is None:
             raise ValueError("voice not started")
-        await self._emit({"type": "decision", "player": self.player, "answer": answer})
+        await self._emit({"type": "decision", "answer": answer})      # whoever is deciding
 
 
 class MuseVoice(Voice):

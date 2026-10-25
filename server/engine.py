@@ -252,12 +252,18 @@ def _set_position(s: GameState, actor: str, a: dict, rng: random.Random) -> list
     _require_system(actor)
     if s.phase == Phase.MOVING:
         raise EngineError("wait for the token to stop moving")
+    if s.pending is not None:
+        raise EngineError("finish the pending decision, card or payment first")
     p = s.player(a.get("player", ""))
     square = a.get("square")
     if not isinstance(square, int) or not 0 <= square < rules.NUM_SQUARES:
         raise EngineError(f"square must be 0-{rules.NUM_SQUARES - 1}")
     frm, p.position = p.position, square
-    return [{"type": "position_set", "player": p.id, "from": frm, "to": square}]
+    events = [{"type": "position_set", "player": p.id, "from": frm, "to": square}]
+    if p.in_jail and square != rules.board()["jail_square"]:
+        p.in_jail, p.jail_turns = False, 0
+        events.append({"type": "released", "player": p.id})
+    return events
 
 
 def _land(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
@@ -372,12 +378,19 @@ def _cancel_move(s: GameState, actor: str, a: dict, rng: random.Random) -> list[
     (If the piece was moved by hand, send move_done instead so the landing resolves.)"""
     _require_system(actor)
     _require_phase(s, Phase.MOVING)
-    p = s.player(s.pending["player"])
-    to = s.pending["to"]
+    move = s.pending
+    p = s.player(move["player"])
+    to = move["to"]
     s.pending = None
-    s.phase = Phase.WAITING_FOR_ROLL
+    events = [{"type": "move_cancelled", "player": p.id, "to": to}]
+    if move.get("to_jail"):                        # the curse still counts even if the belt could not carry it out
+        p.in_jail, p.jail_turns = True, 0
+        return events + [{"type": "jailed", "player": p.id}] + _end_turn(s)
+    if s.last_roll is None:                        # a card sent them: the card is spent, the turn is over
+        return events + _end_turn(s)
+    s.phase = Phase.WAITING_FOR_ROLL               # a dice move: the same player rolls again
     s.last_roll, s.last_dice = None, None
-    return [{"type": "move_cancelled", "player": p.id, "to": to}]
+    return events
 
 
 def _retry_move(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
@@ -412,6 +425,8 @@ def _resolve(s: GameState, p: Player, move: dict) -> list[dict]:
                 amount = move["utility_multiplier"] * dice
             else:
                 amount = rules.rent(idx, owner.properties, dice) * move.get("rent_multiplier", 1)
+            if amount <= 0:                       # e.g. a utility landed on by hand: no roll, nothing owed
+                return events + _end_turn(s)
             return events + _request_payment(s, _payment(p.id, owner.id, amount, "rent", square=idx))
         return events + _end_turn(s)
 
@@ -442,6 +457,8 @@ def _card(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
     p = s.player(pend["for"])
     if actor != SYSTEM and actor != p.id:
         raise EngineError(f"that card is for {p.name}")
+    if actor != SYSTEM and not pend.get("manual_ok"):
+        raise EngineError("lay the card on the reader; you can pick it here only if the camera cannot read it")
     card = rules.card(a.get("id", ""))
     if card is None:
         raise EngineError(f"unknown card: {a.get('id')}")
@@ -452,6 +469,16 @@ def _card(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
     s.pending = None
     s.last_card = {"id": card["id"], "for": p.id}
     return [{"type": "card_drawn", "player": p.id, "id": card["id"]}] + _apply_card(s, p, card["effect"])
+
+
+def _card_unreadable(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
+    """The camera saw a card it could not identify: the drawer may now pick it in their app, or the host
+    in the dev panel."""
+    _require_system(actor)
+    if s.phase != Phase.WAITING_FOR_CARD:
+        raise EngineError("nobody is drawing a card right now")
+    s.pending["manual_ok"] = True
+    return [{"type": "card_unreadable", "player": s.pending["for"], "deck": s.pending["deck"]}]
 
 
 def _apply_card(s: GameState, p: Player, eff: dict) -> list[dict]:
@@ -529,7 +556,7 @@ def _decline(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict
 
 def _decision(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
     """A yes/no heard by the voice adapter (system) or sent by the player themself."""
-    pid = a.get("player") if actor == SYSTEM else actor
+    pid = (a.get("player") or (s.pending or {}).get("player")) if actor == SYSTEM else actor
     answer = a.get("answer")
     if answer not in ("yes", "no"):
         raise EngineError("answer must be yes or no")
@@ -701,6 +728,7 @@ _HANDLERS: dict[str, Handler] = {
     "decline": _decline,
     "decision": _decision,
     "card": _card,
+    "card_unreadable": _card_unreadable,
     "player_card": _player_card,
     "confirm_payment": _confirm_payment,
 }

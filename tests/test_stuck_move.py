@@ -38,3 +38,27 @@ def test_retry_reissues_the_same_move():
     s = moving()
     s, ev = apply_action(s, SYSTEM, {"action": "retry_move"})
     assert ev == [{"type": "move", "player": "p1", "lane": 1, "from": 0, "to": 5}]
+
+
+def test_cancel_of_a_curse_still_jails_and_ends_the_turn():
+    s = new_game("g", PLAYERS)
+    for p in s.players:
+        p.connected = True
+    s, _ = apply_action(s, SYSTEM, {"action": "start"})
+    s, _ = apply_action(s, SYSTEM, {"action": "land", "square": 30})          # Cursed! -> moving to the tower
+    assert s.phase == Phase.MOVING and s.pending.get("to_jail")
+    s, ev = apply_action(s, SYSTEM, {"action": "cancel_move"})
+    assert s.player("p1").in_jail and s.current_player.id == "p2"
+    assert [e["type"] for e in ev][:2] == ["move_cancelled", "jailed"]
+
+
+def test_cancel_of_a_card_move_ends_the_turn():
+    s = new_game("g", PLAYERS)
+    for p in s.players:
+        p.connected = True
+    s, _ = apply_action(s, SYSTEM, {"action": "start"})
+    s, _ = apply_action(s, SYSTEM, {"action": "land", "square": 7})
+    s, _ = apply_action(s, SYSTEM, {"action": "card", "id": "crystal_01"})     # advance to Mirror Hall
+    assert s.phase == Phase.MOVING
+    s, _ = apply_action(s, SYSTEM, {"action": "cancel_move"})
+    assert s.current_player.id == "p2" and s.player("p1").position == 7

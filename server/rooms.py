@@ -193,6 +193,12 @@ class GameRoom:
         return events
 
     async def _react(self, events: list[dict]) -> None:
+        # Hardware first: the belt starts moving (and game-start resets happen) before any narration is awaited.
+        for ev in events:
+            if ev.get("type") == "game_started":   # tokens were placed on the start square by hand
+                self._spawn(self.adapters.bridge.reset([p.lane for p in self.state.players]))
+            if ev.get("type") == "move":
+                self._spawn(self._run_move(ev))
         # Mirror lines are written concurrently when the Mirror is slow (a Muse call is ~1-2 s each) but
         # spoken in event order. The template Mirror is instant, so it is simply awaited in turn.
         slow = len(events) > 1 and hasattr(self.adapters.mirror, "ask")
@@ -205,14 +211,11 @@ class GameRoom:
                 line = None
             if line:
                 await self.broadcast({"type": "mirror", "text": line})
-            if ev.get("type") == "game_started":   # tokens were placed on the start square by hand
-                task = asyncio.create_task(self.adapters.bridge.reset([p.lane for p in self.state.players]))
-                self._tasks.add(task)
-                task.add_done_callback(self._tasks.discard)
-            if ev.get("type") == "move":   # emitted by the engine from milestone 3
-                task = asyncio.create_task(self._run_move(ev))
-                self._tasks.add(task)
-                task.add_done_callback(self._tasks.discard)
+
+    def _spawn(self, coro) -> None:
+        task = asyncio.create_task(coro)
+        self._tasks.add(task)
+        task.add_done_callback(self._tasks.discard)
 
     async def _run_move(self, ev: dict) -> None:
         result = await self.adapters.bridge.move(ev["lane"], ev["from"], ev["to"])
@@ -235,8 +238,13 @@ class GameRoom:
 
     # --- messages from a client ------------------------------------------
 
+    def has_board(self) -> bool:
+        return "board" in self.viewers.values()
+
     async def handle_message(self, ws: Socket, actor: str, role: str, msg: dict) -> None:
         try:
+            if role == "viewer":
+                raise EngineError("this board view is read-only; use the host link or the board laptop")
             if msg.get("type") == "lobby_move":
                 await self._move_lobby(ws, actor, role, msg)
                 return
@@ -335,9 +343,8 @@ class GameRoom:
         pos = await bridge.position()
         if pos is None:
             raise EngineError("the belt gateway did not answer with a position")
-        lanes = getattr(bridge, "lanes", 1)
-        for p in self.state.players:
-            if p.lane <= lanes:
+        for p in self.state.players:            # the gateway reports track 1 only
+            if p.lane == 1:
                 await self.dispatch(SYSTEM, {"action": "set_position", "player": p.id, "square": pos})
 
     async def scene(self, text: str) -> None:

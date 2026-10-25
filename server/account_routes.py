@@ -49,7 +49,8 @@ def install_account_routes(app, store, rooms, is_local):
                 del attempts[key]
         if len(attempts) > 1000:
             del attempts[min(attempts, key=lambda key: attempts[key][-1])]
-        key = request.client.host if request.client else 'local'
+        forwarded = request.headers.get('cf-connecting-ip') or (request.headers.get('x-forwarded-for') or '').split(',')[0].strip()
+        key = forwarded or (request.client.host if request.client else 'local')
         bucket = attempts[key]
         while bucket and bucket[0] < now - 60:
             bucket.popleft()

@@ -71,6 +71,8 @@ def translate_vision_event(ev: dict) -> dict | None:
             return {"type": "dice_not_visible"}
         if t == "card_drawn":
             return {"type": "card", "id": str(ev["card_id"])}
+        if t == "card_unknown":
+            return {"type": "card_unreadable"}
         if t == "player_card":
             return {"type": "player_card", "player": str(ev["player"])}
     except (KeyError, TypeError, ValueError) as e:
@@ -200,6 +202,8 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     @app.post("/api/games")
     async def create_game(body: CreateGame, request: Request):
         same_origin(request)
+        if not is_local(request):
+            raise HTTPException(403, "games are created on the board laptop")
         account = store.accounts.current(request.cookies.get(COOKIE))
         try:
             room = await GameRoom.create([p.model_dump() for p in body.players],
@@ -319,7 +323,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             live = [r for r in rooms.values() if r.state.phase.value not in ("LOBBY", "GAME_OVER")]
             if not live:
                 raise HTTPException(409, "no running game to send this to")
-            room = max(live, key=lambda r: r.updated_at)
+            room = max(live, key=lambda r: (r.has_board(), r.updated_at))   # prefer the room the laptop shows
         await room.on_adapter_event(mapped)
         # A frame of the table along with the roll: the Mirror describes it for the players who are not there.
         frame = event.get("frame_b64")
@@ -348,7 +352,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             waiting = [r for r in rooms.values() if r.state.phase.value == "WAITING_FOR_DECISION"]
             if not waiting:
                 return {"ok": False, "reason": "nobody is deciding right now"}
-            room = max(waiting, key=lambda r: r.updated_at)
+            room = max(waiting, key=lambda r: (r.has_board(), r.updated_at))
         v = room.adapters.voice
         if not hasattr(v, "hear"):
             raise HTTPException(503, "this server's voice adapter cannot transcribe (start with --voice muse)")
@@ -410,7 +414,11 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             actor, kind = SYSTEM, "host"
             await room.connect_viewer(kind, ws)
         elif role == "board":
-            actor, kind = SYSTEM, "board"
+            # The board page on the laptop acts as the system (dev panel, recovery). The same page opened
+            # through the public tunnel is a read-only viewer: it sees everything and can change nothing.
+            local = not (ws.headers.get("cf-connecting-ip") or ws.headers.get("x-forwarded-for")) and \
+                (ws.client is None or ws.client.host in ("127.0.0.1", "::1", "testclient"))
+            actor, kind = (SYSTEM, "board") if local else (None, "viewer")
             await room.connect_viewer(kind, ws)
         else:
             return await reject("missing seat, host or role", 4400)

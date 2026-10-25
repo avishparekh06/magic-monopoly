@@ -56,6 +56,10 @@ def test_kid_fallback_picker_only_for_the_drawer():
     s, _ = maya_on_spells()
     with pytest.raises(EngineError, match="for Maya"):
         read(s, "crystal_08", actor="p3")
+    with pytest.raises(EngineError, match="camera"):            # the drawer may pick only after the camera gives up
+        read(s, "crystal_08", actor="p2")
+    s, ev = act(s, SYSTEM, "card_unreadable")
+    assert ev == [{"type": "card_unreadable", "player": "p2", "deck": "crystal"}]
     s, _ = read(s, "crystal_08", actor="p2")
     assert s.player("p2").balance == 1550
 
