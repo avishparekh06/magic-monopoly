@@ -83,7 +83,7 @@ def test_waits_while_his_token_is_busy(hw):
 
 
 def test_motor_failure_becomes_move_failed(hw, monkeypatch):
-    def broken(axis, steps):
+    def broken(axis, steps, period_us=None):
         raise HTTPException(503, "Motor move failed: no reply")
     monkeypatch.setattr(hw, "drive", broken)
     result = run(ArduinoBridge(fallback=StubBridge(delay=0)).move(1, 0, 3))

@@ -296,6 +296,20 @@ function render() {
       taps.append(h("button", { class: "btn small secondary", onclick: () => net.send({ source: "vision", type: "player_card", player: p.id }) }, `${p.name}'s card on reader`));
     }
   }
+
+  // Dev panel: when the token moves, move the dice pick off any total that would land on a card square,
+  // so rolls can be tested without a card step every time. A total picked by hand stays until the token moves.
+  const dsel = document.getElementById("dice");
+  const cur = state.players.find((p) => p.id === state.current_player);
+  if (dsel && dsel.options.length && cur && dsel.dataset.forPos !== `${cur.id}:${cur.position}`) {
+    dsel.dataset.forPos = `${cur.id}:${cur.position}`;
+    const n = boardData.squares.length;
+    const pick = Number(dsel.value);
+    const alt = [...dsel.options].map((o) => Number(o.value))
+      .filter((v) => boardData.squares[(cur.position + v) % n].type !== "card")
+      .sort((a, b) => Math.abs(a - pick) - Math.abs(b - pick))[0];
+    if (alt !== undefined) dsel.value = alt;
+  }
 }
 
 // ---- dev panel ------------------------------------------------------------

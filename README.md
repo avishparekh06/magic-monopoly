@@ -141,14 +141,25 @@ DRY_RUN=1 python -m server.main --sim --bridge arduino
 
 ### 3d. Tuning the belt distances
 
-`arduino/server.py` turns squares into motor steps. Set these environment variables before starting the server:
+`arduino/server.py` turns squares into motor steps. Each motor (axis 0, 1, 2) has its own three values: a normal
+square, the square before a corner → the corner (`corner in`), and a corner → the square after it (`corner out`).
+The defaults are in `AXIS_STEPS` in `arduino/server.py`, and the board endpoints drive `MOTOR_AXIS` (default 1)
+unless a request passes `axis`.
+
+**Tune from the bench tool** (`cd arduino && python -m uvicorn server:app --port 8001`, then open
+http://localhost:8001): pick the motor, make a move, press **Tune last move**, then click the square where the
+magnet really stopped. It suggests new values; **Apply and set position** saves them in `arduino/tuning.json`
+(which wins over the defaults) and records where the magnet is. Test a plain stretch first (it tunes the normal
+value), then a move through a corner (it tunes the two corner values). Longer moves give finer results.
+
+Environment variables for the default motor, set before starting the server (a saved `tuning.json` overrides them):
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `NORMAL_STEPS` | 225 | motor steps for an ordinary square |
-| `CORNER_IN` | 300 | the square before a corner → the corner |
-| `CORNER_OUT` | 500 | a corner → the square after it |
-| `CORNER_STEPS` | 500 | one corner in raw `/move` calls |
+| `MOTOR_AXIS` | 1 | the motor the board endpoints and the game drive |
+| `NORMAL_STEPS` | per motor | motor steps for an ordinary square |
+| `CORNER_IN` | per motor | the square before a corner → the corner |
+| `CORNER_OUT` | per motor | a corner → the square after it |
 | `DRY_RUN` | off | `1` = plan moves but don't talk to the Arduino |
 
 Example: `NORMAL_STEPS=230 CORNER_IN=310 python -m server.main --sim --bridge arduino`
