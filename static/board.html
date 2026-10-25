@@ -229,6 +229,8 @@ const net = connect(`/ws/${gameId}?role=board`, {
   onState: (s) => { state = s; addRaw({ type: "state", phase: s.phase }); render(); maybeListen(); },
   onMessage: (m) => {
     addRaw(m);
+    if (m.type === "move_failed") showStall(m.reason);
+    if (m.type === "move" || m.type === "moved" || m.type === "move_cancelled") clearStall();
     if (m.type === "mirror") { addLog((m.kind === "say" ? "📱 " : m.kind === "scene" ? "👁 " : "") + m.text); say(m.text); }
   },
   onError: (m) => toast(m, "error"),
@@ -257,6 +259,29 @@ function refreshStats() {
             (p.jailed ? ` · locked up ${p.jailed}×` : "")))));
     } catch { /* stats are optional */ }
   }, 400);
+}
+
+// ---- a move the motor could not make -----------------------------------------
+// The game does not count a move until the belt confirms it, so when the belt fails the
+// token on screen snaps back and the host chooses: retry, "I moved it by hand", or cancel.
+function showStall(reason) {
+  board.setStalled(true);
+  if (state) render();
+  const pend = state?.pending || {};
+  const who = state?.players.find((p) => p.id === pend.player)?.name ?? "The token";
+  const dest = pend.to != null ? boardData.squares[pend.to].name : "its square";
+  document.getElementById("stall")?.remove();
+  document.body.append(h("div", { class: "notice", id: "stall" }, h("div", { class: "panel" },
+    h("h2", {}, "The belt didn't move"),
+    h("p", { class: "muted" }, `${who} should be on ${dest}. ${reason || ""}`),
+    h("div", { class: "row", style: "gap:8px; flex-wrap:wrap" },
+      h("button", { class: "btn", onclick: () => net.send({ action: "retry_move" }) }, "Retry the motor"),
+      h("button", { class: "btn secondary", onclick: () => net.send({ action: "move_done", lane: pend.lane ?? state.players.find((p) => p.id === pend.player)?.lane, square: pend.to }) }, "I moved it by hand"),
+      h("button", { class: "btn secondary", onclick: () => net.send({ action: "cancel_move" }) }, "Cancel this roll")))));
+}
+function clearStall() {
+  board.setStalled(false);
+  document.getElementById("stall")?.remove();
 }
 
 // ---- rendering ------------------------------------------------------------

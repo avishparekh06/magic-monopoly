@@ -135,6 +135,9 @@ class TemplateMirror(Mirror):
             return f"Repairs are due, but {who} owns no cottages or castles. Nothing to pay!"
         return f"{who} owes {e['amount']} gold in repairs."
 
+    def _move_cancelled(self, e, s):
+        return f"The spell fizzles. {self._name(s, e['player'])} stays put and rolls again."
+
     def _position_set(self, e, s):
         return f"A wave of the wand: {self._name(s, e['player'])}'s token now stands on {square(e['to'])['name']}."
 

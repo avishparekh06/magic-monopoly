@@ -319,6 +319,19 @@ def _move_failed(s: GameState, actor: str, a: dict, rng: random.Random) -> list[
     return [{"type": "move_failed", "player": p.id, "reason": a.get("reason", "unknown")}]
 
 
+def _cancel_move(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
+    """Host gives up on a stuck move: the token stays where it was and the same player rolls again.
+    (If the piece was moved by hand, send move_done instead so the landing resolves.)"""
+    _require_system(actor)
+    _require_phase(s, Phase.MOVING)
+    p = s.player(s.pending["player"])
+    to = s.pending["to"]
+    s.pending = None
+    s.phase = Phase.WAITING_FOR_ROLL
+    s.last_roll, s.last_dice = None, None
+    return [{"type": "move_cancelled", "player": p.id, "to": to}]
+
+
 def _retry_move(s: GameState, actor: str, a: dict, rng: random.Random) -> list[dict]:
     _require_system(actor)
     _require_phase(s, Phase.MOVING)
@@ -632,6 +645,7 @@ _HANDLERS: dict[str, Handler] = {
     "move_done": _move_done,
     "move_failed": _move_failed,
     "retry_move": _retry_move,
+    "cancel_move": _cancel_move,
     "buy": _buy,
     "decline": _decline,
     "decision": _decision,

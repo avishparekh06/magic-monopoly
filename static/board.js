@@ -97,6 +97,9 @@ export function createBoardView(el, boardData) {
     stepOnce();
   }
 
+  let stalled = false;              // the motor reported a failed move: show tokens where the game has them
+  function setStalled(v) { stalled = v; }
+
   function render(state) {
     const owners = state.owners || {};
     cells.forEach((cell, i) => {
@@ -120,9 +123,14 @@ export function createBoardView(el, boardData) {
       t.el.hidden = p.bankrupt;
       // While the motor is moving this token, walk toward where it's going so
       // the screen moves together with the real board (not after move_done).
-      const move = state.pending?.kind === "move" && state.pending.player === p.id ? state.pending : null;
+      const move = !stalled && state.pending?.kind === "move" && state.pending.player === p.id ? state.pending : null;
       t.target = move ? move.to : p.position;
-      if (t.shown !== t.target) walk(t);
+      if (t.shown !== t.target) {
+        if (t.target === p.position && !move) {     // snap back (failed move) or teleport (set by hand)
+          if (t.timer) { clearTimeout(t.timer); t.timer = null; }
+          t.shown = t.target; place(t, false);
+        } else walk(t);
+      }
     }
   }
 
@@ -132,7 +140,7 @@ export function createBoardView(el, boardData) {
     Object.values(tokens).forEach((t) => place(t, false));
   }).observe(el);
 
-  return { render, center };
+  return { render, center, setStalled };
 }
 
 function span(cls, text) {
