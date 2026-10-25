@@ -20,7 +20,7 @@ try {
  const evaluate=async expression=>{const r=await send('Runtime.evaluate',{expression,returnByValue:true,awaitPromise:true});if(r.exceptionDetails)throw Error(JSON.stringify(r.exceptionDetails));return r.result.value;};
  const waitFor=async expression=>{for(let i=0;i<150;i++){if(await evaluate(expression))return;await pause(200);}throw Error(`Timed out: ${expression}`);};
 
- await send('Runtime.enable');
+ await send('Runtime.enable');await send('Page.bringToFront');await send('Emulation.setFocusEmulationEnabled',{enabled:true});
  const api=origin;
  const clickText=async(text,selector='#session-hub button')=>evaluate(`(()=>{const el=[...document.querySelectorAll(${JSON.stringify(selector)})].find(e=>e.textContent.trim()===${JSON.stringify(text)});if(!el)throw Error('Missing '+${JSON.stringify(text)});el.click()})()`);
  const select=async(label,value)=>evaluate(`(()=>{const el=document.querySelector('select[aria-label="'+${JSON.stringify(label)}+'"]');el.value=${JSON.stringify(value)};el.dispatchEvent(new Event('change'))})()`);
@@ -39,6 +39,23 @@ try {
  await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
  await send('Page.navigate',{url:api});await waitFor('document.getElementById("home-menu")?.hidden===false');
  if(await evaluate(visible('#home-menu > button'))!==2)throw Error('Home has more than two actions');
+ await evaluate('document.getElementById("home-play").click()');await waitFor('document.querySelectorAll("a.hub-save-slot").length===2');
+ if(!await evaluate(`document.querySelectorAll('.hub-save-grid > .hub-save-slot').length===3&&document.querySelectorAll('.hub-save-slot.is-empty').length===1&&!document.querySelector('.hub-save-preview')`))throw Error('Save screen must show tall slots with an empty placeholder');
+ if(!await evaluate(`document.querySelector('.hub-save-slot[data-game="career_active"]').getAttribute('href')==='/board/career_active'&&document.querySelector('.hub-save-slot[data-game="career_waiting"]').getAttribute('href').includes('game=career_waiting')`))throw Error('Saved game/lobby resume links are wrong');
+ await evaluate(`const slot=document.querySelector('a.hub-save-slot');window.firstSave=slot.dataset.game;slot.focus();slot.dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}))`);
+ if(!await evaluate(`document.activeElement.matches('a.hub-save-slot')&&document.activeElement.dataset.game!==window.firstSave`))throw Error('Keyboard navigation did not move to next save');
+ for(const [width,height] of [[1440,900],[390,844],[320,720]]){
+   await send('Emulation.setDeviceMetricsOverride',{width,height,deviceScaleFactor:1,mobile:width<600});await pause(80);
+   if(!await evaluate(`(()=>{const d=document.getElementById('session-hub');return d.scrollWidth<=d.clientWidth+1&&[...d.querySelectorAll('.hub-slot-portrait svg')].every(svg=>svg.getBoundingClientRect().width<=40)})()`))throw Error('Save slots or portraits overflow at '+width);
+ }
+ await send('Emulation.setDeviceMetricsOverride',{width:1440,height:900,deviceScaleFactor:1,mobile:false});
+ await clickText('Close','#session-hub .hub-header > button');
+ // Empty collections are tested without deleting or writing games.
+ await evaluate(`window.realCatalogFetch=window.fetch;window.fetch=(url,...args)=>String(url)==='/api/games'?Promise.resolve(new Response('[]',{headers:{'Content-Type':'application/json'}})):realCatalogFetch(url,...args);document.getElementById('home-play').click()`);
+ await waitFor('document.querySelectorAll(".hub-save-slot.is-empty").length===3');
+ if(!await evaluate(`!document.querySelector('a.hub-save-slot')&&[...document.querySelectorAll('#session-hub button')].some(b=>b.textContent==='New game')`))throw Error('Empty slots must not fabricate saved games');
+ await evaluate('window.fetch=window.realCatalogFetch');await clickText('Close','#session-hub .hub-header > button');
+ console.log('PASS: Three-column save slots use correct resume links, compact portraits, keyboard navigation, responsive layout and honest empty placeholders');
  await evaluate('document.getElementById("home-history").click()');await waitFor('document.querySelectorAll(".hub-session").length===6');
  if(!await evaluate(`[...document.querySelectorAll('.hub-session')].every(row=>row.querySelectorAll('button,a').length===1)`))throw Error('Duplicate game row controls');
  await select('Filter games','over');
@@ -98,7 +115,7 @@ try {
  if(await evaluate(metric('Average finish'))!=='—')throw Error('Unknown rank invented');
  console.log('PASS: Virtual player resumes their own seat; mobile details and overall stats fit without inventing missing results');
  await send('Emulation.setDeviceMetricsOverride',{width:1366,height:768,deviceScaleFactor:1,mobile:false});
- await send('Page.navigate',{url:api+'/board/career_active'});await waitFor('document.querySelector("#board-viewport")?.dataset.render==="3d"');
+ await send('Page.navigate',{url:api+'/board/career_active'});await waitFor('!!document.getElementById("game-map-toggle")');await evaluate('document.getElementById("view-follow").click()');await waitFor('document.querySelector("#board-viewport")?.dataset.render==="3d"');
  await send('Runtime.evaluate',{expression:'document.getElementById("game-fullscreen").click()',userGesture:true});await waitFor('!!document.fullscreenElement');
  await evaluate('document.getElementById("game-players").click()');await waitFor('document.getElementById("game-properties").open');await clickText('Game history & stats','#game-properties button');
  await waitFor('document.getElementById("session-hub").open && !!document.querySelector(".hub-player-stats")');
@@ -124,15 +141,15 @@ try {
  if(!await evaluate(`document.querySelector('#session-hub .hub-empty').innerText.includes('Your linked games')`))throw Error('New-account empty state is misleading');
  await clickText('Close','#session-hub .hub-header > button');
  await evaluate('document.getElementById("home-play").click()');await waitFor('!!document.querySelector(".hub-play-start")');
- if(!await evaluate(`[...document.querySelectorAll('.hub-session')].every(row=>row.querySelectorAll('a').length===1&&!row.querySelector('button'))`))throw Error('Continue picker has extra actions');
+ if(!await evaluate(`[...document.querySelectorAll('a.hub-save-slot')].every(card=>card.querySelectorAll('.hub-slot-action').length===1&&!card.querySelector('button'))`))throw Error('Continue picker must have one selected save and one resume action');
  await clickText('New game');await waitFor('document.getElementById("create").hidden===false');
  if(await evaluate('document.getElementById("grandma").value')!=='New Wanderer')throw Error('New game lost signed-in name');
  await evaluate('document.getElementById("name2").value="Guest";document.getElementById("create").requestSubmit()');
  await waitFor('new URLSearchParams(location.search).has("host") && !!document.querySelector(".guest-attendance")');
  const created=await evaluate('new URLSearchParams(location.search).get("game")');
  await send('Page.navigate',{url:api});await waitFor('document.getElementById("home-menu")?.hidden===false');
- await evaluate('document.getElementById("home-play").click()');await waitFor(`!!document.querySelector('.hub-session[data-game="${created}"] a')`);
- const lobbyHref=await evaluate(`document.querySelector('.hub-session[data-game="${created}"] a').getAttribute('href')`);
+ await evaluate('document.getElementById("home-play").click()');await waitFor(`!!document.querySelector('.hub-save-slot[data-game="${created}"]')`);
+ const lobbyHref=await evaluate(`document.querySelector('.hub-save-slot[data-game="${created}"]').getAttribute('href')`);
  if(!lobbyHref.includes('host='))throw Error('Host cannot resume the editable lobby');
  await send('Emulation.setDeviceMetricsOverride',{width:320,height:720,deviceScaleFactor:1,mobile:true});
  await clickText('Close','#session-hub .hub-header > button');await evaluate('document.getElementById("home-history").click()');await waitFor('!!document.querySelector("#hub-tab-games")');

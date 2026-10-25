@@ -288,3 +288,32 @@
 .board-page #board .mm-center { background: #589574 url('/static/art/board-garden.svg') center / cover; box-shadow: inset 0 0 0 2px #b5a374; }
 .board-page #board .mm-center::before { inset: 0; border: none; border-radius: 0; background: linear-gradient(transparent 20%, #24453744 45%, #24453733 65%, transparent); }
 .board-page #board .center-title, .board-page #board .center-phase { color: #fff5df; text-shadow: 0 2px 3px #1a372b, 0 0 10px #1a372bcc; }
+
+/* Larger, centered labels on the flat board; side spaces use their width for icons. */
+.board-page .board-viewport:not([data-render="3d"]) #board .mm-band { flex-basis: 14%; }
+.board-page .board-viewport:not([data-render="3d"]) #board .mm-body {
+  justify-content: center; min-height: 0; padding: .22em .18em; gap: .18em;
+}
+.board-page .board-viewport:not([data-render="3d"]) #board .mm-name {
+  font-size: 1.08em; line-height: 1.08; text-wrap: balance;
+}
+.board-page .board-viewport:not([data-render="3d"]) #board .corner .mm-name { font-size: 1.12em; }
+.board-page .board-viewport:not([data-render="3d"]) #board .mm-price { font-size: .88em; line-height: 1.15; flex-shrink: 0; }
+.board-page .board-viewport:not([data-render="3d"]) #board .mm-icon { font-size: 1.3em; flex-shrink: 0; }
+.board-page .board-viewport:not([data-render="3d"]) #board .corner .mm-icon { font-size: 1.65em; }
+.board-page .board-viewport:not([data-render="3d"]) #board :is(.side-l,.side-r):not(.corner) .mm-body:has(.mm-icon) {
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto;
+  align-content: center; align-items: center; column-gap: .22em; row-gap: .18em;
+}
+.board-page .board-viewport:not([data-render="3d"]) #board :is(.side-l,.side-r):not(.corner) .mm-icon { grid-row: 1 / 3; }
+.board-page .board-viewport:not([data-render="3d"]) #board :is(.side-l,.side-r):not(.corner) .mm-price { grid-column: 2; }
+.board-page .board-viewport:not([data-render="3d"]) #board :is(.side-l,.side-r):not(.corner) .mm-body:has(.mm-icon):has(.mm-price) {
+  grid-template-columns: auto auto; justify-content: center;
+}
+.board-page .board-viewport:not([data-render="3d"]) #board :is(.side-l,.side-r):not(.corner) .mm-body:has(.mm-icon):has(.mm-price) .mm-name { grid-column: 1 / 3; grid-row: 1; }
+.board-page .board-viewport:not([data-render="3d"]) #board :is(.side-l,.side-r):not(.corner) .mm-body:has(.mm-price) .mm-icon { grid-column: 1; grid-row: 2; }
+.board-page .board-viewport:not([data-render="3d"]) #board :is(.side-l,.side-r):not(.corner) .mm-body:has(.mm-icon) .mm-price { grid-row: 2; }
+@media (max-width: 400px) {
+  .board-page .board-viewport:not([data-render="3d"]) #board :is(.side-l,.side-r):not(.corner) .mm-body { padding-block: 0; row-gap: 0; }
+  .board-page .board-viewport:not([data-render="3d"]) #board :is(.side-l,.side-r):not(.corner) .mm-name { font-size: 1em; line-height: 1; }
+}

@@ -19,7 +19,7 @@ export function mountBoardActions(viewport, board, cards, send, { dev = false } 
   // In fullscreen the sidebar is out of view, so this is how players and their places are reached.
   const browse = h('button', { id: 'game-players', class: 'btn small secondary', type: 'button', onclick: () => players.open(), title: 'Players, owned properties, game history and stats' }, 'Players');
   const reset = h('button', { id: 'game-reset-view', class: 'btn small secondary game-reset-view', type: 'button', title: 'Reset camera (R)' }, 'Reset view');
-  view.title = 'Switch between the board map and following the token (M)';
+  view.title = 'Switch between the 2D board and 3D view (M)';
   const tools = h('div', { class: 'game-surface-tools' }, view, reset, browse, fullscreen);
   const rollLabel = h('span', { class: 'game-roll-label' }, 'Roll Dice');
   const rollWho = h('span', { class: 'game-roll-who' });
@@ -206,7 +206,7 @@ export function mountBoardActions(viewport, board, cards, send, { dev = false } 
   }
   new ResizeObserver(placeFlatDice).observe(viewport);
   function syncView() {
-    view.textContent = viewport.dataset.view === 'full' ? 'Follow token' : 'Full board';
+    view.textContent = viewport.dataset.view === 'full' ? 'Change to 3D view' : 'Full board';
     view.disabled = state?.phase === 'LOBBY' || (viewport.dataset.view === 'full' && document.getElementById('view-follow').disabled);
     view.hidden = false;
     reset.hidden = viewport.dataset.render !== '3d';

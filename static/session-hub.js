@@ -1,5 +1,13 @@
 // Saved sessions and account statistics. Game outcomes come from recorded events.
 import { h } from '/static/net.js';
+import { avatarSvg } from '/static/avatars.js';
+
+// Version the shared component stylesheet so an older cached page cannot render new markup unstyled.
+const saveStyles = '/static/session-hub.css?v=save-cards-3';
+if (![...document.querySelectorAll('link[rel="stylesheet"]')].some(link => link.getAttribute('href') === saveStyles)) {
+  const link = document.createElement('link'); link.rel = 'stylesheet'; link.href = saveStyles;
+  document.head.append(link);
+}
 
 async function api(path, body) {
   const response = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -26,7 +34,7 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
     if (event.target === dialog && (event.clientX < r.left || event.clientX > r.right || event.clientY < r.top || event.clientY > r.bottom)) dialog.close();
   });
   function show(label, ...nodes) {
-    generation++; back.hidden = true; title.textContent = label; body.replaceChildren(...nodes); dialog.scrollTop = 0;
+    generation++; dialog.dataset.screen = 'standard'; back.hidden = true; title.textContent = label; body.replaceChildren(...nodes); dialog.scrollTop = 0;
     if (!dialog.open) dialog.showModal();
     return generation;
   }
@@ -126,6 +134,50 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
     else list.append(...filtered.map(game => sessionCard(game, { continue: mode === 'continue' })));
     return list;
   }
+  function continuePicker(games) {
+    const saves = games.filter(game => !['over', 'abandoned'].includes(game.status) && resumeUrl(game));
+    const grid = h('div', { class: 'hub-save-grid', 'aria-label': 'Saved games' });
+    saves.forEach((game, index) => {
+      const waiting = game.phase === 'LOBBY';
+      const portraits = h('span', { class: 'hub-slot-portraits', 'aria-hidden': 'true' });
+      game.players.forEach(player => {
+        const portrait = h('span', { class: 'hub-slot-portrait' });
+        const svg = avatarSvg(player.id);
+        if (svg) {
+          portrait.innerHTML = svg;
+          portrait.firstElementChild.setAttribute('width', '35');
+          portrait.firstElementChild.setAttribute('height', '39');
+        } else portrait.textContent = player.name.slice(0, 1);
+        portraits.append(portrait);
+      });
+      grid.append(h('a', { class: 'hub-save-slot', href: resumeUrl(game), 'data-game': game.game_id },
+        h('span', { class: 'hub-slot-art' }, h('span', { class: 'hub-slot-number', 'aria-label': `Save ${index + 1}` }, String(index + 1)), portraits),
+        h('span', { class: 'hub-slot-content' },
+          h('span', { class: 'hub-slot-label' }, index === 0 ? 'Most recent' : 'Saved game'),
+          h('strong', { class: 'hub-slot-names' }, game.players.map(player => player.name).join(' & ')),
+          h('span', { class: 'hub-slot-turn' }, waiting ? 'In lobby' : `Turn ${game.turn}`),
+          h('time', { datetime: new Date(game.updated_at * 1000).toISOString() }, date(game.updated_at)),
+          h('span', { class: 'hub-slot-action' }, waiting ? 'Continue lobby' : 'Continue game'))));
+    });
+    // Empty placeholders match the save-slot layout; they never replace or limit real saved games.
+    for (let index = saves.length; index < 3; index++) {
+      grid.append(h('div', { class: 'hub-save-slot is-empty', 'aria-label': `Save ${index + 1}: empty` },
+        h('span', { class: 'hub-slot-art', 'aria-hidden': 'true' }, h('span', { class: 'hub-slot-number' }, String(index + 1))),
+        h('span', { class: 'hub-slot-content' }, h('strong', { class: 'hub-slot-names' }, 'Empty'),
+          h('span', { class: 'hub-slot-empty-note' }, 'A new story starts here'))));
+    }
+    grid.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(event.key)) return;
+      const slots = [...grid.querySelectorAll('a.hub-save-slot')], index = slots.indexOf(document.activeElement);
+      if (index < 0) return;
+      event.preventDefault();
+      const columns = getComputedStyle(grid).gridTemplateColumns.split(' ').length;
+      const offset = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : event.key === 'ArrowUp' ? -columns : columns;
+      const next = event.key === 'Home' ? 0 : event.key === 'End' ? slots.length - 1 : (index + offset + slots.length) % slots.length;
+      slots[next].focus();
+    });
+    return grid;
+  }
   function profileMetrics(stats) {
     return [
       h('div', { class: 'hub-metrics hub-highlights' }, metric('Games played', stats.games_played), metric('Wins', stats.wins),
@@ -140,14 +192,16 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
   const hub = {
     dialog,
     async openPlay() {
-      const ticket = show('Play', h('p', {}, 'Loading saved games…'));
+      const ticket = show('Continue playing', h('p', {}, 'Loading saved games…'));
+      dialog.dataset.screen = 'play';
       try {
         const games = await loadCatalog(); if (!fresh(ticket)) return;
         const available = games.filter(g => !user || ownIds.has(g.game_id) || g.host_url);
-        body.replaceChildren(h('div', { class: 'hub-play-start' }, h('div', {}, h('h3', {}, 'Begin a new tale'), h('p', { class: 'hub-subtle' }, 'Choose your players and start fresh.')),
-          button('New game', () => { dialog.close(); onNewGame?.(user); })),
-          h('h3', {}, 'Continue playing'), showCatalog(available, 'continue'),
+        body.replaceChildren(
+          h('div', { class: 'hub-play-start' }, button('New game', () => { dialog.close(); onNewGame?.(user); })),
+          h('p', { class: 'hub-play-intro' }, 'Choose a story to continue.'), continuePicker(available),
           user ? h('p', { class: 'hub-subtle' }, `Signed in as ${user.display_name}`) : button('Sign in to find your saved games', () => hub.openAuth(false, () => hub.openPlay()), 'hub-text-button'));
+
       } catch (e) { if (fresh(ticket)) body.replaceChildren(error(e.message), button('Try again', () => hub.openPlay(), 'secondary')); }
     },
     async openHistory() {

@@ -9,7 +9,7 @@
   <link rel="stylesheet" href="/static/style.css">
   <link rel="stylesheet" href="/static/fairytale.css">
   <link rel="stylesheet" href="/static/board-theme.css">
-  <link rel="stylesheet" href="/static/session-hub.css">
+  <link rel="stylesheet" href="/static/session-hub.css?v=save-cards-3">
   <link rel="stylesheet" href="/static/property-cards.css">
   <style>
     /* Clean board: the Mirror is a round button bottom-right that opens its actions, players are
@@ -39,7 +39,11 @@
     .board-page .board-stage > .board-viewport { grid-row: 2; }
     /* The logo runs corner to corner across the middle, M bottom-left to Y top-right, like the classic board.
        It stays centred even while an action card is up (overrides the theme's shift-left for that case). */
-    .board-page #board .center-logo { font-size: clamp(22px, 3.4vw, 48px); margin: 0; transform: rotate(-45deg); white-space: nowrap; }
+    .board-page #board .center-logo {
+      font-size: clamp(22px, 3.4vw, 48px); margin: 0; transform: rotate(-45deg); white-space: nowrap;
+      text-shadow: none;
+      box-shadow: none; border: none;
+    }
     .board-page .board-viewport:not([data-render="3d"]):has(.game-action-card:not([hidden])) #board .mm-center { padding: 0; }
     .board-page #board .mm-center .dice { position: absolute; left: 5%; bottom: 4%; margin: 0; }   /* clear of the logo and the action card */   /* toolbar and caption rows are hidden */
     .dev-toggle { position: fixed; right: 96px; bottom: 32px; z-index: 30; }
@@ -54,14 +58,13 @@
   <header class="board-masthead">
     <div class="board-heading-note" style="margin-left:auto">
       <a class="btn small board-home" href="/" aria-label="Back to homepage">← Home</a>
-      <span class="conn pill" id="conn" role="status">…</span>
     </div>
   </header>
   <div class="layout">
     <main class="board-stage" aria-label="Game board">
       <div class="board-view-toolbar" hidden>
         <div class="board-view-switch" role="group" aria-label="Board view">
-          <button type="button" class="btn small" id="view-follow" aria-pressed="true" aria-controls="board-viewport">Follow token</button>
+          <button type="button" class="btn small" id="view-follow" aria-pressed="true" aria-controls="board-viewport">Change to 3D view</button>
           <button type="button" class="btn small secondary" id="view-full" aria-pressed="false" aria-controls="board-viewport">Full board</button>
         </div>
         <span id="board-view-location" class="board-view-location">All 40 spaces</span>
@@ -304,7 +307,7 @@ const net = connect(`/ws/${gameId}?role=board`, {
     if (m.type === "mirror") { addLog(m.text); say(m.text); mirrorPulse(); }
   },
   onError: (m) => { actions.error(m); toast(m, "error"); },
-  onStatus: (s) => { actions.connection(s); document.getElementById("conn").textContent = { online: "● live", offline: "○ reconnecting", connecting: "…", closed: "" }[s]; },
+  onStatus: (s) => actions.connection(s),
   onClosed: () => document.body.append(h("div", { class: "notice" }, h("div", { class: "panel" },
     h("h2", {}, "This game doesn't exist"), h("p", { class: "muted" }, "The server may have restarted. Create a new game."),
     h("a", { class: "btn", href: "/", style: "display:inline-grid;place-items:center" }, "New game")))),
