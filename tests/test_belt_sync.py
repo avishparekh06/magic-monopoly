@@ -57,3 +57,15 @@ def test_not_adopted_while_that_token_is_moving():
             # between turns the game follows the physical side
             c.post("/belt/position", params={"lane": 1, "square": 9, "game": game["game_id"]})
             state_where(board, lambda s: s["players"][0]["position"] == 9)
+
+
+def test_game_start_adopts_where_the_belt_is():
+    g = FakeGateway(square=14)
+    with TestClient(create_app(sim=True, move_delay=0,
+                               bridge_factory=lambda: StepBeltBridge("https://belt.example", "k", transport=g.transport()))) as c:
+        game = c.post("/api/games", json={"players": TABLE}).json()
+        with c.websocket_connect(f"/ws/{game['game_id']}?role=board") as board:
+            recv_until(board, lambda m: m["type"] == "state")
+            board.send_json({"action": "start", "force": True})
+            s = state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL" and s["players"][0]["position"] == 14)
+            assert s["players"][1]["position"] == 0          # only the lane the belt reports

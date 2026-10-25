@@ -537,6 +537,99 @@ def board_goto(square: int, direction: str = "auto", axis: Optional[int] = None)
     return run_board_move(squares, axis)
 
 
+def drive_together(round_):
+    """Start one segment on each of several motors at once and wait for all of them (caller holds the lock).
+
+    `round_` is a list of (axis, signed motor steps, step period). Each is sent without waiting, so the motors run
+    side by side on the firmware; then one wait() collects every `done`. Skipped in dry run."""
+    if DRY_RUN or not round_:
+        return
+    try:
+        b = get_board()
+        for axis, steps, period in round_:
+            b.move(axis, steps, period, wait=False)
+        b.wait()
+    except Exception as e:
+        raise HTTPException(503, f"Motor move failed: {e}")
+
+
+@app.post("/board/move-many")
+def board_move_many(body: dict):
+    """Move several belts at the same time. Body: {"moves": [{"axis": 0, "squares": 3}, {"axis": 2, "squares": -5}]}.
+
+    Each axis is planned with plan_segments, so it uses its own tuned values (steps, corners, fast zone, speeds).
+    A move is a list of (steps, period) segments; segment 1 of every axis starts together, once all have finished
+    segment 2 starts together, and so on. An axis with fewer segments simply sits out the later rounds, so the belts
+    start together and a belt with a corner leg or a fast zone can hold the others back at a segment boundary.
+    A square is saved only for an axis that finished its whole move. If a motor fails or /stop is pressed part way,
+    answers 503 and the axes that did not finish need Set position."""
+    moves = body.get("moves") if isinstance(body, dict) else None
+    if not isinstance(moves, list) or not moves:
+        raise HTTPException(422, 'body must be {"moves": [{"axis": 0, "squares": 3}, ...]} with at least one move')
+    plans, seen = [], set()
+    for m in moves:
+        try:
+            axis, squares = int(m["axis"]), int(m["squares"])
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(422, 'each move needs a whole-number "axis" and "squares"')
+        if not 0 <= axis < LANES:
+            raise HTTPException(422, f"axis must be 0-{LANES - 1}")
+        if axis in seen:
+            raise HTTPException(422, f"axis {axis} appears twice")
+        if abs(squares) > SQUARES:
+            raise HTTPException(422, f"squares must be -{SQUARES}..{SQUARES}")
+        seen.add(axis)
+        plans.append((axis, squares))
+    if not lock.acquire(blocking=False):
+        raise HTTPException(409, "A token is still moving")
+    try:
+        stop_requested.clear()
+        runs = []
+        for axis, squares in plans:
+            start = get_position(axis)
+            steps, corners, motor_steps = plan_move(start, squares, axis)
+            runs.append({"axis": axis, "start": start, "squares": squares, "steps": steps, "corners": corners,
+                         "motor_steps": motor_steps, "segments": plan_segments(start, squares, axis)})
+            runs[-1]["done"] = not runs[-1]["segments"]             # a zero-square move has nothing to run
+        try:
+            for i in range(max(len(r["segments"]) for r in runs)):
+                if stop_requested.is_set():
+                    break
+                drive_together([(r["axis"], *r["segments"][i]) for r in runs if i < len(r["segments"])])
+                for r in runs:
+                    r["done"] = r["done"] or i >= len(r["segments"]) - 1
+        except HTTPException as e:
+            lost = [r["axis"] for r in runs if not r["done"]]
+            _save_finished(runs)
+            raise HTTPException(503, f"{e.detail}. Positions of axes {lost} are unknown: use Set position.")
+        if stop_requested.is_set():
+            lost = [r["axis"] for r in runs if not r["done"]]
+            _save_finished(runs)
+            raise HTTPException(503, f"Stopped part way. Axes {lost} need Set position to say where the magnet is.")
+        _save_finished(runs)
+        results = []
+        for r in runs:
+            sq = get_square(r["axis"])
+            results.append({"axis": r["axis"], "from": round(r["start"], 3) if isinstance(r["start"], float) else r["start"],
+                            "to": board_state(sq), "squares": r["squares"], "steps": r["steps"], "corners": r["corners"],
+                            "motor_steps": r["motor_steps"], "segments": r["segments"],
+                            "passed_go": r["passed_go"],
+                            "moved": bool(r["motor_steps"]) and not DRY_RUN})
+        return {"moves": results, "moved": any(x["moved"] for x in results)}
+    finally:
+        lock.release()
+
+
+def _save_finished(runs):
+    """Record the new square of every run that completed its whole move."""
+    for r in runs:
+        if r["done"] and not r.get("saved"):
+            square = get_square(r["axis"])
+            put_square(r["axis"], (square + r["squares"]) % SQUARES)
+            r["saved"] = True
+            r["passed_go"] = not 0 <= square + r["squares"] < SQUARES
+
+
 @app.get("/tune/suggest")
 def tune_suggest(start: int, squares: int, motor_steps: int, actual: float,
                  axis: Optional[int] = None, basis: str = "auto"):

@@ -203,6 +203,8 @@ class GameRoom:
         for ev in events:
             if ev.get("type") == "game_started":   # tokens were placed on the start square by hand
                 self._spawn(self.adapters.bridge.reset([p.lane for p in self.state.players]))
+                if hasattr(self.adapters.bridge, "position"):   # the game starts wherever the belt really is
+                    self._spawn(self._adopt_belt_at_start())
             if ev.get("type") == "move":
                 self._spawn(self._run_move(ev))
         # One Mirror line per action rather than per event: a roll is told together with where it led
@@ -363,6 +365,12 @@ class GameRoom:
         for p in self.state.players:            # the gateway reports track 1 only
             if p.lane == 1:
                 await self.dispatch(SYSTEM, {"action": "set_position", "player": p.id, "square": pos})
+
+    async def _adopt_belt_at_start(self) -> None:
+        try:
+            await self.sync_belt()
+        except EngineError as e:
+            log.info("game start: could not adopt the belt's square: %s", e)
 
     async def scene(self, text: str) -> None:
         """What the Mirror sees at the table, for the players who are not there."""

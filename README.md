@@ -400,11 +400,25 @@ python -m server.main [--sim] [--bridge stub|arduino] [--port 8000] [--host 0.0.
 | `GET /board` | Where Grandma's token is |
 | `POST /board/goto?square=N&direction=auto\|forward\|back` | Drive the token to square N |
 | `POST /board/move?squares=±N` | Move N squares (negative = back) |
+| `POST /board/move-many` | Move several belts at the same time (see below) |
 | `POST /board/set?square=N` | Re-home: record where the token really is (no motor move) |
 | `POST /move?steps=N&corners=N` | Raw motor steps (doesn't change the tracked square) |
 | `POST /stop` | Stop all motors |
 | `GET /pos` | Motor step counters |
 | `POST /vision/events`, `GET /vision/events?n=20` | Camera events in / recent camera events |
+
+**Moving several belts at once** (bench tool): each axis uses its own tuned values.
+
+```
+curl -X POST localhost:8001/board/move-many -H 'content-type: application/json' \
+  -d '{"moves": [{"axis": 0, "squares": 3}, {"axis": 2, "squares": -5}]}'
+```
+
+The belts start together. A move is a few segments (corner legs and plain squares run at different speeds); the first
+segment of every belt starts at once, the next starts when all have finished the last, and a belt with fewer segments
+sits out the later rounds. Answers 409 if a token is moving, 422 for a repeated or unknown axis, and 503 if a motor
+fails or `/stop` is pressed part way (the answer names the axes that need Set position; belts that finished keep
+their new square). Under `DRY_RUN=1` it skips the motors and still updates the squares.
 
 ### Tests
 
