@@ -1,82 +1,86 @@
-"""Hand-jogging the belt before a demo: run the motor until Stop, nudge it a few steps, call the spot GO.
+"""Hand-jogging a belt motor before a demo: run until Stop, nudge a few steps, call the spot a square.
 
-These drive the motor server's own board (arduino/server.py, loaded by server/hardware.py), so they share its
-lock: a jog and a game move can never run at once.
+The belt tool (arduino/server.py, usually `uvicorn server:app --port 8001`) owns the Arduino's serial port, so the
+game server can't drive the motor itself. These routes pass the buttons on to the belt tool's /jog, /stop and
+/board/set. The long "run until Stop" is repeated /jog calls that end when /jog/stop is pressed.
 """
 from __future__ import annotations
 
+import asyncio
+
+import httpx
 from fastapi import APIRouter, HTTPException, Request
 
-RUN_STEPS = 200_000   # a "run until Stop" move: ~10 minutes at the plain step period, cut short by /jog/stop
+RUN_STEPS = 20_000    # the belt tool's /jog limit: about a minute at the plain step period, then it goes again
 
 
-def jog_router(is_local) -> APIRouter:
-    from .hardware import motor_server
-    hw = motor_server()
+def jog_router(is_local, bench_url: str, axis: int, transport=None) -> APIRouter:
     router = APIRouter(prefix="/jog")
-    state = {"running": False}
+    state: dict = {"task": None}
 
     def local_only(request: Request) -> None:
         if not is_local(request):
             raise HTTPException(403, "motor jogging is only for the board laptop")
 
-    def sign(direction: str) -> int:
-        if direction not in ("forward", "back"):
-            raise HTTPException(422, "direction must be forward or back")
-        return 1 if direction == "forward" else -1
+    def client() -> httpx.AsyncClient:
+        return httpx.AsyncClient(base_url=bench_url.rstrip("/"), timeout=120, transport=transport)
+
+    async def call(path: str, **params) -> dict:
+        try:
+            async with client() as c:
+                r = await c.post(path, params={**params, "axis": axis})
+        except httpx.HTTPError as e:
+            raise HTTPException(503, f"belt tool unreachable: {e}")
+        if r.status_code != 200:
+            try:
+                detail = r.json().get("detail", r.text)
+            except ValueError:
+                detail = r.text
+            raise HTTPException(r.status_code, str(detail)[:160])
+        return r.json()
+
+    async def run(sign: int) -> None:
+        try:
+            while True:
+                await call("/jog", steps=sign * RUN_STEPS)
+        except HTTPException:
+            pass          # Stop was pressed (the belt tool answers the interrupted move) or the motor failed
 
     @router.post("/start")
-    def start(request: Request, direction: str = "forward", axis: int | None = None):
+    async def start(request: Request, direction: str = "forward"):
         """Run the motor until /jog/stop."""
         local_only(request)
-        axis = hw.pick_axis(axis)
-        steps = sign(direction) * RUN_STEPS
-        if not hw.lock.acquire(blocking=False):
-            raise HTTPException(409, "The token is already moving")
-        try:
-            hw.stop_requested.clear()
-            if not hw.DRY_RUN:
-                hw.get_board().move(axis, steps, hw.PERIODS[axis][0], wait=False)
-        except Exception as e:
-            hw.lock.release()
-            raise HTTPException(503, f"Motor move failed: {e}")
-        state["running"] = True
+        if direction not in ("forward", "back"):
+            raise HTTPException(422, "direction must be forward or back")
+        if state["task"] and not state["task"].done():
+            raise HTTPException(409, "The motor is already running")
+        state["task"] = asyncio.create_task(run(1 if direction == "forward" else -1))
+        await asyncio.sleep(0.3)             # let a refusal (token busy, belt tool down) show up as the answer
+        if state["task"].done():
+            raise HTTPException(409, "The motor would not start: is the token moving or the belt tool down?")
         return {"running": True, "axis": axis, "direction": direction}
 
     @router.post("/stop")
-    def stop(request: Request):
+    async def stop(request: Request):
         local_only(request)
-        if not hw.DRY_RUN:
-            try:
-                hw.get_board().stop()
-            except Exception as e:
-                raise HTTPException(503, f"Stop failed: {e}")
-        if state["running"]:
-            state["running"] = False
-            hw.lock.release()
+        await call("/stop")
+        task = state["task"]
+        if task:
+            await asyncio.wait_for(task, 5)
         return {"running": False}
 
     @router.post("/nudge")
-    def nudge(request: Request, steps: int = 50, axis: int | None = None):
+    async def nudge(request: Request, steps: int = 50):
         """Move by exactly `steps` motor steps (negative = back)."""
         local_only(request)
-        axis = hw.pick_axis(axis)
-        if abs(steps) > 5000:
-            raise HTTPException(422, "nudge is for small moves: at most 5000 steps")
-        if not hw.lock.acquire(blocking=False):
-            raise HTTPException(409, "The token is moving: press Stop first")
-        try:
-            hw.drive(axis, steps, hw.PERIODS[axis][0])
-            return {"axis": axis, "steps": steps}
-        finally:
-            hw.lock.release()
+        if not 0 < abs(steps) <= 5000:
+            raise HTTPException(422, "nudge is for small moves: 1 to 5000 steps")
+        return await call("/jog", steps=steps)
 
     @router.post("/home")
-    def home(request: Request, axis: int | None = None):
-        """Call the token's spot GO (square 0) without moving the motor."""
+    async def home(request: Request, square: int = 0):
+        """Tell the belt tool which square the token is on now (no motor move)."""
         local_only(request)
-        axis = hw.pick_axis(axis)
-        hw.put_square(axis, 0)
-        return {"axis": axis, "square": 0}
+        return await call("/board/set", square=square)
 
     return router

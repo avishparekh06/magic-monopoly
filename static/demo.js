@@ -1,5 +1,5 @@
-// Demo panel for the home page (only with --dev): jog the belt by hand to GO, then "Resume (demo)" drives the
-// token to where the most recent saved game has it and opens that game's board.
+// Demo panel for the home page (only with --dev): jog Player 2's belt by hand onto Black Forest (Player 1 sits on
+// Gingerbread House), then "Resume (demo)" starts the demo game, plays its first moves on the belt and opens the board.
 import { h } from "/static/net.js";
 
 const post = async (path) => {
@@ -26,7 +26,7 @@ export async function mountDemoPanel() {
     dirBtn.textContent = `Direction: ${direction}`;
   }, "secondary");
 
-  const jog = !config.jog ? h("p", { style: "margin:0;font-size:.85em" }, "Belt jog needs --bridge arduino.") : h("div", {},
+  const jog = !config.jog ? h("p", { style: "margin:0;font-size:.85em" }, "Belt jog needs --virtual-axis.") : h("div", {},
     h("h4", { style: "margin:0 0 6px" }, "Motor setup"),
     h("div", { style: "display:flex;gap:6px;flex-wrap:wrap" },
       btn("Start", act(() => post(`/jog/start?direction=${direction}`), "Running… press Stop when it's in place")),
@@ -35,14 +35,11 @@ export async function mountDemoPanel() {
     h("div", { style: "display:flex;gap:6px;flex-wrap:wrap;margin-top:6px" },
       btn("-50", act(() => post("/jog/nudge?steps=-50"), "Nudged back 50 steps"), "secondary"),
       btn("+50", act(() => post("/jog/nudge?steps=50"), "Nudged forward 50 steps"), "secondary"),
-      btn("This is GO", act(() => post("/jog/home"), "Token is now GO (square 0)"))));
+      btn("This is Black Forest", act(() => post("/jog/home?square=1"), "Player 2's belt is now on Black Forest (square 1)"))));
 
   const resume = btn("Resume (demo)", act(async () => {
-    const games = await fetch("/api/games").then(r => r.json());
-    const game = games.find(g => !["over", "abandoned"].includes(g.status) && g.phase !== "LOBBY" && g.live);
-    if (!game) throw new Error("No saved game in progress to resume");
-    say("Driving the token to its square…");
-    const { board_url } = await post(`/api/games/${game.game_id}/demo-resume`);
+    say("Starting the demo game…");
+    const { board_url } = await post("/api/demo/resume");
     location.href = board_url;
   }, ""), "wood");
 

@@ -20,6 +20,7 @@ from typing import Any, Protocol
 
 from . import tts
 from .adapters import Adapters
+from .rules import monopoly as rules
 from .engine import SYSTEM, EngineError, GameState, Phase, apply_action, from_public, new_game, to_public
 from .store import Store
 
@@ -92,20 +93,25 @@ class GameRoom:
             await room.dispatch(SYSTEM, {"action": "retry_move"})
         return room
 
-    async def demo_resume(self) -> list[int]:
-        """Demo resume: the tokens were lined up on Once Upon a Time by hand. Tell the belt that, then drive
-        each token to the square the saved game has it on. Returns the lanes that were driven."""
-        players = [p for p in self.state.players if not p.bankrupt]
-        await self.adapters.bridge.reset([p.lane for p in players])
-        driven = []
-        for p in players:
-            if p.position:
-                result = await self.adapters.bridge.move(p.lane, 0, p.position)
-                if result.get("type") == "move_failed":
-                    log.warning("demo resume: lane %s did not reach square %s: %s", p.lane, p.position, result.get("reason"))
-                else:
-                    driven.append(p.lane)
-        return driven
+    async def demo_moves(self, moves: list[tuple[str, int]]) -> None:
+        """Demo: the tokens were lined up by hand on the squares the game has them on. Tell the belt that, then
+        play `moves` ((player id, squares forward), in order) on the real belt and move the game's tokens with them."""
+        bridge = self.adapters.bridge
+        placed = {p.lane: p.position for p in self.state.players}
+        await bridge.restore(placed)
+        if getattr(bridge, "fallback", None) is not None:       # a lane driven through the fallback (the bench tool)
+            await bridge.fallback.restore(placed)
+        for pid, squares in moves:
+            p = self.state.player(pid)
+            to = (p.position + squares) % rules.NUM_SQUARES
+            result = await bridge.move(p.lane, p.position, to)
+            if result.get("type") == "move_failed":
+                log.warning("demo: %s did not reach square %s: %s", pid, to, result.get("reason"))
+                return
+            try:
+                await self.dispatch(SYSTEM, {"action": "set_position", "player": pid, "square": to})
+            except EngineError as e:
+                log.warning("demo: could not record %s on square %s: %s", pid, to, e)
 
     async def _start_adapters(self) -> None:
         await self.adapters.vision.start(self.on_adapter_event)
