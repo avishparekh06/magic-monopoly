@@ -229,7 +229,7 @@ const net = connect(`/ws/${gameId}?role=board`, {
   onState: (s) => { state = s; addRaw({ type: "state", phase: s.phase }); render(); maybeListen(); },
   onMessage: (m) => {
     addRaw(m);
-    if (m.type === "mirror") { addLog(m.text); say(m.text); }
+    if (m.type === "mirror") { addLog((m.kind === "say" ? "📱 " : m.kind === "scene" ? "👁 " : "") + m.text); say(m.text); }
   },
   onError: (m) => toast(m, "error"),
   onStatus: (s) => { document.getElementById("conn").textContent = { online: "● live", offline: "○ reconnecting", connecting: "…", closed: "✕" }[s]; },

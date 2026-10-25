@@ -171,11 +171,95 @@ class TemplateMirror(Mirror):
         return f"The tale is told! {self._name(s, e['winner'])} rules the kingdom!"
 
 
-class MuseMirror(Mirror):
-    """Real implementation: Meta Muse Spark LLM writes the line."""
 
-    def __init__(self) -> None:
-        raise NotImplementedError("Muse mirror not built yet; run with --sim")
+
+class MuseMirror(TemplateMirror):
+    """Meta Muse Spark writes the Mirror's lines; the templates are the fallback.
+
+    Only story moments go to Spark (rolls, landings, payments, cards, the tower, the end).
+    Prompts and questions that must be exact (buy?, pay?, draw a card) stay templated.
+    Every call has a short timeout and falls back to the template on any failure, so the
+    game never waits on the network.
+
+    Verified against the live API: muse-spark-1.3 is a reasoning model; without
+    reasoning_effort="minimal" it spends the whole token budget thinking and returns
+    content=None. With it, a line takes ~1.3 s.
+    """
+
+    MODEL = "muse-spark-1.3"
+    BASE = "https://api.meta.ai/v1"
+    NARRATE = {"rolled", "landed", "paid", "bought", "card_drawn", "cursed", "jailed", "released",
+               "salary", "bankrupt", "game_over", "turn_started", "repairs", "got_jail_key", "stayed_in_jail",
+               "used_jail_key", "decided", "cant_afford", "move_failed"}
+    SYSTEM = ("You are the Magic Mirror, narrator of a fairy-tale Monopoly game. At the table sits the in-person "
+              "player; the other players are grandchildren on phones far away who cannot see the table, so your words "
+              "are their window into the room. One or two short sentences. Warm, a little mischievous, in character, "
+              "never explain rules, never break the fourth wall, no emoji, no quotation marks. Address players by name. "
+              "If a draft line is given, keep its facts (names, places, amounts) exactly.")
+
+    def __init__(self, api_key: str | None = None, base_url: str | None = None, transport=None,
+                 timeout: float = 5.0) -> None:
+        import os
+        self.api_key = api_key or os.environ.get("MUSE_API_KEY") or os.environ.get("MODEL_API_KEY")
+        if not self.api_key:
+            raise RuntimeError("MuseMirror needs MUSE_API_KEY (or MODEL_API_KEY) in the environment")
+        self.base_url = (base_url or os.environ.get("MUSE_BASE_URL") or self.BASE).rstrip("/")
+        self._transport = transport
+        self.timeout = timeout
+        self.failures = 0
 
     async def line(self, event: dict, state: GameState) -> str | None:
-        raise NotImplementedError
+        draft = await super().line(event, state)
+        if event.get("type") not in self.NARRATE:
+            return draft
+        try:
+            text = await self.ask(self._prompt(event, state, draft))
+            return text or draft
+        except Exception as e:                      # network, timeout, odd reply: use the template
+            self.failures += 1
+            import logging
+            logging.getLogger("mirror").info("muse line failed (%s); using template", e)
+            return draft
+
+    def _prompt(self, event: dict, state: GameState, draft: str | None) -> str:
+        who = "; ".join(f"{p.name} ({'at the table' if p.kind == 'in_person' else 'on a phone'}, {p.balance} gold)"
+                        for p in state.players)
+        ev = dict(event)
+        for k in ("square",):
+            if isinstance(ev.get(k), int):
+                ev[k] = square(ev[k])["name"]
+        for k in ("player", "from", "to", "winner"):
+            if isinstance(ev.get(k), str) and ev[k].startswith("p"):
+                ev[k] = self._name(state, ev[k])
+        if ev.get("type") == "card_drawn":
+            c = card(event["id"])
+            ev.update(title=c["title"], text=c["text"])
+        return f"Players: {who}.\nEvent: {ev}\nDraft line: {draft or '(none)'}\nSay the Mirror's line."
+
+    async def ask(self, user: str, system: str | None = None, max_tokens: int = 400) -> str:
+        import httpx
+        body = {"model": self.MODEL, "max_tokens": max_tokens, "temperature": 0.8, "reasoning_effort": "minimal",
+                "messages": [{"role": "system", "content": system or self.SYSTEM}, {"role": "user", "content": user}]}
+        async with httpx.AsyncClient(timeout=self.timeout, transport=self._transport) as c:
+            r = await c.post(f"{self.base_url}/chat/completions", json=body,
+                             headers={"Authorization": f"Bearer {self.api_key}"})
+        r.raise_for_status()
+        content = r.json()["choices"][0]["message"].get("content")
+        return (content or "").strip().strip('"')
+
+    async def describe_scene(self, jpeg_b64: str, context: str) -> str | None:
+        """What the table looks like right now, for the players who cannot see it. None on failure."""
+        import httpx
+        body = {"model": self.MODEL, "max_tokens": 600, "reasoning_effort": "minimal", "messages": [
+            {"role": "system", "content": "You narrate a family game night for children on phones who cannot see the table. "
+                                          "One sentence, present tense, warm, concrete: hands, dice, cards, the room. No emoji."},
+            {"role": "user", "content": [{"type": "text", "text": f"{context}\nDescribe what you see in one sentence."},
+                                          {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{jpeg_b64}"}}]}]}
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout + 3, transport=self._transport) as c:
+                r = await c.post(f"{self.base_url}/chat/completions", json=body,
+                                 headers={"Authorization": f"Bearer {self.api_key}"})
+            r.raise_for_status()
+            return (r.json()["choices"][0]["message"].get("content") or "").strip() or None
+        except Exception:
+            return None

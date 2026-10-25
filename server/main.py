@@ -5,6 +5,7 @@ Run:  python -m server.main --sim
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import logging
 import socket
@@ -16,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .adapters import BRIDGES, VOICES, make_adapters
+from .adapters import BRIDGES, MIRRORS, VOICES, make_adapters
 from .engine import SYSTEM, EngineError
 from .rooms import GameRoom
 from .rules.monopoly import board, cards
@@ -27,6 +28,19 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 DEFAULT_DB = ROOT / "games.db"
 log = logging.getLogger("server")
+
+
+def load_dotenv(path: Path = ROOT / ".env") -> None:
+    """KEY=value lines into os.environ (existing variables win). Keeps the Muse key out of git."""
+    import os
+    try:
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+    except OSError:
+        pass
 
 
 def lan_ip() -> str:
@@ -83,20 +97,25 @@ class CreateGame(BaseModel):
 def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = None,
                db_path: str | Path | None = ":memory:", bridge: str = "stub",
                public: str | None = None, tunnel_port: int | None = None,
-               voice: str = "stub", voice_factory=None) -> FastAPI:
+               voice: str = "stub", voice_factory=None, mirror: str = "template",
+               mirror_factory=None) -> FastAPI:
     """db_path: SQLite file that games are saved to and resumed from on startup.
     ":memory:" (the default, used by tests) keeps nothing across restarts.
     bridge: "stub" fakes moves; "arduino" drives lane 1 through arduino/server.py.
     public: a base URL phones can reach (e.g. an ngrok address), used for join links.
     tunnel_port: start a cloudflared tunnel to this port and use its URL as `public`.
     voice: "stub" (dev-panel buttons) or "muse" (Meta Muse Voice Transcribe via /voice/clip).
-    voice_factory: tests pass a callable returning a Voice to stand in for `voice`."""
+    voice_factory: tests pass a callable returning a Voice to stand in for `voice`.
+    mirror: "template" or "muse" (Meta Muse Spark writes the narrator's lines, templates as fallback)."""
     rooms: dict[str, GameRoom] = {}
 
     def adapters():
-        a = make_adapters(sim, move_delay, bridge, voice if voice_factory is None else "stub")
+        a = make_adapters(sim, move_delay, bridge, voice if voice_factory is None else "stub",
+                          mirror if mirror_factory is None else "template")
         if voice_factory is not None:
             a.voice = voice_factory()
+        if mirror_factory is not None:
+            a.mirror = mirror_factory()
         return a
 
     store = Store(db_path or ":memory:")
@@ -129,7 +148,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         from .hardware import motor_routes
         app.router.routes.extend(r for r in motor_routes() if getattr(r, "path", None) != "/vision/events")
 
-    if not sim or (voice == "muse" and voice_factory is None):
+    if not sim or (voice == "muse" and voice_factory is None) or (mirror == "muse" and mirror_factory is None):
         adapters()  # fail at startup, not at first game, if a real adapter is missing (e.g. no MUSE_API_KEY)
 
     def page(name: str) -> FileResponse:
@@ -240,6 +259,16 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
                 raise HTTPException(409, "no running game to send this to")
             room = max(live, key=lambda r: r.updated_at)
         await room.on_adapter_event(mapped)
+        # A frame of the table along with the roll: the Mirror describes it for the players who are not there.
+        frame = event.get("frame_b64")
+        if frame and hasattr(room.adapters.mirror, "describe_scene"):
+            async def narrate_scene():
+                names = ", ".join(p.name for p in room.state.players)
+                text = await room.adapters.mirror.describe_scene(
+                    frame, f"Players: {names}. The dice were just rolled: {event.get('values')}.")
+                if text:
+                    await room.scene(text)
+            asyncio.create_task(narrate_scene())
         return {"ok": True, "game": room.game_id, "sent": mapped}
 
     # --- microphone clip -> Muse Voice Transcribe -> yes/no decision ---
@@ -356,13 +385,16 @@ def main() -> None:
     parser.add_argument("--voice", choices=VOICES, default="stub",
                         help="stub: yes/no from the dev panel; muse: Meta Muse Voice Transcribe on clips from the board "
                              "page's microphone (needs MUSE_API_KEY)")
+    parser.add_argument("--mirror", choices=MIRRORS, default="template",
+                        help="template: fixed narrator lines; muse: Meta Muse Spark writes them (needs MUSE_API_KEY)")
     parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite file games are saved to and resumed from")
     parser.add_argument("--tunnel", action="store_true", help="start a cloudflared tunnel and use its public URL in links")
     parser.add_argument("--public", default=None, help="public base URL to use in links instead (e.g. an ngrok address)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
+    load_dotenv()
     uvicorn.run(create_app(sim=args.sim, seed=args.seed, db_path=args.db, bridge=args.bridge, public=args.public,
-                           tunnel_port=args.port if args.tunnel else None, voice=args.voice),
+                           tunnel_port=args.port if args.tunnel else None, voice=args.voice, mirror=args.mirror),
                 host=args.host, port=args.port)
 
 

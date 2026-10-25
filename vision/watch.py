@@ -34,6 +34,15 @@ CARD_STABLE_FRAMES = 4   # same card id this many frames in a row -> card_drawn
 CARD_GONE_FRAMES = 6     # no card this many frames in a row -> card_removed
 
 
+def jpeg_b64(frame, width=800, quality=75):
+    """Small JPEG of the camera frame as base64, for the Mirror's scene description."""
+    import base64
+    h, w = frame.shape[:2]
+    small = cv2.resize(frame, (width, int(h * width / w))) if w > width else frame
+    ok, buf = cv2.imencode(".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, quality])
+    return base64.b64encode(buf.tobytes()).decode() if ok else ""
+
+
 class Emitter:
     def __init__(self, server, post=True):
         self.server, self.post = server, post
@@ -184,6 +193,7 @@ def main():
     ap.add_argument("--no-post", action="store_true")
     ap.add_argument("--no-display", action="store_true")
     ap.add_argument("--realtime", action="store_true", help="with --source, pace playback at the video's fps")
+    ap.add_argument("--frames", action="store_true", help="attach a small JPEG of the table to each roll (the Mirror describes it for remote players)")
     a = ap.parse_args()
 
     z = Zones.load(a.zones)
@@ -196,6 +206,15 @@ def main():
         print(f"warning: no reference cards in {a.cards}", file=sys.stderr)
 
     cap = open_source(a.source, z)
+    if a.frames:
+        last_frame = {}
+        base_emit = emit
+
+        def emit_with_frame(ev):                    # noqa: E306
+            if ev.get("type") == "dice_rolled" and "img" in last_frame:
+                ev = {**ev, "frame_b64": jpeg_b64(last_frame["img"])}
+            base_emit(ev)
+        dw.emit = emit_with_frame
     src_fps = cap.get(cv2.CAP_PROP_FPS) or 30
     t0, n = time.time(), 0
     while True:
@@ -204,6 +223,8 @@ def main():
             break
         n += 1
         now = n / src_fps if a.source else time.time()     # video time for files, wall clock for the camera
+        if a.frames:
+            last_frame["img"] = frame
         mat = z.warp(frame)
         motion = dw.step(z.crop(mat, "dice_zone_mm"), now)
         cw.step(z.crop(mat, "card_zone_mm"))

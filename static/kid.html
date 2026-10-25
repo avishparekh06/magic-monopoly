@@ -75,6 +75,11 @@
 
       <div class="panel">
         <h3>🪞 The Mirror says…</h3>
+        <div class="pair" style="margin:8px 0">
+          <input id="say" class="grow" maxlength="160" placeholder="Say something to the table…" autocomplete="off">
+          <button class="btn" id="say-btn" type="button">Say it</button>
+        </div>
+        <button class="btn small secondary" id="speak-btn" type="button">🔊 Read the Mirror aloud</button>
         <ul class="log" id="log"></ul>
       </div>
     </section>
@@ -93,10 +98,27 @@ const cardData = await (await fetch("/api/cards")).json();
 let me = null;      // "p2" or "p3", told by the server in "hello"
 let state = null;
 
+// The phone's voice in the room: the Mirror repeats it aloud at the table.
+let speaking = false;
+function speak(text) {
+  if (!speaking || !("speechSynthesis" in window)) return;
+  const u = new SpeechSynthesisUtterance(text); u.rate = 0.95; speechSynthesis.speak(u);
+}
+document.addEventListener("DOMContentLoaded", () => {
+  const input = document.getElementById("say");
+  const send = () => { const t = input.value.trim(); if (!t) return; net.send({ action: "say", text: t }); input.value = ""; };
+  document.getElementById("say-btn").onclick = send;
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") send(); });
+  document.getElementById("speak-btn").onclick = (e) => {
+    speaking = !speaking; e.target.textContent = speaking ? "🔊 Mirror speaking" : "🔊 Read the Mirror aloud";
+    if (speaking) speak("The Mirror is listening.");
+  };
+});
+
 const net = connect(`/ws/${gameId}?seat=${seatToken}`, {
   onHello: (m) => { me = m.you; },
   onState: (s) => { state = s; render(); },
-  onMessage: (m) => { if (m.type === "mirror") addLog(m.text); },
+  onMessage: (m) => { if (m.type === "mirror") { addLog((m.kind === "scene" ? "👁 " : "") + m.text); speak(m.text); } },
   onError: (m) => toast(m, "error"),
   onStatus: (s) => { document.getElementById("conn").textContent = { online: "● live", offline: "○ reconnecting", connecting: "…", closed: "✕" }[s]; },
   onClosed: showNotice,

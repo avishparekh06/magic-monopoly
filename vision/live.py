@@ -20,7 +20,7 @@ import cv2
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from dice import read_dice            # noqa: E402
-from watch import DiceWatcher, Emitter  # noqa: E402
+from watch import DiceWatcher, Emitter, jpeg_b64  # noqa: E402
 from zones import Zones               # noqa: E402
 
 SETTINGS = os.path.join(HERE, "live.json")
@@ -45,6 +45,7 @@ def main():
     source = argv[argv.index("--source") + 1] if "--source" in argv else None
     server = argv[argv.index("--server") + 1] if "--server" in argv else "http://127.0.0.1:8000"
     post = "--post" in argv
+    frames = "--frames" in argv                   # send a picture of the table with each roll
     skip = {source, server}
     args = [a for a in argv if not a.startswith("--") and a not in skip]
     z = Zones.load()
@@ -85,8 +86,12 @@ def main():
     events = []
     emitter = Emitter(server, post=post)          # prints JSON lines; POSTs to the game server with --post
 
+    latest = {}
+
     def on_event(e):
         events.append((time.time(), e))
+        if frames and e.get("type") == "dice_rolled" and "img" in latest:
+            e = {**e, "frame_b64": jpeg_b64(latest["img"])}
         emitter(e)
 
     dw = DiceWatcher(1.0, die_mm, on_event)
@@ -104,6 +109,7 @@ def main():
             break
         n += 1
         raw = frame
+        latest["img"] = raw
         H, W = frame.shape[:2]
         die_px = max(20, cv2.getTrackbarPos("die px", WIN))
         if die_px != s.get("die_px"):

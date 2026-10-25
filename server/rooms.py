@@ -142,8 +142,13 @@ class GameRoom:
         return events
 
     async def _react(self, events: list[dict]) -> None:
-        for ev in events:
-            line = await self.adapters.mirror.line(ev, self.state)
+        # Mirror lines are written concurrently (a Muse call is ~1-2 s each) but spoken in event order.
+        lines = await asyncio.gather(*(self.adapters.mirror.line(ev, self.state) for ev in events),
+                                     return_exceptions=True)
+        for ev, line in zip(events, lines):
+            if isinstance(line, Exception):
+                log.info("mirror failed for %s: %s", ev.get("type"), line)
+                line = None
             if line:
                 await self.broadcast({"type": "mirror", "text": line})
             if ev.get("type") == "move":   # emitted by the engine from milestone 3
@@ -186,10 +191,26 @@ class GameRoom:
             claimed = msg.get("player")
             if actor != SYSTEM and claimed is not None and claimed != actor:
                 raise EngineError(f"you can only act as {actor}")
+            if msg.get("action") == "say":
+                return await self.say(actor, str(msg.get("text", "")))
             action = {k: v for k, v in msg.items() if k != "player"}
             await self.dispatch(actor, action)
         except (EngineError, ValueError) as e:
             await self._safe_send(ws, {"type": "error", "message": str(e)})
+
+    async def say(self, actor: str, text: str) -> None:
+        """A remote player speaks to the table: the Mirror repeats it aloud on the board laptop and
+        every phone sees it. This is the phones' voice in the room."""
+        text = " ".join(text.split())[:160]
+        if not text:
+            raise EngineError("say something first")
+        name = next((p.name for p in self.state.players if p.id == actor), "The host")
+        await self.broadcast({"type": "mirror", "kind": "say", "from": actor, "name": name,
+                              "text": f"{name} says: {text}"})
+
+    async def scene(self, text: str) -> None:
+        """What the Mirror sees at the table, for the players who are not there."""
+        await self.broadcast({"type": "mirror", "kind": "scene", "text": text})
 
     # --- sending -----------------------------------------------------------
 

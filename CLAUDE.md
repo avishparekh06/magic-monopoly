@@ -133,8 +133,10 @@ Run: `.venv/bin/python -m server.main --sim [--tunnel] [--db games.db]`. Tests: 
 2. Decide one-vs-three physical players with the team; the engine currently allows exactly one in-person player.
 3. Print the cards with their ArUco markers: `vision/make_card_markers.py` writes one PNG per card id and a labelled
    `vision/card_markers/sheet.png` + `index.txt`. Reference photos in `cards/<id>.png` are only a fallback now.
-4. Muse: `MUSE_API_KEY=... .venv/bin/python scripts/muse_check.py` (chat + transcribe) as soon as the key exists; then
-   MuseMirror (narration via chat completions, `muse-spark-1.3`) → images. Voice is done pending that check.
+4. Muse is live: voice (yes/no), the Mirror narrator (`--mirror muse`, Spark lines with template fallback, only for
+   story events), phone→table "say" messages spoken by the Mirror, and table→phone scene lines from a camera frame
+   (`--frames`). Next: a 30-second voice intake per player so Spark can personalize lines and prompt conversation
+   on rent payments; end-of-game storybook with Muse Image.
 5. Demo-day runbook: `--tunnel --db games.db`, open `/` on the laptop, scan QR codes, keep the dev panel for manual
    dice/card entry and `confirm_payment` as fallbacks.
 

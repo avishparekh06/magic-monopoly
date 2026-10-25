@@ -9,3 +9,4 @@ zones.json
 vision/live.json
 vision/samples/
 games.db
+.env
