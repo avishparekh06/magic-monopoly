@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600">
+<defs><g id="pine"><ellipse cy="14" rx="12" ry="6" fill="#315944" opacity=".35"/><path d="M-2 0h4v18h-4z" fill="#73553a"/><path d="M0-30 17 6H-17z" fill="#386653"/><path d="M0-30V6H-17z" fill="#528571"/><path d="M0-17 20 16H-20z" fill="#416f5b"/></g>
+<g id="ivy-leaf"><path d="M0 0C-15-3-18-14-17-20-5-20 4-13 0 0" fill="#365e44"/><path d="M0 0-12-15" fill="none" stroke="#709361" stroke-width="1.2"/></g></defs>
+<path fill="#589574" d="M0 0h600v600H0z"/><path d="M0 90 170 60 260 135 120 230 0 200zM420 315 600 265V600H460L400 490z" fill="#528c70"/>
+<path d="M60 600Q120 460 370 480T600 400" fill="none" stroke="#bcb18b" stroke-width="30"/><path d="M60 600Q120 460 370 480T600 400" fill="none" stroke="#dfcfaa" stroke-width="22"/>
+<path d="M300 0V170M300 370V495" fill="none" stroke="#bcb18b" stroke-width="34"/><path d="M300 0V170M300 370V495" fill="none" stroke="#dfcfaa" stroke-width="25"/>
+<path d="M412 310C373 340 393 409 454 424S567 395 557 343 461 273 412 310" fill="#446f61"/><path d="M415 305C380 340 400 399 455 410S556 385 546 343 461 282 415 305" fill="#7eafba"/><path d="M424 322Q465 300 519 340M431 385Q469 401 508 378" fill="none" stroke="#b8d2ce" stroke-width="3" opacity=".6"/>
+<!-- Rapunzel's tower, framed by the same rectangular garden map. -->
+<g id="rapunzel-tower">
+<ellipse cx="311" cy="398" rx="86" ry="25" fill="#315944" opacity=".4"/>
+<path d="M246 230H360V388L344 401H246Z" fill="#b4a583"/>
+<path d="M246 230H327V401H246Z" fill="#dfd2ae"/>
+<path d="M327 230H360V388L327 401Z" fill="#c2b28c"/>
+<path d="M246 274H327M246 314H327M246 354H327M263 254V274M296 274V294M272 314V334M309 354V374" fill="none" stroke="#c7b992" stroke-width="2"/>
+<path d="M233 185H372V236L356 247H247L233 236Z" fill="#c2b28c" stroke="#a99b76" stroke-width="2"/>
+<path d="M233 185H341V237H233Z" fill="#e4d5ac"/>
+<path d="M228 185 299 104 378 185 359 198H243Z" fill="#785268"/>
+<path d="M228 185 299 104 299 190H243Z" fill="#95657c"/>
+<path d="M299 104V91" stroke="#b89752" stroke-width="3"/><circle cx="299" cy="88" r="4" fill="#d9b969"/>
+<path d="M272 224V203C272 184 305 184 305 203V224Z" fill="#6c514d" stroke="#b8a17a" stroke-width="4"/>
+<path d="M278 218V204C278 191 299 191 299 204V218Z" fill="#eac879"/>
+<path d="M290 219C300 248 277 268 293 294S282 337 299 363 298 385 289 393" fill="none" stroke="#9c783b" stroke-width="10" stroke-linecap="round"/>
+<path d="M290 219C300 248 277 268 293 294S282 337 299 363 298 385 289 393" fill="none" stroke="#e4c76c" stroke-width="7" stroke-linecap="round"/>
+<path d="M290 219C300 248 277 268 293 294S282 337 299 363 298 385 289 393" fill="none" stroke="#f7df96" stroke-width="2" stroke-dasharray="3 5"/>
+<!-- Climbing vines wind around the stone, with paired ivy leaves. -->
+<g fill="none" stroke="#416a45" stroke-width="4" stroke-linecap="round">
+<path d="M244 402C267 380 233 356 255 331S238 289 258 271 240 241 250 220"/>
+<path d="M337 400C316 375 354 352 334 325S353 290 337 264 362 237 354 212"/>
+<path d="M248 357Q271 349 274 330M340 307Q317 293 319 277M255 267Q279 258 277 243"/>
+</g>
+<g>
+<use href="#ivy-leaf" x="247" y="384" transform="rotate(-40 247 384)"/>
+<use href="#ivy-leaf" x="250" y="362" transform="rotate(95 250 362)"/>
+<use href="#ivy-leaf" x="248" y="340" transform="rotate(-35 248 340)"/>
+<use href="#ivy-leaf" x="248" y="307" transform="rotate(95 248 307)"/>
+<use href="#ivy-leaf" x="255" y="279" transform="rotate(-35 255 279)"/>
+<use href="#ivy-leaf" x="250" y="250" transform="rotate(85 250 250)"/>
+<use href="#ivy-leaf" x="274" y="330" transform="rotate(40 274 330)"/>
+<use href="#ivy-leaf" x="277" y="245" transform="rotate(50 277 245)"/>
+<use href="#ivy-leaf" x="333" y="380" transform="rotate(75 333 380)"/>
+<use href="#ivy-leaf" x="339" y="352" transform="rotate(-65 339 352)"/>
+<use href="#ivy-leaf" x="334" y="325" transform="rotate(75 334 325)"/>
+<use href="#ivy-leaf" x="341" y="290" transform="rotate(-65 341 290)"/>
+<use href="#ivy-leaf" x="338" y="262" transform="rotate(75 338 262)"/>
+<use href="#ivy-leaf" x="354" y="230" transform="rotate(-45 354 230)"/>
+<use href="#ivy-leaf" x="319" y="280" transform="rotate(-65 319 280)"/>
+</g>
+<g fill="#c18c9f"><circle cx="252" cy="324" r="3"/><circle cx="338" cy="364" r="3"/><circle cx="343" cy="277" r="3"/><circle cx="250" cy="247" r="3"/></g>
+<path d="M246 401H329L343 394V403L330 411H239V404Z" fill="#b7a27a"/>
+</g>
+
+<use href="#pine" x="127" y="416" transform="rotate(-8 127 416)"/>
+<use href="#pine" x="56" y="156" transform="rotate(-9 56 156)"/>
+<use href="#pine" x="560" y="251" transform="rotate(10 560 251)"/>
+<use href="#pine" x="154" y="164" transform="rotate(11 154 164)"/>
+<use href="#pine" x="45" y="76" transform="rotate(-8 45 76)"/>
+<use href="#pine" x="248" y="562" transform="rotate(11 248 562)"/>
+<use href="#pine" x="470" y="552" transform="rotate(1 470 552)"/>
+<use href="#pine" x="221" y="109" transform="rotate(-9 221 109)"/>
+<use href="#pine" x="572" y="75" transform="rotate(-11 572 75)"/>
+<use href="#pine" x="196" y="378" transform="rotate(-8 196 378)"/>
+<use href="#pine" x="397" y="45" transform="rotate(-10 397 45)"/>
+<use href="#pine" x="54" y="283" transform="rotate(-2 54 283)"/>
+<use href="#pine" x="109" y="327" transform="rotate(-7 109 327)"/>
+<use href="#pine" x="585" y="572" transform="rotate(9 585 572)"/>
+<use href="#pine" x="41" y="397" transform="rotate(10 41 397)"/>
+<use href="#pine" x="109" y="422" transform="rotate(-3 109 422)"/>
+<use href="#pine" x="61" y="134" transform="rotate(-4 61 134)"/>
+<use href="#pine" x="113" y="136" transform="rotate(-6 113 136)"/>
+<use href="#pine" x="178" y="169" transform="rotate(3 178 169)"/>
+<use href="#pine" x="71" y="524" transform="rotate(7 71 524)"/>
+<use href="#pine" x="393" y="516" transform="rotate(8 393 516)"/>
+<use href="#pine" x="50" y="128" transform="rotate(3 50 128)"/>
+<use href="#pine" x="153" y="523" transform="rotate(12 153 523)"/>
+<use href="#pine" x="37" y="274" transform="rotate(3 37 274)"/>
+<use href="#pine" x="255" y="25" transform="rotate(-9 255 25)"/>
+<use href="#pine" x="468" y="194" transform="rotate(-11 468 194)"/>
+<use href="#pine" x="147" y="141" transform="rotate(6 147 141)"/>
+<use href="#pine" x="63" y="225" transform="rotate(-6 63 225)"/>
+<use href="#pine" x="583" y="539" transform="rotate(4 583 539)"/>
+<use href="#pine" x="244" y="550" transform="rotate(-6 244 550)"/>
+<use href="#pine" x="148" y="394" transform="rotate(-9 148 394)"/>
+</svg>

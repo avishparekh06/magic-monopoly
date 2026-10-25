@@ -13,13 +13,12 @@ export function mountBoardActions(viewport, board, cards, send) {
   const errorEl = h('p', { class: 'game-action-error', role: 'alert', hidden: true });
   const fullscreen = h('button', { id: 'game-fullscreen', class: 'btn small secondary', type: 'button', 'aria-pressed': 'false' }, 'Fullscreen');
   const view = h('button', { id: 'game-map-toggle', class: 'btn small secondary', type: 'button' }, 'Full board');
-  const threeD = h('button', { id: 'game-3d-toggle', class: 'btn small secondary', type: 'button', 'aria-label': '3D board', 'aria-pressed': 'false', onclick: () => viewport.dispatchEvent(new CustomEvent('board-render-toggle')) }, '3D off');
   const library = mountSessionHub({ parent: viewport });
   const players = mountBoardPlayers(viewport, board, () => library.openGame(state.game_id));
   const browse = h('button', { id: 'game-players', class: 'btn small secondary', type: 'button', onclick: () => players.open(), title: 'Players, owned properties, game history and stats' }, 'Players & stats');
   const reset = h('button', { id: 'game-reset-view', class: 'btn small secondary game-reset-view', type: 'button', title: 'Reset camera (R)' }, 'Reset view');
   view.title = 'Switch between the board map and following the token (M)';
-  const tools = h('div', { class: 'game-surface-tools' }, threeD, view, reset, browse, fullscreen);
+  const tools = h('div', { class: 'game-surface-tools' }, view, reset, browse, fullscreen);
   const rollLabel = h('span', { class: 'game-roll-label' }, 'Roll Dice');
   const rollWho = h('span', { class: 'game-roll-who' });
   const rollButton = h('button', { id: 'turn-roll', class: 'game-roll-dice', type: 'button', hidden: true, onclick: () => {
@@ -208,14 +207,8 @@ export function mountBoardActions(viewport, board, cards, send) {
   function syncView() {
     view.textContent = viewport.dataset.view === 'full' ? 'Follow token' : 'Full board';
     view.disabled = state?.phase === 'LOBBY' || (viewport.dataset.view === 'full' && document.getElementById('view-follow').disabled);
-    const enabled = viewport.dataset.threeD !== 'false';
-    const available = viewport.dataset.threeDAvailable !== 'false';
-    threeD.textContent = available ? (enabled ? '3D on' : '3D off') : '3D unavailable';
-    threeD.setAttribute('aria-pressed', String(enabled && available));
-    threeD.disabled = !available;
-    threeD.title = available ? (enabled ? 'Switch to the flat board' : 'Switch to the 3D board') : 'This browser can use the flat board';
-    view.hidden = !enabled || !available;
-    reset.hidden = !enabled || !available;
+    view.hidden = false;
+    reset.hidden = viewport.dataset.render !== '3d';
     reset.disabled = viewport.dataset.render !== '3d';
     placeFlatDice();
   }

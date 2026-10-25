@@ -163,7 +163,7 @@
   .game-action-card .game-deed-price { font-size: 23px; margin: 6px 0; }
 }
 
-/* Both camera modes render the same scene; #board remains the animation source. */
+/* The close-up uses WebGL; the full map remains the token animation source. */
 .board-page .board-viewport[data-render="3d"] { overflow: hidden; border-radius: 5px; outline: 2px solid var(--gold); box-shadow: 0 0 0 7px var(--wood-edge), 0 9px 24px #0004; background: #203c51; isolation: isolate; }
 .board-page .board-viewport[data-render="3d"] #board { position: absolute; top: 0; left: 0; width: 100%; max-width: none; height: auto; aspect-ratio: 1; margin: 0; visibility: hidden; pointer-events: none; }
 .board-viewport[data-render="3d"] .board-world { display: block; position: absolute; inset: 0; }
@@ -278,3 +278,13 @@
 .board-page .board-viewport:not([data-render="3d"]):has(.game-action-card:not([hidden])) .mm-center { padding-right: 50%; padding-left: 2%; }
 .board-page .board-viewport:not([data-render="3d"]):has(.game-action-card:not([hidden])) .mm-center .drawn-card { max-width: 92%; }
 .board-page .board-viewport:not([data-render="3d"]):has(.game-action-card:not([hidden])) .mm-center .center-phase { max-width: 94%; }
+
+/* A top-down companion to the 3D miniature: matching cream stone, forest and plum roofs. */
+.board-page #board.mm-board { background: #805439; border: 3px solid #c89f55; gap: 2px; }
+.board-page #board .mm-sq { background: #eee7d5; color: #49354e; border: 1px solid #d0c09a; }
+.board-page #board .mm-band { filter: saturate(.7); }
+.board-page #board .mm-price { color: #936b33; }
+.board-page #board .mm-icon { color: #785268; }
+.board-page #board .mm-center { background: #589574 url('/static/art/board-garden.svg') center / cover; box-shadow: inset 0 0 0 2px #b5a374; }
+.board-page #board .mm-center::before { inset: 0; border: none; border-radius: 0; background: linear-gradient(transparent 20%, #24453744 45%, #24453733 65%, transparent); }
+.board-page #board .center-title, .board-page #board .center-phase { color: #fff5df; text-shadow: 0 2px 3px #1a372b, 0 0 10px #1a372bcc; }

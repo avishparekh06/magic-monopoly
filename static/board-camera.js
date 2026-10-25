@@ -1,4 +1,4 @@
-// Presentation only: optional 3D views or the flat board. No game actions.
+// Presentation only: a flat full-board map and a 3D token-follow view. No game actions.
 import { statusText } from "/static/board.js";
 
 export function mountBoardCamera(board, boardData, gameId) {
@@ -8,12 +8,8 @@ export function mountBoardCamera(board, boardData, gameId) {
   const label = document.getElementById("board-view-location");
   const caption = document.getElementById("board-view-status");
   const key = `magic-monopoly:board-view:${gameId}`;
-  const renderKey = "magic-monopoly:board-3d";
-  // Flat 2D board by default; the 3D storybook world is opt-in (remembered per browser).
-  let threeD = false;
-  try { threeD = localStorage.getItem(renderKey) === "on"; } catch { }
-  let mode = "follow", state = null, movement = null, releaseTimer = null, frame = null;
-  try { if (localStorage.getItem(key) === "full") mode = "full"; } catch { }
+  let mode = "full", state = null, movement = null, releaseTimer = null, frame = null;
+  try { if (localStorage.getItem(key) === "follow") mode = "follow"; } catch { }
 
   let world = null, loading = false, unavailable = false, queuedRoll = null;
   function failWorld() {
@@ -35,12 +31,12 @@ export function mountBoardCamera(board, boardData, gameId) {
       document.fonts.load('700 49px "Planewalker"'),
     ]).then(([{ createBoardWorld }]) => {
       // Toggling off during loading must not create or reveal a WebGL scene.
-      if (!threeD || unavailable) { loading = false; queuedRoll = null; draw(false); return; }
+      if (mode !== "follow" || unavailable) { loading = false; queuedRoll = null; draw(false); return; }
       world = createBoardWorld(viewport, boardData, failWorld);
       loading = false;
       if (state) world.updateState(state);
       draw(false);
-      if (threeD && queuedRoll && performance.now() - queuedRoll.at < 2000) world.rollDice(queuedRoll.event);
+      if (mode === "follow" && queuedRoll && performance.now() - queuedRoll.at < 2000) world.rollDice(queuedRoll.event);
       queuedRoll = null;
     }).catch(error => { console.warn('3D board unavailable:', error); failWorld(); });
   }
@@ -58,17 +54,17 @@ export function mountBoardCamera(board, boardData, gameId) {
   function draw(animate = true) {
     const player = activePlayer();
     const token = player && tokenFor(player.id);
-    const wants3D = !!state && threeD && !unavailable;
+    const wants3D = !!state && mode === "follow" && state.phase !== "LOBBY" && !unavailable;
     if (wants3D) ensureWorld();
     const rendered = wants3D && !!world;
     const zoomed = rendered && mode === "follow" && state.phase !== "LOBBY" && !!token;
     viewport.dataset.view = zoomed ? "follow" : "full";
     viewport.dataset.render = rendered ? "3d" : "flat";
-    viewport.dataset.threeD = String(threeD && !unavailable);
+    viewport.dataset.threeD = String(wants3D);
     viewport.dataset.threeDAvailable = String(!unavailable);
-    follow.disabled = !threeD || unavailable;
-    follow.title = unavailable ? '3D is unavailable in this browser.' : !threeD ? 'Turn 3D on to follow the token.' : 'Follow the moving token';
-    const selectedMode = !threeD || unavailable ? 'full' : mode;
+    follow.disabled = unavailable;
+    follow.title = unavailable ? '3D is unavailable in this browser.' : 'Follow the moving token in 3D';
+    const selectedMode = unavailable ? 'full' : mode;
     follow.setAttribute("aria-pressed", String(selectedMode === "follow"));
     full.setAttribute("aria-pressed", String(selectedMode === "full"));
     caption.textContent = state?.phase === "LOBBY"
@@ -77,7 +73,7 @@ export function mountBoardCamera(board, boardData, gameId) {
     const square = token ? Number(token.dataset.square) : player?.position;
     label.textContent = zoomed
       ? `Following ${player.name} · ${boardData.squares[square]?.name || "on the move"}`
-      : wants3D && loading ? "Opening the storybook world…" : !threeD || unavailable ? "Flat board · All 40 spaces" : "All 40 spaces";
+      : wants3D && loading ? "Opening the storybook world…" : "Full board · All 40 spaces";
     board.style.transition = "none";
     board.style.transform = "none";
     world?.focus(player?.id);
@@ -94,19 +90,12 @@ export function mountBoardCamera(board, boardData, gameId) {
     }
   }
   function setMode(value) {
+    if (value !== mode) { queuedRoll = null; world?.clearDice(); }
     mode = value;
     world?.resetView();
     try { localStorage.setItem(key, mode); } catch { }
     draw(false);
   }
-  viewport.addEventListener('board-render-toggle', () => {
-    if (unavailable) return;
-    threeD = !threeD;
-    queuedRoll = null;
-    world?.clearDice();
-    try { localStorage.setItem(renderKey, threeD ? 'on' : 'off'); } catch { }
-    draw(false);
-  });
   follow.addEventListener("click", () => { if (!follow.disabled) setMode("follow"); });
   full.addEventListener("click", () => setMode("full"));
   new MutationObserver(records => {
@@ -118,7 +107,7 @@ export function mountBoardCamera(board, boardData, gameId) {
     onEvent(event) {
       if (event.type !== 'rolled') return;
       if (!Array.isArray(event.dice)) { queuedRoll = null; world?.clearDice(); return; }
-      if (!threeD || unavailable) return;
+      if (mode !== "follow" || unavailable) return;
       const roll = { ...event, from: state?.pending?.kind === 'move' ? state.pending.from : state?.players.find(p => p.id === event.player)?.position };
       if (world) world.rollDice(roll);
       else queuedRoll = { event: roll, at: performance.now() };

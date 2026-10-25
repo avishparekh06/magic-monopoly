@@ -138,20 +138,16 @@ never change balances, board positions, dice or saved game history.
 
 ### Board view
 
-The board toolbar has a **3D on / 3D off** toggle, including in fullscreen. It
-remembers the choice in this browser. Off shows the flat full board, skips initial
-WebGL loading and pauses an already-loaded renderer; game actions and token
-movement continue. Turning it on restores the selected 3D camera view.
-`node tests/browser/render-toggle.mjs` verifies switching, persistence, renderer
-shutdown, movement, fullscreen, mobile fit and graphics-error fallback.
+**Full board** shows the complete 2D storybook map. **Follow token** opens the
+3D world and follows the active piece. The same view switch works in fullscreen;
+there is no separate 2D/3D toggle. The last selected view is remembered per game.
+The full board stays available when WebGL is unavailable.
 
-The board page also has **Follow token** and **Full board** buttons. The lobby shows all 40 spaces;
-when the game starts, Follow token opens a 3D miniature fairy-tale world with buildings,
-towers, trees, raised spaces, and three-dimensional pieces. Its cinematic camera follows
-the existing walking-token animation, then follows the next active player. Drag or use the
-left/right arrow keys on the view to look around; click Follow token again to recenter.
-Full board pulls the camera back to show all 40 spaces in the same 3D world. The selected view is remembered for that
-game in this browser. The overview fits the board on wide and portrait screens. If WebGL is unavailable, the flat map and all game controls still work.
+The 2D map uses the miniature world's cream tiles, timber-and-gold frame, green
+castle grounds, pond and plum roofs. The lobby shows all 40 spaces. In Follow token,
+the camera follows the existing walking animation and then the next active player.
+Drag or use the left/right arrow keys to look around; click Follow token again to recenter.
+Full board returns to the complete flat map without changing the game or token movement.
 Three.js 0.180.0 is served locally from `static/vendor/three/` with its MIT license; the 3D
 view makes no CDN requests and does not change the game engine.
 
