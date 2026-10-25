@@ -158,7 +158,7 @@ mountScene();
 <script type="module">
 import { connect, toast, h, narrate, stopNarration, onNarration, isNarrating } from "/static/net.js";
 import { characterSvg } from "/static/avatars.js";
-import { loadBoard, createBoardView } from "/static/board.js";
+import { loadBoard, createBoardView, listening } from "/static/board.js";
 import { mountBoardCamera } from "/static/board-camera.js";
 import { mountBoardActions } from "/static/board-actions.js";
 
@@ -168,6 +168,7 @@ const [boardData, cardData, config] = await Promise.all([loadBoard(), fetch("/ap
 // The dev panel is a popup behind a corner button, and only exists with --dev.
 const devPanel = document.getElementById("dev"), devToggle = document.getElementById("dev-toggle");
 devToggle.hidden = !config.dev;
+listening.all = config.voice === "muse";
 devToggle.onclick = () => { devPanel.hidden = !devPanel.hidden; if (!devPanel.hidden) setMirrorMenu(false); };
 document.getElementById("dev-close").onclick = () => { devPanel.hidden = true; };
 const board = createBoardView(document.getElementById("board"), boardData);
@@ -234,7 +235,7 @@ function stopMic() {
 let clip = null;
 function maybeListen() {
   const deciding = state && state.phase === "WAITING_FOR_DECISION" && state.pending?.kind === "decision" &&
-    state.players.find((p) => p.id === state.pending.player)?.kind === "in_person";
+    (config.voice === "muse" || state.players.find((p) => p.id === state.pending.player)?.kind === "in_person");
   // Never record while the Mirror is talking (or just after): it would hear its own "yes or no?".
   const mirrorTalking = isNarrating() || performance.now() < mic.quietUntil;
   if (mic.on && deciding && mirrorTalking && !mic.busy) micStatus("Waiting for the Mirror to finish…");

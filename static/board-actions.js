@@ -11,7 +11,7 @@ export function mountBoardActions(viewport, board, cards, send, { dev = false, v
   // Outside dev mode the board shows no Buy / No buttons when the answer comes another way: the in-person
   // player says it aloud (Muse voice), a remote player taps it on their phone.
   const noButtons = who => !dev && (player(who)?.kind !== 'in_person' || voice === 'muse');
-  const answerHint = who => player(who)?.kind === 'in_person' ? `${name(who)}, say yes or no.` : `${name(who)} chooses on their phone.`;
+  const answerHint = who => player(who)?.kind === 'in_person' || voice === 'muse' ? `${name(who)}, say yes or no.` : `${name(who)} chooses on their phone.`;
   let state = null, connected = false, busy = false, receipt = null, error = '';
   let pendingKey = '', diceRolling = false, waitingForDice = false, lastDigitalRoll = null;
   const status = h('div', { class: 'game-turn-status', role: 'status', hidden: true });   // the board centre says it already

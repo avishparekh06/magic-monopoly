@@ -274,6 +274,10 @@ function injectStyles() {
   document.head.append(style);
 }
 
+// With Muse voice the board's mic hears every player's yes/no, not only the in-person player's.
+// board.html sets this from /api/config.
+export const listening = { all: false };
+
 // One sentence describing what the game is waiting for, from `viewer`'s
 // point of view ("board" for the laptop, or a player id for a remote player's phone).
 export function statusText(state, boardData, viewer) {
@@ -281,6 +285,7 @@ export function statusText(state, boardData, viewer) {
   const cur = state.players.find((p) => p.id === state.current_player);
   const pend = state.pending;
   const place = (i) => boardData.squares[i].name;
+  const hears = (who) => who.kind === "in_person" || (listening.all && viewer === "board");
   switch (state.phase) {
     case "LOBBY": return "";
     case "WAITING_FOR_ROLL":
@@ -292,11 +297,11 @@ export function statusText(state, boardData, viewer) {
       const who = state.players.find((p) => p.id === pend.player);
       if (pend.type === "jail") {
         if (viewer === who.id) return `Pay ${pend.price} gold to leave Rapunzel's Tower?`;
-        if (who.kind === "in_person") return `${who.name}, pay ${pend.price} gold to leave the tower? Say yes or no`;
+        if (hears(who)) return `${who.name}, pay ${pend.price} gold to leave the tower? Say yes or no`;
         return `${who.name} is deciding whether to leave the tower`;
       }
       if (viewer === who.id) return `Buy ${place(pend.square)} for ${pend.price} gold?`;
-      if (who.kind === "in_person") return `${who.name}, buy ${place(pend.square)} for ${pend.price} gold? Say yes or no`;
+      if (hears(who)) return `${who.name}, buy ${place(pend.square)} for ${pend.price} gold? Say yes or no`;
       return `${who.name} is deciding about ${place(pend.square)}`;
     }
     case "WAITING_FOR_PAYMENT": {
