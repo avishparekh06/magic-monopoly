@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" fill="none">
+  <defs>
+    <g id="pine">
+      <ellipse cy="14" rx="12" ry="6" fill="#315944" opacity=".35" />
+      <path d="M-2 0h4v18h-4z" fill="#73553a" />
+      <path d="M0-30 17 6H-17z" fill="#386653" />
+      <path d="M0-30V6H-17z" fill="#528571" />
+      <path d="M0-17 20 16H-20z" fill="#416f5b" />
+    </g>
+    <g id="ivy-leaf">
+      <path d="M0 0C-15-3-18-14-17-20-5-20 4-13 0 0" fill="#365e44" />
+      <path d="M0 0-12-15" fill="none" stroke="#709361" stroke-width="1.2" />
+    </g>
+  </defs>
+  <g id="rapunzel-tower" transform="translate(-6 46)">
+    <ellipse cx="311" cy="398" rx="86" ry="25" fill="#315944" opacity=".4" />
+    <path d="M246 230H360V388L344 401H246Z" fill="#b39acb" />
+    <path d="M246 230H327V401H246Z" fill="#d9c7ed" />
+    <path d="M327 230H360V388L327 401Z" fill="#c3acd9" />
+    <path d="M246 274H327M246 314H327M246 354H327M263 254V274M296 274V294M272 314V334M309 354V374" fill="none" stroke="#c3aed9" stroke-width="2" />
+    <path d="M233 185H372V236L356 247H247L233 236Z" fill="#c3acd9" stroke="#a38aba" stroke-width="2" />
+    <path d="M233 185H341V237H233Z" fill="#e2d2f2" />
+    <path d="M228 185 299 104 378 185 359 198H243Z" fill="#af90cc" />
+    <path d="M228 185 299 104 299 190H243Z" fill="#c6a8df" />
+    <!-- Pink waving MLH pennant, attached to the roof's flagpole. -->
+    <path d="M299 104V33" stroke="#d7badb" stroke-width="3" stroke-linecap="round" />
+    <circle cx="299" cy="32" r="3" fill="#f8c5df" />
+    <path d="M302 40C330 23 365 53 398 32L400 82C368 102 334 71 302 90Z" fill="#eaa7c9" stroke="#f7d4e7" stroke-width="1.5" />
+    <path d="M305 42C333 27 366 57 395 37" fill="none" stroke="#f9dcec" stroke-width="1" />
+    <g fill="#623751" aria-label="MLH Major League Hacking">
+      <!-- Block lettering keeps the logo crisp without an external font. -->
+      <path d="M316 70V47H321L327 57L333 47H338V70H332V57L327 65L322 57V70Z M343 47H349V64H360V70H343Z M365 47H371V55H381V47H387V70H381V61H371V70H365Z" />
+      <text x="351" y="78" text-anchor="middle" font-family="Arial,sans-serif" font-size="4.7" font-weight="700" letter-spacing=".15">MAJOR LEAGUE HACKING</text>
+    </g>
+    <path d="M272 224V203C272 184 305 184 305 203V224Z" fill="#785b96" stroke="#a38aba" stroke-width="4" />
+    <path d="M278 218V204C278 191 299 191 299 204V218Z" fill="#ffe681" />
+    <path d="M288.5 194V218M278 207H299" stroke="#c7a25d" stroke-width="1.3" />
+    <path d="M290 219C300 248 277 268 293 294S282 337 299 363 298 385 289 393" fill="none" stroke="#9c783b" stroke-width="10" stroke-linecap="round" />
+    <path d="M290 219C300 248 277 268 293 294S282 337 299 363 298 385 289 393" fill="none" stroke="#e4c76c" stroke-width="7" stroke-linecap="round" />
+    <path d="M290 219C300 248 277 268 293 294S282 337 299 363 298 385 289 393" fill="none" stroke="#f7df96" stroke-width="2" stroke-dasharray="3 5" />
+    <g fill="none" stroke="#416a45" stroke-width="4" stroke-linecap="round">
+      <path d="M244 402C267 380 233 356 255 331S238 289 258 271 240 241 250 220" />
+      <path d="M337 400C316 375 354 352 334 325S353 290 337 264 362 237 354 212" />
+      <path d="M248 357Q271 349 274 330M340 307Q317 293 319 277M255 267Q279 258 277 243" />
+    </g>
+    <g>
+      <use href="#ivy-leaf" x="247" y="384" transform="rotate(-40 247 384)" />
+      <use href="#ivy-leaf" x="250" y="362" transform="rotate(95 250 362)" />
+      <use href="#ivy-leaf" x="248" y="340" transform="rotate(-35 248 340)" />
+      <use href="#ivy-leaf" x="248" y="307" transform="rotate(95 248 307)" />
+      <use href="#ivy-leaf" x="255" y="279" transform="rotate(-35 255 279)" />
+      <use href="#ivy-leaf" x="250" y="250" transform="rotate(85 250 250)" />
+      <use href="#ivy-leaf" x="274" y="330" transform="rotate(40 274 330)" />
+      <use href="#ivy-leaf" x="277" y="245" transform="rotate(50 277 245)" />
+      <use href="#ivy-leaf" x="333" y="380" transform="rotate(75 333 380)" />
+      <use href="#ivy-leaf" x="339" y="352" transform="rotate(-65 339 352)" />
+      <use href="#ivy-leaf" x="334" y="325" transform="rotate(75 334 325)" />
+      <use href="#ivy-leaf" x="341" y="290" transform="rotate(-65 341 290)" />
+      <use href="#ivy-leaf" x="338" y="262" transform="rotate(75 338 262)" />
+      <use href="#ivy-leaf" x="354" y="230" transform="rotate(-45 354 230)" />
+      <use href="#ivy-leaf" x="319" y="280" transform="rotate(-65 319 280)" />
+    </g>
+    <g fill="#c18c9f">
+      <circle cx="252" cy="324" r="3" />
+      <circle cx="338" cy="364" r="3" />
+      <circle cx="343" cy="277" r="3" />
+      <circle cx="250" cy="247" r="3" />
+    </g>
+    <path d="M246 401H329L343 394V403L330 411H239V404Z" fill="#b49acb" />
+  </g>
+</svg>

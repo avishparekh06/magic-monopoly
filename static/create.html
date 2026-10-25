@@ -6,9 +6,9 @@
   <link rel="preload" href="/static/fonts/planewalker/regular.otf" as="font" type="font/otf" crossorigin>
   <link rel="stylesheet" href="/static/typography.css">
   <title>Monopoly</title>
-  <link rel="stylesheet" href="/static/fairytale.css">
-  <link rel="stylesheet" href="/static/lobby-playground.css">
-  <link rel="stylesheet" href="/static/session-hub.css?v=account-forms-7">
+  <link rel="stylesheet" href="/static/fairytale.css?v=home-centered-1">
+  <link rel="stylesheet" href="/static/lobby-playground.css?v=full-width-1">
+  <link rel="stylesheet" href="/static/session-hub.css?v=hackily-case-1">
 </head>
 <body>
   <main class="page">
@@ -34,11 +34,14 @@
     </section>
 
     <section id="home-menu" class="tag" hidden>
-      <h2>Your next chapter</h2>
+      <h2><span class="hackily-initial">H<svg viewBox="0 0 32 36" aria-hidden="true"><path d="M2 2h10v2L9 5v10h14V5l-3-1V2h10v2l-3 1v25l3 1v2H20v-2l3-1V18H9v12l3 1v2H2v-2l3-1V5L2 4Z" fill="#62445e"/></svg></span>ackily Ever After</h2>
       <p class="home-menu-note">Start a new tale or pick up a saved game.</p>
       <button id="home-play" class="btn wood" type="button">Start Game</button>
       <button id="home-history" class="btn ink" type="button">Game history &amp; stats</button>
-      <p id="home-account-note" class="home-menu-note">Play as a guest, or sign in from History & stats.</p>
+      <div class="home-account-entry">
+        <p id="home-account-note" class="home-menu-note">Play as a guest, or sign in to save your stats.</p>
+        <button id="home-signin" class="btn ink small" type="button">Sign in</button>
+      </div>
     </section>
 
     <!-- Step 1: who's playing -->
@@ -50,8 +53,10 @@
       <div id="seat-fields"></div>
 
       <p id="form-error" class="error-text" hidden></p>
-      <button class="btn wood" type="submit">Create the game</button>
-      <button class="btn ink small" type="button" id="back-to-menu">Back</button>
+      <div class="setup-actions">
+        <button class="btn ink" type="button" id="back-to-menu">Back</button>
+        <button class="btn wood" type="submit">Create the game</button>
+      </div>
     </form>
 
     <!-- Games saved on this laptop: resume or review them -->
@@ -83,7 +88,7 @@
 
 <script src="/static/qrcode.min.js"></script>
 <script type="module">
-import { mountSessionHub } from "/static/session-hub.js";
+import { mountSessionHub } from "/static/session-hub.js?v=pumpkin-delete-1";
 import { mountLobbyPlayground } from "/static/lobby-playground.js";
 import { connect, toast, h } from "/static/net.js";
 import { mountScene } from "/static/scene.js";
@@ -184,6 +189,8 @@ const hub = mountSessionHub({ onNewGame: account => {
   if (account) document.getElementById("host-name").value = Array.from(account.display_name).slice(0, 20).join("");
   document.getElementById("host-name").focus();
 } });
+let homeAccount = null;
+document.getElementById("home-signin").onclick = () => homeAccount ? hub.openProfile() : hub.openAuth(false);
 document.getElementById("home-play").onclick = () => hub.openPlay();
 document.getElementById("home-history").onclick = () => hub.openHistory();
 document.getElementById("guest-stats").onclick = () => hub.openProfile();
@@ -193,7 +200,9 @@ document.getElementById("back-to-menu").onclick = () => {
 };
 window.addEventListener("accountchange", event => {
   const account = event.detail;
-  document.getElementById("home-account-note").textContent = account ? `Playing as ${account.display_name}. Your results are saved to this account.` : "Play as a guest, or sign in from History & stats.";
+  homeAccount = account;
+  document.getElementById("home-signin").textContent = account ? "My account" : "Sign in";
+  document.getElementById("home-account-note").textContent = account ? `Playing as ${account.display_name}. Your results are saved to this account.` : "Play as a guest, or sign in to save your stats.";
   if (lastLobbyState) refreshSeatAccounts(lastLobbyState.game_id);
 });
 

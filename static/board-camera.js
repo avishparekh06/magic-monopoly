@@ -73,7 +73,7 @@ export function mountBoardCamera(board, boardData, gameId) {
     const square = token ? Number(token.dataset.square) : player?.position;
     label.textContent = zoomed
       ? `Following ${player.name} · ${boardData.squares[square]?.name || "on the move"}`
-      : wants3D && loading ? "Opening the storybook world…" : "Full board · All 40 spaces";
+      : wants3D && loading ? "Opening the storybook world…" : "2D view · All 40 spaces";
     board.style.transition = "none";
     board.style.transform = "none";
     world?.focus(player?.id);

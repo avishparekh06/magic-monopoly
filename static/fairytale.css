@@ -400,3 +400,79 @@ input[readonly] { font-family: var(--font-game); font-size: 13px; color: var(--i
 .guests .guest-attendance:disabled { opacity: .6; cursor: wait; }
 
 @media (max-width: 500px) { .board-row .who { flex-basis: 100%; } }
+
+/* Give player setup a wider, centered sheet and a balanced action row. */
+.page:has(#create:not([hidden])) { width: 100%; max-width: 940px; margin-inline: auto; padding: 24px 24px 70px; }
+#create { padding: 30px 32px; }
+#create h2 { font-size: clamp(32px, 3.5vw, 42px); margin-bottom: 20px; }
+#create input, #create select { min-height: 54px; }
+#create #seat-fields { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); column-gap: 24px; margin-top: 16px; }
+#create #seat-fields > label { margin: 0 0 7px; }
+#create #seat-fields > label:nth-child(1) { grid-column: 1; grid-row: 1; }
+#create #seat-fields > .seat-row:nth-child(2) { grid-column: 1; grid-row: 2; }
+#create #seat-fields > label:nth-child(3) { grid-column: 2; grid-row: 1; }
+#create #seat-fields > .seat-row:nth-child(4) { grid-column: 2; grid-row: 2; }
+#create .seat-row { grid-template-columns: minmax(0,1fr); gap: 10px; }
+.setup-actions { display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 18px; align-items: stretch; margin-top: 28px; }
+#create .setup-actions .btn { margin: 0; width: 100%; min-height: 60px; border-radius: 6px; padding: 10px 18px; }
+#create .setup-actions .wood { font-size: clamp(24px, 3vw, 30px); }
+#create #back-to-menu { background: #fff4dd; font-size: 22px; border-color: #9d7b59; box-shadow: 0 3px 0 #d0b99a; }
+@media (max-width: 650px) {
+  .page:has(#create:not([hidden])) { padding: 22px 15px 65px; }
+  #create { padding: 24px 20px; }
+  #create #seat-fields { display: block; margin-top: 18px; }
+  #create #seat-fields > label { margin-top: 18px; }
+  #create .seat-row { grid-template-columns: minmax(0,1fr) 150px; }
+  #create input, #create select { font-size: 18px; }
+  .setup-actions { grid-template-columns: 90px minmax(0,1fr); gap: 12px; }
+  #create .setup-actions .btn { min-height: 54px; padding: 9px; }
+  #create .setup-actions .wood { font-size: 23px; }
+  #create #back-to-menu { font-size: 19px; }
+}
+@media (max-width: 370px) { #create .seat-row { grid-template-columns: minmax(0,1fr); } }
+.page:has(#create:not([hidden])) #home-lobby-scene { display: none; }
+#create { z-index: 3; }
+@media (max-width: 650px) {
+  #create { margin-top: 40px; }
+  #create::before, #create::after { top: -40px; height: 52px; }
+}
+@media (max-width: 370px) {
+  #create { padding: 20px 16px; }
+  #create .setup-actions .btn { padding-block: 8px; }
+  #create .setup-actions .wood { font-size: 20px; }
+}
+
+/* Quiet the scenery during a match without dimming the board or its controls. */
+body:is(.board-page, .phone-page).gameplay-focus { background: #0b1429; }
+body:is(.board-page, .phone-page).gameplay-focus > .scene { opacity: .16; }
+body:is(.board-page, .phone-page).gameplay-focus > .scene * { animation-play-state: paused; }
+body:is(.board-page, .phone-page).gameplay-focus .sparkle { display: none; }
+
+/* Orientation is a suggestion; portrait play remains available. */
+.mobile-play-hint { display: none; }
+@media (max-width: 600px) and (orientation: portrait) {
+  .mobile-play-hint { display: block; width: 100%; margin: 0 0 8px; color: #eadbc0; font: 15px/1.4 var(--font-game); text-align: center; }
+}
+@media (pointer: coarse) {
+  :is(.board-page, .phone-page) :is(button, .btn, select, summary) { touch-action: manipulation; }
+  :is(.board-page, .phone-page) :is(input, select, textarea) { font-size: 16px; }
+}
+
+/* Center the home entry on the screen instead of reserving a narrow right column. */
+.page:has(#home-menu:not([hidden])) {
+  width: 100%; max-width: 840px; min-height: 100dvh; margin-inline: auto;
+  padding: 32px 24px 190px; display: flex; flex-direction: column; justify-content: center; gap: 28px;
+}
+.page:has(#home-menu:not([hidden])) > .title { order: 0; padding-top: 0; }
+.page:has(#home-menu:not([hidden])) .title .banner { font-size: clamp(48px, 6vw, 88px); }
+.page:has(#home-menu:not([hidden])) #home-menu { order: 1; margin-top: 0; }
+.page:has(#home-menu:not([hidden])) #home-lobby-scene { order: 2; }
+@media (min-width: 960px) and (max-height: 780px) {
+  .page:has(#home-menu:not([hidden])) { padding-top: 24px; padding-bottom: 70px; gap: 24px; }
+  .page:has(#home-menu:not([hidden])) .title .banner { font-size: 64px; }
+}
+@media (max-width: 959px) {
+  .page:has(#home-menu:not([hidden])) { max-width: 700px; min-height: 0; padding: 24px 16px 32px; justify-content: flex-start; gap: 24px; }
+  .page:has(#home-menu:not([hidden])) .title .banner { font-size: clamp(34px, 9.2vw, 64px); }
+  .page:has(#home-menu:not([hidden])) #home-lobby-scene .home-roaming { height: 190px; margin: 0; }
+}

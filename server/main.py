@@ -7,6 +7,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import hmac
+import random
+import time
 import logging
 import socket
 from contextlib import asynccontextmanager
@@ -19,8 +22,8 @@ from pydantic import BaseModel
 
 from .adapters import BRIDGES, MIRRORS, VOICES, make_adapters
 from .adapters.mirror import TemplateMirror
-from .demo import DEMO_MOVES, DEMO_PLAYERS
-from .engine import SYSTEM, EngineError
+from .demo import DEMO_FORCED_ROLLS, DEMO_MOVES, DEMO_PLAYERS, is_fresh_demo
+from .engine import SYSTEM, EngineError, new_game, to_public
 from .rooms import GameRoom
 from .rules.monopoly import board, cards
 from .store import Store
@@ -123,6 +126,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     dev: show the board page's dev panel (manual dice, cards, voice, payments, motors).
     camera_cmd: start this command (vision/live.py --post) as a child once the server is up, stop it with the server."""
     tts.use(speech == "elevenlabs")
+    TemplateMirror.hears_all = voice == "muse"      # the Mirror tells every player to answer aloud
     rooms: dict[str, GameRoom] = {}
 
     def adapters():
@@ -151,6 +155,22 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         if room is not None:
             await room.broadcast(msg)
 
+    jog_axes = lane_axes if bridge == "http" and lane_axes else {2: virtual_axis} if virtual_axis is not None else {}
+    demo_on = bool(dev and jog_axes)       # demo mode: the belt tool drives the tokens and the panel is on
+
+    def arm_demo(room: GameRoom) -> None:
+        room.forced_rolls = {pid: list(rolls) for pid, rolls in DEMO_FORCED_ROLLS.items()}
+
+    async def new_demo_room() -> GameRoom:
+        """A started game with Player 1 and 2 on their lined-up squares. It is saved like any other game, so it
+        shows up under "Continue game"; the scripted belt moves play when its board opens."""
+        room = await GameRoom.create(DEMO_PLAYERS, adapters(), seed, store)
+        room.dev = dev
+        arm_demo(room)
+        rooms[room.game_id] = room
+        await room.dispatch(SYSTEM, {"action": "start", "force": True})
+        return room
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if tunnel and not net["public"]:
@@ -169,6 +189,12 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
                          saved["state"].get("turn"), saved["state"].get("phase"))
             except Exception as e:                       # one bad row must not block the server
                 log.warning("could not resume game %s: %s", saved["game_id"], e)
+        if demo_on:
+            ready = [r for r in rooms.values() if is_fresh_demo(r.state)]
+            for r in ready:
+                arm_demo(r)
+            if not ready:
+                await new_demo_room()
         yield
         watchdog.cancel()
         if camera_proc:
@@ -187,8 +213,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         from .hardware import motor_routes
         app.router.routes.extend(r for r in motor_routes() if getattr(r, "path", None) != "/vision/events")
 
-    jog_axes = lane_axes if bridge == "http" and lane_axes else {2: virtual_axis} if virtual_axis is not None else {}
-    jog_on = bool(dev and jog_axes)
+    jog_on = demo_on
     if jog_on:   # the demo panel's motor buttons, passed on to the belt tool that owns the Arduino
         import os
         from .jog import jog_router
@@ -272,28 +297,68 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             await room.belt_reported(lane, square, source="push")
         return {"ok": True, "games": [r.game_id for r in targets]}
 
+    management_lock = asyncio.Lock()
+
+    async def manage_game(game_id: str, host: str, request: Request, operation: str):
+        same_origin(request)
+        async with management_lock:
+            room = rooms.get(game_id)
+            async with room.lock if room else asyncio.Lock():
+                saved = store.game(game_id)
+                if not saved:
+                    raise HTTPException(404, "no such game")
+                if not hmac.compare_digest(host.encode(), saved["host_token"].encode()):
+                    raise HTTPException(403, "wrong host token")
+                state = room.state if room else None
+                if operation != 'end' and state and state.phase.value == 'MOVING':
+                    raise HTTPException(409, "Wait for the current token move to finish before resetting or deleting this game.")
+                if operation == 'reset':
+                    snapshot = to_public(state) if state else saved['state']
+                    specs = [{'name': player['name'], 'kind': player['kind']} for player in snapshot['players']]
+                    fresh_state = new_game(game_id, specs)
+                    for player in fresh_state.players:
+                        player.connected = player.kind == 'in_person' or bool(room and player.id in room.seats)
+                    if not room:
+                        room = GameRoom(fresh_state, adapters(), random.Random(saved['seed']), store,
+                                        host_token=saved['host_token'], seat_tokens=saved['seat_tokens'])
+                        await room._start_adapters()
+                    store.reset_game(game_id, specs, to_public(fresh_state))
+                    room.cancel_background()
+                    room.generation += 1
+                    room.state = fresh_state
+                    room.seq = 0
+                    room.rng.seed(saved['seed'])
+                    room.dev = dev
+                    room.debug_sync = False
+                    room.belt_positions.clear()
+                    room.lobby_positions = {p.id: {'x': .25 + i * .25, 'y': .62, 'jump': 0} for i, p in enumerate(fresh_state.players)}
+                    room._lobby_sent.clear()
+                    room._lobby_jumped.clear()
+                    room.updated_at = time.time()
+                    rooms[game_id] = room
+                    await room.broadcast({'type': 'state', 'state': to_public(fresh_state)})
+                    await room.broadcast({'type': 'lobby_presence', 'players': room.lobby_positions})
+                    return {'ok': True, 'game_id': game_id, 'status': 'active', 'host_url': f'/?game={game_id}&host={room.host_token}'}
+                if operation == 'delete':
+                    store.delete_game(game_id)
+                else:
+                    store.set_status(game_id, 'abandoned')
+                if room:
+                    await room.close_game('This game was deleted by the host.' if operation == 'delete' else 'This game was ended by the host.')
+                    rooms.pop(game_id, None)
+                return {'ok': True, 'game_id': game_id, 'status': 'deleted' if operation == 'delete' else 'abandoned'}
+
     @app.post("/api/games/{game_id}/abandon")
-    async def abandon_game(game_id: str, host: str):
-        """Host gives up on a game: it stops being resumed on restart, its links die, its history stays."""
-        room = rooms.get(game_id)
-        saved = store.game(game_id)
-        token = room.host_token if room else (saved or {}).get("host_token")
-        if token is None:
-            raise HTTPException(404, "no such game")
-        if host != token:
-            raise HTTPException(403, "wrong host token")
-        if room:
-            if room._poll_task:
-                room._poll_task.cancel()
-            for ws in room.all_sockets():
-                await room._safe_send(ws, {"type": "error", "message": "this game was ended by the host", "fatal": True})
-                try:
-                    await ws.close(code=4410)
-                except Exception:
-                    pass
-            rooms.pop(game_id, None)
-        store.set_status(game_id, "abandoned")
-        return {"ok": True, "game_id": game_id, "status": "abandoned"}
+    async def abandon_game(game_id: str, host: str, request: Request):
+        return await manage_game(game_id, host, request, 'end')
+
+    @app.post("/api/games/{game_id}/reset")
+    async def reset_game(game_id: str, host: str, request: Request):
+        return await manage_game(game_id, host, request, 'reset')
+
+    @app.post("/api/games/{game_id}/delete")
+    async def delete_game(game_id: str, host: str, request: Request):
+        return await manage_game(game_id, host, request, 'delete')
 
     @app.get("/api/games")
     async def list_games(request: Request):
@@ -481,7 +546,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     async def config():
         """What the pages should show: the dev panel and on-screen dice only in dev mode, and whether
         yes/no is answered by voice (Muse) so the board can leave out the Buy / No buttons."""
-        return {"dev": dev, "voice": voice, "jog": jog_on, "jog_players": sorted(jog_axes)}
+        return {"dev": dev, "voice": voice, "jog": jog_on, "jog_players": sorted(jog_axes), "demo": demo_on}
 
     @app.post("/api/demo/resume")
     async def demo_resume(request: Request):
@@ -491,12 +556,20 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             raise HTTPException(404, "demo mode needs --dev")
         if not is_local(request):
             raise HTTPException(403, "demo resume is for the board laptop")
-        room = await GameRoom.create(DEMO_PLAYERS, adapters(), seed, store)
-        room.dev = dev
-        rooms[room.game_id] = room
-        await room.dispatch(SYSTEM, {"action": "start", "force": True})
+        room = await new_demo_room()
+        room.demo_started = True
         room._spawn(room.demo_moves(DEMO_MOVES))
         return {"ok": True, "game_id": room.game_id, "board_url": f"/board/{room.game_id}"}
+
+    @app.get("/api/games/{game_id}/invites")
+    async def game_invites(game_id: str, request: Request):
+        """The phone invite links of this game's remote players, as full addresses (laptop only, for the board page)."""
+        if not is_local(request):
+            raise HTTPException(403, "invite links are shown on the board laptop only")
+        room = get_room(game_id)
+        base = net["public"] or f"http://{lan_ip()}:{request.url.port or 80}"
+        return {"players": [{"id": pid, "name": room.state.player(pid).name, "url": base + path}
+                            for pid, path in ((p, l) for p, l in room.join_links().items())]}
 
     @app.get("/api/lan")
     async def lan(request: Request):
@@ -549,6 +622,9 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
                 (ws.client is None or ws.client.host in ("127.0.0.1", "::1", "testclient"))
             actor, kind = (SYSTEM, "board") if local else (None, "viewer")
             await room.connect_viewer(kind, ws)
+            if local and demo_on and not room.demo_started and is_fresh_demo(room.state):
+                room.demo_started = True      # opening the demo game's board plays its scripted belt moves, once
+                room._spawn(room.demo_moves(DEMO_MOVES))
         else:
             return await reject("missing seat, host or role", 4400)
 

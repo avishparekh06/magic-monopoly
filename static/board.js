@@ -8,9 +8,9 @@
 // Square 0 (Once Upon a Time) is bottom-right; play runs left along the bottom,
 // up the left side, right along the top and down the right side.
 
-import { tokenGlyph } from "/static/net.js";
+import { tokenGlyph, h } from "/static/net.js";
 import { DICE_TOSS_MS, DICE_HOLD_MS, TOKEN_STEP_MS, TOKEN_LANDING_MS, MAX_TOKEN_WALK_MS } from '/static/board-motion.js';
-import { boardIcon } from "/static/icons.js";
+import { boardIcon, lineIcon } from "/static/icons.js";
 
 
 // Movement timing is shared with the presentation regression checks.
@@ -39,6 +39,8 @@ export function createBoardView(el, boardData) {
     cell.className = `mm-sq side-${side}${corner ? " corner" : ""}`;
     cell.style.gridArea = `${row} / ${col}`;
     cell.title = sq.name;
+    cell.dataset.kind = sq.type;
+    if (sq.deck) cell.dataset.deck = sq.deck;
 
     const group = sq.group && boardData.groups[sq.group];
     if (group) {
@@ -49,7 +51,11 @@ export function createBoardView(el, boardData) {
     }
     const body = document.createElement("div");
     body.className = "mm-body";
-    const illustration = boardIcon(sq.id);
+    let illustration = boardIcon(sq.id);
+    if (!illustration && sq.type === 'property') {
+      illustration = h('span', { class: 'mm-icon mm-space-art', 'aria-hidden': 'true' },
+        h('img', { src: `/static/art/properties/${sq.id}.svg`, alt: '', width: 16, height: 10, decoding: 'async' }));
+    }
     if (illustration) body.append(illustration);
     body.append(span("mm-name", sq.name));
     if (sq.price) body.append(span("mm-price", `${sq.price} G`));
@@ -62,6 +68,10 @@ export function createBoardView(el, boardData) {
   const center = document.createElement("div");
   center.className = "mm-center";
   el.append(center);
+  el.append(h('div', { class: 'mm-deck-zones', 'aria-hidden': 'true' },
+    ...[['crystal', 'Crystal Ball', 'orb'], ['chest', 'Chest of Spells', 'scroll']].map(([deck, label, icon]) =>
+      h('div', { class: `mm-deck-zone mm-deck-${deck}` }, lineIcon(icon), h('span', {}, label)))));
+
 
   // Tokens float on a layer above the grid so they can glide between squares.
   const layer = document.createElement("div");

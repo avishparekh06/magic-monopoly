@@ -88,6 +88,22 @@ class Store:
         with self.db:
             self.db.execute("UPDATE games SET status = ?, updated_at = ? WHERE game_id = ?", (status, time.time(), game_id))
 
+    def reset_game(self, game_id: str, specs: list[dict], state: dict) -> None:
+        """Clear one match's progress atomically, retaining invitations and account links."""
+        now = time.time()
+        with self.db:
+            self.db.execute('DELETE FROM actions WHERE game_id=?', (game_id,))
+            self.db.execute("UPDATE games SET specs=?, status='active', created_at=?, updated_at=? WHERE game_id=?",
+                            (json.dumps(specs), now, now, game_id))
+            self.db.execute("INSERT INTO actions VALUES (?, 0, ?, 'system', ?, '[]', ?)",
+                            (game_id, now, json.dumps({'action': 'new_game'}), json.dumps(state)))
+
+    def delete_game(self, game_id: str) -> None:
+        """Remove one game and its contributions to stats, never its player accounts."""
+        with self.db:
+            for table in ('actions', 'game_accounts', 'game_owners', 'games'):
+                self.db.execute(f'DELETE FROM {table} WHERE game_id=?', (game_id,))
+
     def games(self, status: str | None = None) -> list[dict]:
         """Newest first. Each: game_id, created_at, updated_at, specs, seed, host_token, seat_tokens, status, seq, state."""
         q = ("SELECT g.*, a.seq, a.state FROM games g JOIN actions a ON a.game_id = g.game_id "

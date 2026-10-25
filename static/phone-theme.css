@@ -62,3 +62,27 @@
   .phone-player-header .bal { font-size: 17px; padding: 7px; }
   .phone-page #decide { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Keep controls comfortable to tap and make landscape use its extra width. */
+.phone-page .wrap { padding-bottom: max(28px, env(safe-area-inset-bottom)); }
+.phone-page #game > * { min-width: 0; }
+@media (max-width: 600px) {
+  .phone-page :is(.wrap, .notice) .btn.small { min-height: 44px; }
+  .phone-page :is(input, select, textarea) { font-size: 16px; }
+  .phone-page :is(.picker, .say) summary { min-height: 44px; display: flex; align-items: center; }
+  .phone-page .wrap { padding-top: 12px; }
+  .phone-brand { margin-bottom: 14px; }
+}
+@media (orientation: landscape) and (max-height: 600px) and (min-width: 600px) {
+  .phone-page .wrap { max-width: 1050px; padding: 10px 16px 24px; }
+  .phone-brand { margin: 0 0 10px; }
+  .phone-brand .banner { font-size: 28px; }
+  .phone-brand .byline { display: none; }
+  .phone-player-header { padding: 8px 12px; margin-bottom: 12px; }
+  .phone-page #game:not([hidden]) { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); column-gap: 20px; align-items: start; }
+  .phone-page #game > * { grid-column: 2; }
+  .phone-page #game > #board { grid-column: 1; grid-row: 1 / span 10; align-self: start; }
+  .phone-page #game > .phone-turn-banner { margin-bottom: 6px; font-size: 20px; }
+  .phone-page #game > :is(.status, .where) { margin: 4px 0 10px; }
+  .phone-page .actions { margin-top: 4px; }
+}

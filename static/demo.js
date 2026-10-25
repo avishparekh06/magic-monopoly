@@ -1,5 +1,6 @@
-// Demo panel for the home page (only with --dev): jog Player 2's belt by hand onto Black Forest (Player 1 sits on
-// Gingerbread House), then "Resume (demo)" starts the demo game, plays its first moves on the belt and opens the board.
+// Demo panel for the home page (only in demo mode): jog each belt by hand onto its square (Player 1 on Gingerbread
+// House, Player 2 on Black Forest). The demo game is an ordinary saved game: "Continue game" opens its board, which
+// plays the first moves on the belt.
 import { h } from "/static/net.js";
 
 const post = async (path) => {
@@ -11,7 +12,7 @@ const post = async (path) => {
 
 export async function mountDemoPanel() {
   const config = await fetch("/api/config").then(r => r.json()).catch(() => ({}));
-  if (!config.dev) return;
+  if (!config.demo) return;
 
   const players = config.jog_players?.length ? config.jog_players : [1];
   // Where each player is lined up by hand before Resume (demo): square ids from server/board.json.
@@ -50,15 +51,9 @@ export async function mountDemoPanel() {
       btn("+50", act(() => post(`/jog/nudge${q("&steps=50")}`), "Nudged forward 50 steps"), "secondary"),
       homeBtn));
 
-  const resume = btn("Resume (demo)", act(async () => {
-    say("Starting the demo game…");
-    const { board_url } = await post("/api/demo/resume");
-    location.href = board_url;
-  }, ""), "wood");
-
   document.body.append(h("aside", {
     style: "position:fixed;left:12px;bottom:12px;z-index:50;max-width:320px;padding:12px;border-radius:10px;" +
       "background:rgba(255,248,230,.96);color:#2b2118;box-shadow:0 4px 18px rgba(0,0,0,.3)" },
     h("h4", { style: "margin:0 0 6px" }, "Demo mode"), jog,
-    h("div", { style: "margin-top:10px" }, resume), status));
+    status));
 }

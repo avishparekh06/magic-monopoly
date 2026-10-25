@@ -1,9 +1,10 @@
 // Board-only presentation and controls. All choices still go through the engine.
+import { mountMapZoom } from '/static/board-zoom.js?v=zoom-label-1';
 import { DICE_TOSS_MS } from '/static/board-motion.js';
 import { h } from '/static/net.js';
 import { statusText } from '/static/board.js';
 import { mountBoardPlayers } from '/static/board-players.js';
-import { mountSessionHub } from '/static/session-hub.js';
+import { mountSessionHub } from '/static/session-hub.js?v=pumpkin-delete-1';
 
 // dev: show the manual stand-ins for the camera and the on-screen dice (server --dev).
 // voice: "muse" when yes/no is answered out loud; then, outside dev mode, the card has no Buy / No buttons.
@@ -17,15 +18,21 @@ export function mountBoardActions(viewport, board, cards, send, { dev = false, v
   const status = h('div', { class: 'game-turn-status', role: 'status', hidden: true });   // the board centre says it already
   const content = h('section', { id: 'turn-card', class: 'game-action-card', 'aria-label': 'Current board action' });
   const errorEl = h('p', { class: 'game-action-error', role: 'alert', hidden: true });
-  const fullscreen = h('button', { id: 'game-fullscreen', class: 'btn small secondary', type: 'button', 'aria-pressed': 'false' }, 'Fullscreen');
-  const view = h('button', { id: 'game-map-toggle', class: 'btn small secondary', type: 'button' }, 'Full board');
+  const fullscreen = h('button', { id: 'game-fullscreen', class: 'btn small secondary game-fullscreen-icon', type: 'button', 'aria-pressed': 'false', 'aria-label': 'Enter fullscreen', title: 'Enter fullscreen' });
+  const view = h('button', { id: 'game-map-toggle', class: 'btn small secondary', type: 'button' }, '2D view');
   const library = mountSessionHub({ parent: viewport });
   const players = mountBoardPlayers(viewport, board, () => library.openGame(state.game_id));
   // In fullscreen the sidebar is out of view, so this is how players and their places are reached.
   const browse = h('button', { id: 'game-players', class: 'btn small secondary', type: 'button', onclick: () => players.open(), title: 'Players, owned properties, game history and stats' }, 'Players');
   const reset = h('button', { id: 'game-reset-view', class: 'btn small secondary game-reset-view', type: 'button', title: 'Reset camera (R)' }, 'Reset view');
   view.title = 'Switch between the 2D board and 3D view (M)';
-  const tools = h('div', { class: 'game-surface-tools' }, view, reset, browse, fullscreen);
+  const options = h('button', { id: 'game-options', class: 'btn small secondary', type: 'button', onclick: () => { if (state) library.openGame(state.game_id, { showOptions: true }); } }, 'Game options');
+  const lastRoll = h('span', { class: 'last-roll-badge', id: 'last-roll-badge', hidden: true });
+  const tools = h('div', { class: 'game-surface-tools' }, lastRoll, view, reset, browse, options);
+  mountMapZoom(viewport.querySelector('#board'), viewport, tools);
+  const toolbar = h('div', { class: 'game-board-toolbar', role: 'group', 'aria-label': 'Board controls' }, tools);
+  toolbar.prepend(h('p', { class: 'mobile-play-hint' }, 'For a larger board, turn your phone sideways. You can keep playing upright.'));
+  viewport.before(toolbar);
   const rollLabel = h('span', { class: 'game-roll-label' }, 'Roll Dice');
   const rollWho = h('span', { class: 'game-roll-who' });
   const rollButton = h('button', { id: 'turn-roll', class: 'game-roll-dice', type: 'button', hidden: true, onclick: () => {
@@ -37,7 +44,7 @@ export function mountBoardActions(viewport, board, cards, send, { dev = false, v
   const fallback = h('div', { class: 'game-dice-fallback', 'aria-hidden': 'true' });
   let settleTimer = null, resultTimer = null, fallbackSquare = null;
 
-  const overlay = h('div', { class: 'game-overlay' }, status, tools, h('div', { class: 'game-action-stack' }, errorEl, content), rollButton, rollResult, fallback);
+  const overlay = h('div', { class: 'game-overlay' }, status, h('div', { class: 'game-action-stack' }, errorEl, content), rollButton, rollResult, fallback, fullscreen);
   viewport.append(overlay);
   // Overlay interactions must not orbit the camera or trigger keyboard shortcuts.
   for (const event of ['pointerdown', 'keydown', 'wheel']) overlay.addEventListener(event, e => {
@@ -88,6 +95,8 @@ export function mountBoardActions(viewport, board, cards, send, { dev = false, v
     rollLabel.textContent = busy ? 'Rolling…' : 'Roll Dice';
     overlay.dataset.rollReady = String(!rollButton.hidden);
     browse.disabled = state.phase === 'LOBBY';
+    lastRoll.hidden = diceRolling || moving || !state.last_roll || state.phase === 'LOBBY';
+    lastRoll.textContent = state.last_roll ? `Last roll: ${state.last_roll}` : '';
     syncView();
     status.textContent = connected ? (diceRolling ? (waitingForDice ? 'Getting the dice ready…' : 'Rolling the dice…') : moving ? 'Moving to the next space…' : statusText(state, board, 'board')) : 'Connecting to the game…';
     errorEl.textContent = error; errorEl.hidden = !error;
@@ -148,10 +157,37 @@ export function mountBoardActions(viewport, board, cards, send, { dev = false, v
         h('div', { class: 'game-action-buttons' }, dice, submit)));
     }
   }
+  // The map scrolls during panning. Compensate in screen coordinates so this
+  // control stays anchored to the visible surface, rather than its artwork.
+  function pinFullscreenControl() {
+    const surface = viewport.getBoundingClientRect();
+    const map = viewport.querySelector('#board');
+    const bounds = viewport.dataset.render !== '3d' && Number(viewport.dataset.mapZoom || 1) === 1 && map
+      ? map.getBoundingClientRect() : surface;
+    const parent = overlay.getBoundingClientRect();
+    const size = fullscreen.getBoundingClientRect();
+    const right = Math.min(surface.right, bounds.right) - 8;
+    const bottom = Math.min(surface.bottom, bounds.bottom) - 8;
+    Object.assign(fullscreen.style, {
+      right: 'auto', bottom: 'auto',
+      left: `${right - size.width - parent.left}px`,
+      top: `${bottom - size.height - parent.top}px`
+    });
+  }
+  viewport.addEventListener('scroll', pinFullscreenControl, { passive: true });
+  const fullscreenLayout = new ResizeObserver(pinFullscreenControl);
+  fullscreenLayout.observe(viewport);
+  fullscreenLayout.observe(viewport.querySelector('#board'));
+  new MutationObserver(pinFullscreenControl).observe(viewport, { attributes: true, attributeFilter: ['data-map-zoom', 'data-render'] });
   function syncFullscreen() {
     const active = document.fullscreenElement === viewport || document.webkitFullscreenElement === viewport;
-    fullscreen.textContent = active ? 'Exit fullscreen' : 'Fullscreen';
+    (active ? overlay : toolbar).append(tools);
+    const label = active ? 'Exit fullscreen' : 'Enter fullscreen';
+    fullscreen.setAttribute('aria-label', label);
+    fullscreen.title = label;
+    fullscreen.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${active ? 'M3 9h6V3M9 9 3 3M21 15h-6v6M15 15l6 6' : 'M8 3H3v5M3 3l6 6M16 21h5v-5M21 21l-6-6'}"/></svg>`;
     fullscreen.setAttribute('aria-pressed', String(active));
+    requestAnimationFrame(pinFullscreenControl);
   }
   fullscreen.onclick = async () => {
     try {
@@ -175,6 +211,7 @@ export function mountBoardActions(viewport, board, cards, send, { dev = false, v
   }, true);
   document.addEventListener('fullscreenchange', syncFullscreen);
   document.addEventListener('webkitfullscreenchange', syncFullscreen);
+  syncFullscreen();
   view.onclick = () => document.getElementById(viewport.dataset.view === 'full' ? 'view-follow' : 'view-full').click();
   reset.onclick = () => document.getElementById(viewport.dataset.view === 'full' ? 'view-full' : 'view-follow').click();
   // A queued 3D roll starts after the current square is visible, not at packet arrival.
@@ -212,7 +249,7 @@ export function mountBoardActions(viewport, board, cards, send, { dev = false, v
   }
   new ResizeObserver(placeFlatDice).observe(viewport);
   function syncView() {
-    view.textContent = viewport.dataset.view === 'full' ? 'Change to 3D view' : 'Full board';
+    view.textContent = viewport.dataset.view === 'full' ? '3D view' : '2D view';
     view.disabled = state?.phase === 'LOBBY' || (viewport.dataset.view === 'full' && document.getElementById('view-follow').disabled);
     view.hidden = false;
     reset.hidden = viewport.dataset.render !== '3d';

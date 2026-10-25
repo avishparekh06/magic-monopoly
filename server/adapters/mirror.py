@@ -27,6 +27,8 @@ class TemplateMirror(Mirror):
     """Stub: one template per event type. In-person players have no screen, so
     every payment touching one of them also says their new balance."""
 
+    hears_all = False     # Muse voice listens to every player, so every yes/no question says "just say yes or no"
+
     async def line(self, event: dict, state: GameState) -> str | None:
         kind = event.get("type", "")
         method = getattr(self, f"_{kind}", None)
@@ -173,7 +175,7 @@ class TemplateMirror(Mirror):
 
     def _jail_offer(self, e, s):
         p = s.player(e["player"])
-        ask = "Just say yes or no." if p.kind == "in_person" else ""
+        ask = "Just say yes or no." if p.kind == "in_person" or self.hears_all else ""
         return f"{p.name}, would you like to pay {e['price']} gold to leave the tower? {ask}".strip()
 
     def _stayed_in_jail(self, e, s):

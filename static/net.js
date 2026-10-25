@@ -7,7 +7,7 @@
 // Pages redraw from "state" and treat everything else as extras.
 
 // Close codes that mean "don't try again" (sent by server/main.py and rooms.py).
-const FATAL = { 4001: "taken_over", 4400: "bad_request", 4403: "bad_link", 4404: "no_game", 4405: "in_person" };
+const FATAL = { 4001: "taken_over", 4400: "bad_request", 4403: "bad_link", 4404: "no_game", 4405: "in_person", 4410: "no_game" };
 
 export function connect(path, { onHello, onState, onMessage, onError, onClosed, onStatus } = {}) {
   let ws = null;

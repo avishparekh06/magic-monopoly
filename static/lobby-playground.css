@@ -19,3 +19,13 @@
   .lobby-play-controls { left: 10px; right: 10px; bottom: 5px; }
 }
 @media (prefers-reduced-motion: reduce) { .lobby-character, .lobby-figure { animation: none; } }
+
+/* The home courtyard spans the full viewport, with menu actions above its hit area. */
+.page:has(#home-menu:not([hidden])) .home-roaming {
+  position: fixed; left: 0; bottom: 0; width: 100vw; height: 280px; margin: 0; background: none;
+}
+.page:has(#home-menu:not([hidden])) :is(.title, #home-menu) { position: relative; z-index: 3; }
+@media (max-width: 959px) {
+  .page:has(#home-menu:not([hidden])) { padding-bottom: 260px; }
+  .page:has(#home-menu:not([hidden])) #home-lobby-scene .home-roaming { height: 280px; }
+}

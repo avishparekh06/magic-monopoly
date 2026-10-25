@@ -332,3 +332,53 @@
   position: absolute; left: 50%; bottom: calc(3% + 78px); transform: translateX(-50%); white-space: nowrap;
   background: #1a372bb8; padding: .3em .9em; border-radius: 999px; font-size: .75em; max-width: 90%; overflow: hidden; text-overflow: ellipsis;
 }
+
+/* Keep map controls outside the artwork during normal play. In native fullscreen
+   they return to the surface so the browser keeps them accessible. */
+.game-board-toolbar { display: flex; align-items: center; justify-content: flex-end; min-width: 0; }
+.board-page .game-board-toolbar .game-surface-tools { position: static; max-width: 100%; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.board-page .game-board-toolbar .game-surface-tools .btn { min-height: 40px; padding: 8px 12px; font-size: 14px; background: #f6e7c8; color: #49354e; border-color: #bca179; opacity: 1; }
+.board-page .board-viewport:fullscreen .game-surface-tools { top: 12px; right: 12px; }
+.board-page .board-viewport:fullscreen .game-surface-tools .btn { background: #f6e7c8; color: #49354e; border-color: #bca179; }
+.game-board-toolbar:empty { display: none; }
+
+@media (max-width: 980px) {
+  .game-board-toolbar { flex-wrap: wrap; }
+  .game-board-toolbar .mobile-play-hint { flex-basis: 100%; }
+  .board-page .game-board-toolbar .game-surface-tools { width: 100%; justify-content: center; }
+  .board-page .game-board-toolbar .game-surface-tools .btn { min-height: 44px; }
+  .board-page .layout { padding-bottom: max(24px, env(safe-area-inset-bottom)); }
+  .board-page .game-properties { max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; }
+  .board-page .game-action-card .btn { min-height: 44px; }
+}
+@media (max-width: 980px) and (orientation: landscape) and (max-height: 600px) {
+  .board-masthead { padding: 6px 14px; }
+  .board-page .layout { padding-inline: 12px; }
+  .board-stage { gap: 8px; }
+  .board-page .board-viewport[data-view="follow"]:not(:fullscreen) { height: max(220px, calc(100dvh - 124px)); }
+}
+
+/* A compact top-left roster leaves the board centered across the whole screen. */
+.board-page .layout { grid-template-columns: minmax(0, 1fr); }
+.board-page .board-masthead { align-items: flex-start; }
+.board-page .board-masthead .player-summary { display: block; flex: 0 1 auto; max-width: calc(100% - 140px); overflow: visible; padding: 0; }
+.board-page .player-summary .panel { padding: 8px 12px; }
+.board-page .player-summary h2 { font-size: 17px; margin: 0 0 4px; }
+.board-page .player-summary .players { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.board-page .player-summary .players li { border: 0; align-items: center; padding: 3px 6px; gap: 7px; }
+.board-page .player-summary .players .pc-char { width: 24px; height: 36px; }
+.board-page .player-summary .players .pc-name { font-size: 16px; padding: 0; max-width: 140px; overflow-wrap: anywhere; }
+.board-page .player-summary .players .bal { font-size: 14px; padding: 0; }
+.board-page .game-board-toolbar, .board-page .game-board-toolbar .game-surface-tools { justify-content: center; }
+.board-page .game-board-toolbar .map-zoom-controls .btn:nth-child(2) { min-width: 38px; padding-inline: 5px; font-size: 12px; }
+@media (max-width: 600px) {
+  .board-page .board-masthead { padding: 10px 13px; gap: 8px; }
+  .board-page .board-masthead .player-summary { max-width: calc(100% - 124px); flex: 1; }
+  .board-page .player-summary .panel { padding: 5px 7px; }
+  .board-page .player-summary h2 { display: none; }
+  .board-page .player-summary .players { display: block; }
+  .board-page .player-summary .players li { padding: 2px; gap: 5px; }
+  .board-page .player-summary .players .pc-char { width: 18px; height: 27px; }
+  .board-page .player-summary .players .pc-name { font-size: 14px; }
+  .board-page .player-summary .players .bal { font-size: 12px; }
+}
