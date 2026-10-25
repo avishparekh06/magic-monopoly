@@ -108,3 +108,20 @@ def test_muse_voice_needs_a_key(monkeypatch):
     monkeypatch.delenv("MODEL_API_KEY", raising=False)
     with pytest.raises(RuntimeError):
         MuseVoice()
+
+
+def test_dev_panel_answers_work_with_muse_voice():
+    """Yes/No buttons and typed text still decide when the real voice adapter is in use."""
+    fake = FakeMuse("unused")
+    with TestClient(create_app(sim=True, move_delay=0, seed=1,
+                               voice_factory=lambda: MuseVoice(api_key="k", transport=fake.transport()))) as c:
+        game = c.post("/api/games", json={"players": PLAYERS}).json()
+        with c.websocket_connect(f"/ws/{game['game_id']}?role=board") as board:
+            recv_until(board, lambda m: m["type"] == "state")
+            board.send_json({"action": "start", "force": True})
+            state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL")
+            board.send_json({"source": "vision", "type": "dice", "value": 3})
+            state_where(board, lambda s: s["phase"] == "WAITING_FOR_DECISION")
+            board.send_json({"source": "voice", "text": "no thanks"})
+            s = state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL")
+            assert s["current_player"] == "p2" and s["players"][0]["properties"] == []

@@ -255,6 +255,14 @@ class GameRoom:
                 if role != "board":
                     raise EngineError("only the board's dev panel can do that")
                 adapter = {"vision": self.adapters.vision, "voice": self.adapters.voice}.get(source)
+                if source == "voice" and not hasattr(adapter, "dev_input"):
+                    # Muse voice is live, but the host may still answer by button or typed text.
+                    from .adapters.voice import parse_answer
+                    answer = msg.get("answer") or parse_answer(str(msg.get("text", "")))
+                    if answer not in ("yes", "no"):
+                        raise EngineError(f"couldn't hear a yes or no in {msg.get('text')!r}")
+                    await self.dispatch(SYSTEM, {"action": "decision", "answer": answer})
+                    return
                 if adapter is None or not hasattr(adapter, "dev_input"):
                     raise EngineError(f"no dev input for {source} (are you running --sim?)")
                 await adapter.dev_input(msg)

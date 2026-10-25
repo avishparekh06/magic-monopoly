@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="/static/session-hub.css">
   <link rel="stylesheet" href="/static/property-cards.css">
   <style>
-    header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding-right: 72px; }
     header .token-dot { width: 52px; height: 52px; font-size: 24px; }
     header .me { flex: 1; min-width: 0; font-family: var(--font-game); font-size: 24px; }
     header .bal { font-size: 30px; font-weight: 800; color: var(--gold); }
@@ -113,7 +113,7 @@ function speak(text) {
   if (!speaking || !("speechSynthesis" in window)) return;
   const u = new SpeechSynthesisUtterance(text); u.rate = 0.95; speechSynthesis.speak(u);
 }
-document.addEventListener("DOMContentLoaded", () => {
+{
   const input = document.getElementById("say");
   const send = () => { const t = input.value.trim(); if (!t) return; net.send({ action: "say", text: t }); input.value = ""; };
   document.getElementById("say-btn").onclick = send;
@@ -122,7 +122,7 @@ document.addEventListener("DOMContentLoaded", () => {
     speaking = !speaking; e.target.textContent = speaking ? "🔊 Mirror speaking" : "🔊 Read the Mirror aloud";
     if (speaking) speak("The Mirror is listening.");
   };
-});
+}
 
 const net = connect(`/ws/${gameId}?seat=${seatToken}`, {
   onHello: (m) => { me = m.you; },
@@ -180,7 +180,7 @@ function render() {
 
   // Buttons only light up when the engine is waiting on *me*.
   const moving = board.hasMotion();
-  const deciding = !moving && state.phase === "WAITING_FOR_DECISION" && state.pending?.player === me;
+  const deciding = state.phase === "WAITING_FOR_DECISION" && state.pending?.player === me;
   document.getElementById("roll").disabled = !(myTurn && state.phase === "WAITING_FOR_ROLL" && !moving);
   document.getElementById("roll").hidden = deciding;
   document.getElementById("decide").hidden = !deciding;

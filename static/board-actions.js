@@ -233,6 +233,7 @@ export function mountBoardActions(viewport, board, cards, send) {
       const key = JSON.stringify([s.phase, s.turn, s.pending]);
       if (key !== pendingKey) { busy = false; error = ''; pendingKey = key; }
       if (s.phase === 'MOVING' && state?.phase !== 'MOVING') receipt = null;
+      if (state && s.turn !== state.turn && receipt && !receipt.card) receipt = null;   // a new turn: the last landing is old news
       // Restore an unresolved card payment after a reconnect, without replaying old cards.
       if (!state && s.pending?.reason === 'card' && s.last_card) {
         const card = cards.cards.find(c => c.id === s.last_card.id);
