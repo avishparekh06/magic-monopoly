@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from .adapters import BRIDGES, make_adapters
+from .adapters import BRIDGES, VOICES, make_adapters
 from .engine import SYSTEM, EngineError
 from .rooms import GameRoom
 from .rules.monopoly import board, cards
@@ -82,13 +82,23 @@ class CreateGame(BaseModel):
 
 def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = None,
                db_path: str | Path | None = ":memory:", bridge: str = "stub",
-               public: str | None = None, tunnel_port: int | None = None) -> FastAPI:
+               public: str | None = None, tunnel_port: int | None = None,
+               voice: str = "stub", voice_factory=None) -> FastAPI:
     """db_path: SQLite file that games are saved to and resumed from on startup.
     ":memory:" (the default, used by tests) keeps nothing across restarts.
     bridge: "stub" fakes moves; "arduino" drives lane 1 through arduino/server.py.
     public: a base URL phones can reach (e.g. an ngrok address), used for join links.
-    tunnel_port: start a cloudflared tunnel to this port and use its URL as `public`."""
+    tunnel_port: start a cloudflared tunnel to this port and use its URL as `public`.
+    voice: "stub" (dev-panel buttons) or "muse" (Meta Muse Voice Transcribe via /voice/clip).
+    voice_factory: tests pass a callable returning a Voice to stand in for `voice`."""
     rooms: dict[str, GameRoom] = {}
+
+    def adapters():
+        a = make_adapters(sim, move_delay, bridge, voice if voice_factory is None else "stub")
+        if voice_factory is not None:
+            a.voice = voice_factory()
+        return a
+
     store = Store(db_path or ":memory:")
     net = {"public": public.rstrip("/") if public else None}
     tunnel = Tunnel(tunnel_port) if tunnel_port else None
@@ -100,7 +110,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         # Startup: bring every unfinished saved game back to life.
         for saved in store.games(status="active"):
             try:
-                rooms[saved["game_id"]] = await GameRoom.restore(saved, make_adapters(sim, move_delay, bridge), store)
+                rooms[saved["game_id"]] = await GameRoom.restore(saved, adapters(), store)
                 log.info("resumed game %s (turn %s, %s)", saved["game_id"],
                          saved["state"].get("turn"), saved["state"].get("phase"))
             except Exception as e:                       # one bad row must not block the server
@@ -119,8 +129,8 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         from .hardware import motor_routes
         app.router.routes.extend(r for r in motor_routes() if getattr(r, "path", None) != "/vision/events")
 
-    if not sim:
-        make_adapters(False, move_delay, bridge)  # fail at startup, not at first game, if real adapters are missing
+    if not sim or (voice == "muse" and voice_factory is None):
+        adapters()  # fail at startup, not at first game, if a real adapter is missing (e.g. no MUSE_API_KEY)
 
     def page(name: str) -> FileResponse:
         return FileResponse(STATIC / name)
@@ -157,7 +167,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     async def create_game(body: CreateGame):
         try:
             room = await GameRoom.create([p.model_dump() for p in body.players],
-                                         make_adapters(sim, move_delay, bridge), seed, store)
+                                         adapters(), seed, store)
         except EngineError as e:
             raise HTTPException(400, str(e))
         rooms[room.game_id] = room
@@ -231,6 +241,38 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             room = max(live, key=lambda r: r.updated_at)
         await room.on_adapter_event(mapped)
         return {"ok": True, "game": room.game_id, "sent": mapped}
+
+    # --- microphone clip -> Muse Voice Transcribe -> yes/no decision ---
+    @app.post("/voice/clip")
+    async def voice_clip(request: Request, game: str | None = None):
+        """Body: a WAV clip (mono 16-bit PCM, 16 kHz) recorded by the board page while the
+        engine waits for the in-person player's yes/no. Returns what was heard and understood."""
+        if not is_local(request):
+            raise HTTPException(403, "voice clips are accepted from this machine only")
+        if game is not None:
+            room = rooms.get(game)
+            if room is None:
+                raise HTTPException(404, "no such game")
+        else:
+            waiting = [r for r in rooms.values() if r.state.phase.value == "WAITING_FOR_DECISION"]
+            if not waiting:
+                return {"ok": False, "reason": "nobody is deciding right now"}
+            room = max(waiting, key=lambda r: r.updated_at)
+        v = room.adapters.voice
+        if not hasattr(v, "hear"):
+            raise HTTPException(503, "this server's voice adapter cannot transcribe (start with --voice muse)")
+        pend = room.state.pending or {}
+        if room.state.phase.value != "WAITING_FOR_DECISION" or pend.get("kind") != "decision":
+            return {"ok": False, "reason": "nobody is deciding right now"}
+        wav = await request.body()
+        if len(wav) < 1000:
+            raise HTTPException(422, "clip too short")
+        try:
+            heard = await v.hear(wav, pend["player"])
+        except Exception as e:
+            log.warning("voice transcription failed: %s", e)
+            raise HTTPException(502, f"transcription failed: {e}")
+        return {"ok": True, "game": room.game_id, **heard}
 
     @app.get("/api/lan")
     async def lan(request: Request):
@@ -311,13 +353,17 @@ def main() -> None:
     parser.add_argument("--bridge", choices=BRIDGES, default="stub",
                         help="stub: fake moves; arduino: Grandma's lane through arduino/server.py "
                              "(set DRY_RUN=1 without an Arduino), other lanes stubbed")
+    parser.add_argument("--voice", choices=VOICES, default="stub",
+                        help="stub: yes/no from the dev panel; muse: Meta Muse Voice Transcribe on clips from the board "
+                             "page's microphone (needs MUSE_API_KEY)")
     parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite file games are saved to and resumed from")
     parser.add_argument("--tunnel", action="store_true", help="start a cloudflared tunnel and use its public URL in links")
     parser.add_argument("--public", default=None, help="public base URL to use in links instead (e.g. an ngrok address)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
     uvicorn.run(create_app(sim=args.sim, seed=args.seed, db_path=args.db, bridge=args.bridge, public=args.public,
-                           tunnel_port=args.port if args.tunnel else None), host=args.host, port=args.port)
+                           tunnel_port=args.port if args.tunnel else None, voice=args.voice),
+                host=args.host, port=args.port)
 
 
 if __name__ == "__main__":

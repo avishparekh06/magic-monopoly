@@ -108,8 +108,14 @@ Run: `.venv/bin/python -m server.main --sim [--tunnel] [--db games.db]`. Tests: 
   `arduino/server.py`'s `board_goto`, loaded in-process by `server/hardware.py`; lanes 2–3 stay stubbed until that
   server tracks more than one token; `DRY_RUN=1` runs it without an Arduino),
   `vision` (StubVision with dev-panel input; `ArucoVision` stub, unused: the camera talks to `/vision/events` instead),
-  `voice` (StubVoice; MuseVoice stub), `mirror` (TemplateMirror narrator lines spoken by the board page via
-  `speechSynthesis`; MuseMirror stub). `make_adapters(sim=False)` builds all four real ones and fails until they exist.
+  `voice` (StubVoice from the dev panel, or **MuseVoice** with `--voice muse`: the board page's "Ears on" button records
+  the laptop mic while the in-person player must answer yes/no, posts a 16 kHz WAV to `POST /voice/clip`, the server
+  sends it to Muse Voice Transcribe (`POST https://api.meta.ai/v1/asr/transcribe`, multipart `request` + `audio`,
+  `Authorization: Bearer $MUSE_API_KEY`), parses yes/no and dispatches the decision; covers buy offers and the jail fine),
+  `mirror` (TemplateMirror narrator lines spoken by the board page via `speechSynthesis`; MuseMirror stub).
+  `make_adapters(sim=False)` builds real vision + Mirror and fails until they exist; bridge and voice are chosen separately.
+  **The Muse call is built from the docs (dev.meta.ai/docs/speech-to-text) and tested against a mock; run
+  `scripts/muse_check.py` with the real key before the demo.**
 - **`static/`** — `create.html` (roster, join links with QR codes from vendored `qrcode.min.js`, previous games with
   Resume / Chronicles), `kid.html` (phone), `board.html` + `board.js` (animated board, players, Mirror log, Chronicles
   stats, dev panel), `net.js` (reconnecting WebSocket helper). `server/cli.py` plays a full game in the terminal.
@@ -124,7 +130,8 @@ Run: `.venv/bin/python -m server.main --sim [--tunnel] [--db games.db]`. Tests: 
 2. Decide one-vs-three physical players with the team; the engine currently allows exactly one in-person player.
 3. Print cards with ArUco markers (ids 10–25 spells, 30–45 fairies, 50–52 player cards; see §3) and add `marker` to
    `cards.json`; put reference photos in `cards/<id>.png`.
-4. Muse: verify the API with a one-line call, then MuseMirror (narration) → MuseVoice (yes/no) → images.
+4. Muse: `MUSE_API_KEY=... .venv/bin/python scripts/muse_check.py` (chat + transcribe) as soon as the key exists; then
+   MuseMirror (narration via chat completions, `muse-spark-1.3`) → images. Voice is done pending that check.
 5. Demo-day runbook: `--tunnel --db games.db`, open `/` on the laptop, scan QR codes, keep the dev panel for manual
    dice/card entry and `confirm_payment` as fallbacks.
 

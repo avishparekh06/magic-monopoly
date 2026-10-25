@@ -13,6 +13,7 @@ from .vision import ArucoVision, StubVision, Vision
 from .voice import MuseVoice, StubVoice, Voice
 
 BRIDGES = ("stub", "arduino")
+VOICES = ("stub", "muse")
 
 
 @dataclass
@@ -31,7 +32,17 @@ def make_bridge(kind: str = "stub", move_delay: float = 1.0) -> MoveBridge:
     raise ValueError(f"bridge must be one of {BRIDGES}")
 
 
-def make_adapters(sim: bool, move_delay: float = 1.0, bridge: str = "stub") -> Adapters:
+def make_voice(kind: str = "stub") -> Voice:
+    if kind == "stub":
+        return StubVoice()
+    if kind == "muse":
+        return MuseVoice()
+    raise ValueError(f"voice must be one of {VOICES}")
+
+
+def make_adapters(sim: bool, move_delay: float = 1.0, bridge: str = "stub", voice: str = "stub") -> Adapters:
+    """`sim` picks the stubs for vision and the Mirror. The bridge and the voice are chosen on their own,
+    so Muse voice can run while the camera still comes through /vision/events and the Mirror is templated."""
     if sim:
-        return Adapters(make_bridge(bridge, move_delay), StubVision(), StubVoice(), TemplateMirror())
-    return Adapters(make_bridge(bridge, move_delay), ArucoVision(), MuseVoice(), MuseMirror())
+        return Adapters(make_bridge(bridge, move_delay), StubVision(), make_voice(voice), TemplateMirror())
+    return Adapters(make_bridge(bridge, move_delay), ArucoVision(), make_voice(voice), MuseMirror())

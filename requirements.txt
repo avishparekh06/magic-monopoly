@@ -10,3 +10,4 @@ numpy
 requests
 # Tests
 pytest==9.1.1
+pytest-asyncio
