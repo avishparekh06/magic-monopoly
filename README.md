@@ -475,7 +475,7 @@ Common ways to run it:
 .venv/bin/python -m server.main --sim --bridge step --mirror muse --voice muse --speech elevenlabs --tunnel --db games.db
 ```
 
-Camera: `vision/live.py 0 --post` (dice), `vision/live.py 0 --cards --post` (ArUco cards), `vision/watch.py --frames` (calibrated mat, posts scene frames for the Mirror). Markers to print: `vision/card_markers/markers_letter.pdf`.
+Camera: add `--camera 0` to the server command (it starts `vision/live.py 0 --post`: dice, and the ArUco card markers while the game waits for a card; the board shows what it sees). By hand: `vision/live.py 0 --post`; `--dice` / `--cards` pin a mode. `vision/watch.py --frames` (calibrated mat, posts scene frames for the Mirror). Markers to print: `vision/card_markers/markers_letter.pdf`.
 
 ### Card instruction update
 

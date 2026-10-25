@@ -58,6 +58,7 @@
   <header class="board-masthead">
     <div class="board-heading-note" style="margin-left:auto">
       <a class="btn small board-home" href="/" aria-label="Back to homepage">← Home</a>
+      <span class="conn pill cam-pill" id="cam" role="status" hidden></span>
     </div>
   </header>
   <div class="layout">
@@ -298,6 +299,7 @@ const net = connect(`/ws/${gameId}?role=board`, {
   onMessage: (m) => {
     addRaw(m);
     if (m.type === "belt_position") { belt[m.lane] = m; render(); }
+    if (m.type === "camera") { cam = m; renderCamera(); }
     if (m.type === "debug_sync") { debugSync = m.on; render(); }
     if (m.type === "move_failed") showStall(m.reason);
     if (m.type === "move" || m.type === "moved" || m.type === "move_cancelled") clearStall();
@@ -315,6 +317,36 @@ const net = connect(`/ws/${gameId}?role=board`, {
 
 const belt = {};            // lane -> last {square, game_square, source} the physical side reported
 let debugSync = false;
+let cam = null;             // last {online, ever, mode, dice_state, seeing, card} the camera process reported
+
+// ---- the camera, as one line on the board ------------------------------------------
+// The camera process reports what it is looking at a few times a second; the server relays it here.
+// Nothing is shown until a camera has reported once, so a game without a camera looks the same as before.
+function cameraText() {
+  if (!cam || !cam.ever) return null;
+  if (!cam.online) return { text: "Camera offline — enter the roll by hand", tone: "warn" };
+  if (cam.mode === "card") {
+    if (cam.card) return { text: `Card seen: ${cam.card}`, tone: "ok" };
+    return { text: "Show the drawn card to the camera", tone: "wait" };
+  }
+  if (cam.dice_state === "ROLLING" || cam.dice_state === "SETTLING") return { text: "Dice are rolling…", tone: "wait" };
+  if (cam.seeing && /\+/.test(cam.seeing)) return { text: `Camera sees ${cam.seeing}`, tone: "ok" };
+  return { text: "Camera is watching the dice", tone: "muted" };
+}
+function renderCamera() {
+  const info = cameraText();
+  const pill = document.getElementById("cam");
+  pill.hidden = !info;
+  if (info) {
+    pill.textContent = `📷 ${info.text}`;
+    pill.dataset.tone = info.tone;
+  }
+  const line = document.getElementById("cam-line");
+  if (line) {
+    line.hidden = !info || state?.phase === "LOBBY";
+    if (info) { line.textContent = info.text; line.dataset.tone = info.tone; }
+  }
+}
 
 // ---- a move the motor could not make -----------------------------------------
 // The game does not count a move until the belt confirms it, so when the belt fails the
@@ -357,7 +389,9 @@ function render() {
     const roll = state.last_roll;
     c.replaceChildren(
       h("h1", { class: "banner center-logo" }, "MONOPOLY"),
-      roll ? h("div", { class: "dice" }, `Roll: ${roll}`) : "");
+      roll ? h("div", { class: "dice" }, `Roll: ${roll}`) : "",
+      h("div", { class: "cam-line", id: "cam-line", hidden: true }));
+    renderCamera();
   }
 
   const ds = document.getElementById("debug-sync");

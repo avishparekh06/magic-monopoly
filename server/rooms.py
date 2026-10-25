@@ -129,11 +129,15 @@ class GameRoom:
         if self.state.phase == Phase.LOBBY:
             await self._safe_send(ws, {"type": "lobby_presence", "players": self.lobby_positions})
 
+    camera = None      # server.camera.CameraStatus, set by the app: what the camera process is looking at
+
     async def connect_viewer(self, role: str, ws: Socket) -> None:
         self.viewers[ws] = role
         await self._safe_send(ws, {"type": "hello", "you": None, "role": role})
         await self._safe_send(ws, {"type": "state", "state": to_public(self.state)})
         await self._safe_send(ws, {"type": "debug_sync", "on": self.debug_sync})
+        if self.camera is not None:
+            await self._safe_send(ws, self.camera.snapshot())
         for lane, sq in self.belt_positions.items():
             player = next((p for p in self.state.players if p.lane == lane), None)
             await self._safe_send(ws, {"type": "belt_position", "lane": lane, "square": sq,

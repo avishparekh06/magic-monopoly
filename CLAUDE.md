@@ -42,9 +42,14 @@ Keys go in `.env` at the repo root (gitignored; the server loads it on start):
 | `--tunnel` / `--public URL` | off | Public address for phone links/QR codes (cloudflared quick tunnel, or a given URL). |
 | `--db games.db` | games.db | SQLite file; unfinished games resume on restart. Use `--db /tmp/scratch.db` for throwaway tests. |
 | `--port 8000` | 8000 | Change if "Address already in use". |
+| `--camera 0` | off | Start the camera process (`vision/live.py 0 --post`) with the server. `--camera-args "--frames"` passes extra flags. |
 
-**Camera** (separate terminal, server already running): `.venv/bin/python vision/live.py 0 --post` (dice);
-`vision/live.py 0 --cards --post` (cards). Without a camera, use `--dev` and the Dev panel's Read dice / Read card.
+**Camera**: add `--camera 0` to the server command and it starts `vision/live.py 0 --post` itself (and stops it with the
+server). One window: it reads the dice tray, and while the game waits for a drawn card it reads the ArUco markers in the
+card box instead, then goes back to dice. The board page shows what the camera sees in the masthead pill and under the roll
+("Dice are rolling…", "Show the drawn card to the camera", "Camera offline — enter the roll by hand"). Run it by hand with
+`.venv/bin/python vision/live.py 0 --post` if you want it in its own terminal; `--dice`/`--cards` pin one mode, `m` forces
+one in the window. Without a camera, use `--dev` and the Dev panel's Read dice / Read card.
 
 **Tests**: `.venv/bin/pytest tests`. If the Arduino tests error with `No module named 'serial'`, the venv is
 missing packages: re-run `.venv/bin/pip install -r requirements.txt`.
@@ -221,9 +226,14 @@ Run: `.venv/bin/python -m server.main --sim [--tunnel] [--db games.db]`. Tests: 
 - Server side: `POST /vision/events` (logs + keeps last 200), `GET /vision/events?n=20` in `arduino/server.py`.
   The rules engine will consume these; today they are only stored.
 
-- **`live.py [index]`** — live test window: drag a box around the dice area, "die px" slider, per-frame readout and the
-  last confirmed roll. Settings in `vision/live.json`. Dice were tuned on real C920 frames (light wood table, angled):
-  the die threshold sits between the background median and the brightest pixels, not Otsu.
+- **`live.py [index] --post`** — **the camera process** (the server starts it with `--camera INDEX`). One window, two
+  boxes: green = dice tray, orange = card zone (drag sets the box of the current mode; both in `vision/live.json`).
+  It POSTs a heartbeat to `/vision/sync` a few times a second (mode, dice state, what it sees) and the reply says what the
+  game wants: `card` while the engine is in WAITING_FOR_CARD, else `dice`. On the switch to cards a card already lying in
+  the zone is ignored until replaced (last turn's card is never this turn's draw); dice stay tracked in card mode but are
+  not sent. The server relays the heartbeat to the board page as `{"type":"camera",...}` and marks it offline after 3 s
+  without one. Dice were tuned on real C920 frames (light wood table, angled): the die threshold sits between the
+  background median and the brightest pixels, not Otsu.
 - `watch.py` posts to the **game server's** `POST /vision/events` (default `http://127.0.0.1:8000`); the server maps the
   vocabulary (see §2). The C920 was index 0 last time; `probe.py --list` finds it again.
 

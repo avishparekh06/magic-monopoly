@@ -25,6 +25,7 @@ from .store import Store
 from .account_routes import COOKIE, install_account_routes, same_origin
 from .tunnel import Tunnel
 from . import tts
+from .camera import CameraProcess, CameraStatus
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
@@ -105,7 +106,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
                voice: str = "stub", voice_factory=None, mirror: str = "template",
                mirror_factory=None, belt_url: str | None = None, belt_lanes: int = 1,
                bridge_factory=None, belt_key: str | None = None, debug_sync: bool = False,
-               speech: str = "browser", dev: bool = False) -> FastAPI:
+               speech: str = "browser", dev: bool = False, camera_cmd: list[str] | None = None) -> FastAPI:
     """db_path: SQLite file that games are saved to and resumed from on startup.
     ":memory:" (the default, used by tests) keeps nothing across restarts.
     bridge: "stub" fakes moves; "arduino" drives lane 1 through arduino/server.py.
@@ -115,7 +116,8 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     voice_factory: tests pass a callable returning a Voice to stand in for `voice`.
     mirror: "template" or "muse" (Meta Muse Spark writes the narrator's lines, templates as fallback).
     speech: "browser" (the device's own voice, free) or "elevenlabs" (ElevenLabs reads the Mirror's lines).
-    dev: show the board page's dev panel (manual dice, cards, voice, payments, motors)."""
+    dev: show the board page's dev panel (manual dice, cards, voice, payments, motors).
+    camera_cmd: start this command (vision/live.py --post) as a child once the server is up, stop it with the server."""
     tts.use(speech == "elevenlabs")
     rooms: dict[str, GameRoom] = {}
 
@@ -135,10 +137,22 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     net = {"public": public.rstrip("/") if public else None}
     tunnel = Tunnel(tunnel_port) if tunnel_port else None
 
+    camera = CameraStatus()
+    GameRoom.camera = camera
+    camera_proc = CameraProcess(camera_cmd) if camera_cmd else None
+
+    async def publish_camera(msg: dict) -> None:
+        room = live_room(None)
+        if room is not None:
+            await room.broadcast(msg)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if tunnel and not net["public"]:
             net["public"] = await tunnel.start()
+        watchdog = asyncio.create_task(camera.watch(publish_camera))
+        if camera_proc:
+            camera_proc.start()
         # Startup: bring every unfinished saved game back to life.
         for saved in store.games(status="active"):
             try:
@@ -150,6 +164,9 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             except Exception as e:                       # one bad row must not block the server
                 log.warning("could not resume game %s: %s", saved["game_id"], e)
         yield
+        watchdog.cancel()
+        if camera_proc:
+            camera_proc.stop()
         if tunnel:
             await tunnel.stop()
         store.close()
@@ -306,9 +323,68 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         return links(room)
 
     # --- camera process -> engine ---
-    # vision/watch.py POSTs its events here. It knows nothing about the game, so
+    # vision/live.py POSTs its events here. It knows nothing about the rules, so
     # its vocabulary is mapped onto the engine's and the engine decides whether a
     # read is wanted (a roll nobody is waiting for is rejected, not applied).
+    def live_room(game: str | None) -> GameRoom | None:
+        """The game the camera is watching: the one asked for, else the room being played right now."""
+        if game is not None:
+            room = rooms.get(game)
+            if room is None:
+                raise HTTPException(404, "no such game")
+            return room
+        live = [r for r in rooms.values() if r.state.phase.value not in ("LOBBY", "GAME_OVER")]
+        if not live:
+            return None
+        return max(live, key=lambda r: (r.has_board(), r.updated_at))   # prefer the room the laptop shows
+
+    def wanted_mode(game: str | None) -> dict:
+        """What the camera should look for right now: "card" while the game waits for a drawn card to be
+        read, "dice" otherwise."""
+        room = live_room(game)
+        if room is None:
+            return {"mode": "dice", "game": None, "phase": None, "detail": "no game running"}
+        s = room.state
+        phase = s.phase.value
+        cur = s.current_player
+        out = {"mode": "dice", "game": room.game_id, "phase": phase, "player": cur.name, "deck": None}
+        if phase == "WAITING_FOR_CARD":
+            pend = s.pending or {}
+            deck = pend.get("deck")
+            who = s.player(pend["player"]).name if pend.get("player") else cur.name
+            deck_name = cards()["decks"].get(deck, {}).get("name", deck) if deck else "a card"
+            out.update(mode="card", deck=deck, player=who, detail=f"{who} drew from {deck_name}: show the card")
+        elif phase == "WAITING_FOR_ROLL":
+            out["detail"] = f"{cur.name} to roll"
+        elif phase == "MOVING":
+            out["detail"] = f"{cur.name} is moving"
+        elif phase == "WAITING_FOR_DECISION":
+            out["detail"] = f"{cur.name} is deciding"
+        elif phase == "WAITING_FOR_PAYMENT":
+            out["detail"] = "waiting for a payment"
+        else:
+            out["detail"] = phase.replace("_", " ").lower()
+        return out
+
+    @app.get("/vision/mode")
+    async def vision_mode(request: Request, game: str | None = None):
+        """The camera process polls this to switch between the dice tray and the card zone by itself."""
+        if not is_local(request):
+            raise HTTPException(403, "vision state is for the camera process on this machine only")
+        return wanted_mode(game)
+
+    @app.post("/vision/sync")
+    async def vision_sync(report: dict, request: Request, game: str | None = None):
+        """The camera's heartbeat: what it is looking at right now (mode, dice state, what it sees).
+        The board page shows it live; the answer is the same as GET /vision/mode."""
+        if not is_local(request):
+            raise HTTPException(403, "vision state is for the camera process on this machine only")
+        camera.update(report)
+        snap = camera.changed()
+        if snap is not None:
+            await publish_camera(snap)
+        return wanted_mode(game)
+
     @app.post("/vision/events")
     async def vision_event(event: dict, request: Request, game: str | None = None):
         if not is_local(request):          # the camera process runs on this laptop; nobody else may inject reads
@@ -319,16 +395,9 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             raise HTTPException(422, str(e))
         if mapped is None:
             return {"ok": True, "ignored": event.get("type")}
-        if game is not None:
-            room = rooms.get(game)
-            if room is None:
-                raise HTTPException(404, "no such game")
-        else:
-            # The game being played right now: the most recently active room that is past the lobby.
-            live = [r for r in rooms.values() if r.state.phase.value not in ("LOBBY", "GAME_OVER")]
-            if not live:
-                raise HTTPException(409, "no running game to send this to")
-            room = max(live, key=lambda r: (r.has_board(), r.updated_at))   # prefer the room the laptop shows
+        room = live_room(game)
+        if room is None:
+            raise HTTPException(409, "no running game to send this to")
         await room.on_adapter_event(mapped)
         # A frame of the table along with the roll: the Mirror describes it for the players who are not there.
         frame = event.get("frame_b64")
@@ -498,16 +567,22 @@ def main() -> None:
     parser.add_argument("--dev", action="store_true",
                         help="show the board page's dev panel (manual dice, cards, voice, payments, motors); "
                              "off = a clean board for the demo")
+    parser.add_argument("--camera", type=int, default=None, metavar="INDEX",
+                        help="also start the camera process (vision/live.py INDEX --post) and stop it with the server, "
+                             "so the table is one command; it reads dice, and the card markers while a card is wanted")
+    parser.add_argument("--camera-args", default="", help="extra flags for the camera process, e.g. \"--frames\"")
     parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite file games are saved to and resumed from")
     parser.add_argument("--tunnel", action="store_true", help="start a cloudflared tunnel and use its public URL in links")
     parser.add_argument("--public", default=None, help="public base URL to use in links instead (e.g. an ngrok address)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
     load_dotenv()
+    from .camera import camera_command
+    camera_cmd = camera_command(args.camera, args.port, args.camera_args.split()) if args.camera is not None else None
     uvicorn.run(create_app(sim=args.sim, seed=args.seed, db_path=args.db, bridge=args.bridge, public=args.public,
                            tunnel_port=args.port if args.tunnel else None, voice=args.voice, mirror=args.mirror,
                            belt_url=args.belt_url, belt_lanes=args.belt_lanes, belt_key=args.belt_key,
-                           debug_sync=args.debug_sync, speech=args.speech, dev=args.dev),
+                           debug_sync=args.debug_sync, speech=args.speech, dev=args.dev, camera_cmd=camera_cmd),
                 host=args.host, port=args.port)
 
 

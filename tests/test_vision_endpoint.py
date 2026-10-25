@@ -70,3 +70,66 @@ def test_events_go_to_the_game_being_played():
             ids.append(game["game_id"])
         r = c.post("/vision/events", json={"type": "dice_rolled", "total": 7})
         assert r.status_code == 200 and r.json()["game"] == ids[1]
+
+
+def test_mode_tells_the_camera_what_to_look_for():
+    """One camera process: dice by default, the card zone while the game waits for a drawn card."""
+    with TestClient(create_app(sim=True, move_delay=0)) as c:
+        assert c.get("/vision/mode").json() == {"mode": "dice", "game": None, "phase": None, "detail": "no game running"}
+        game = c.post("/api/games", json={"players": PLAYERS}).json()
+        assert c.get("/vision/mode").json()["game"] is None            # lobby games are not being played yet
+        with c.websocket_connect(f"/ws/{game['game_id']}?role=board") as board:
+            recv_until(board, lambda m: m["type"] == "state")
+            board.send_json({"action": "start", "force": True})
+            state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL")
+            m = c.get("/vision/mode").json()
+            assert m["mode"] == "dice" and m["game"] == game["game_id"] and m["phase"] == "WAITING_FOR_ROLL"
+            c.post("/vision/events", json={"type": "dice_rolled", "values": [3, 4], "total": 7, "doubles": False})
+            state_where(board, lambda s: s["phase"] == "WAITING_FOR_CARD")
+            m = c.get("/vision/mode").json()
+            assert m["mode"] == "card" and m["deck"] == "crystal" and "Crystal Ball" in m["detail"]
+            assert m["player"] == PLAYERS[0]["name"]
+            c.post("/vision/events", json={"type": "card_drawn", "card_id": "crystal_08", "score": 50})
+            state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL")
+            assert c.get("/vision/mode").json()["mode"] == "dice"
+            assert c.get(f"/vision/mode?game={game['game_id']}").json()["game"] == game["game_id"]
+            assert c.get("/vision/mode?game=nope").status_code == 404
+        assert c.get("/vision/mode", headers={"x-forwarded-for": "203.0.113.9"}).status_code == 403
+
+
+def test_camera_heartbeat_reaches_the_board():
+    """The camera process reports what it sees; the board page gets one "camera" message per change,
+    and the reply tells the camera what to look for."""
+    with TestClient(create_app(sim=True, move_delay=0)) as c:
+        game = c.post("/api/games", json={"players": PLAYERS}).json()
+        with c.websocket_connect(f"/ws/{game['game_id']}?role=board") as board:
+            first = recv_until(board, lambda m: m["type"] == "camera")
+            assert first == {"type": "camera", "online": False, "ever": False}      # no camera has reported yet
+            board.send_json({"action": "start", "force": True})
+            state_where(board, lambda s: s["phase"] == "WAITING_FOR_ROLL")
+            r = c.post("/vision/sync", json={"mode": "dice", "dice_state": "ROLLING", "seeing": "touching", "fps": 29})
+            assert r.status_code == 200 and r.json()["mode"] == "dice"
+            m = recv_until(board, lambda m: m["type"] == "camera")
+            assert m["online"] and m["ever"] and m["mode"] == "dice" and m["dice_state"] == "ROLLING" and m["seeing"] == "touching"
+            # the same report again is not re-broadcast; a changed one is
+            c.post("/vision/sync", json={"mode": "dice", "dice_state": "ROLLING", "seeing": "touching", "fps": 29})
+            c.post("/vision/sync", json={"mode": "dice", "dice_state": "READ", "seeing": "3 + 4", "fps": 29})
+            m = recv_until(board, lambda m: m["type"] == "camera")
+            assert m["dice_state"] == "READ" and m["seeing"] == "3 + 4"
+            # a board page that connects later gets the current camera picture straight away
+            with c.websocket_connect(f"/ws/{game['game_id']}?role=board") as second:
+                assert recv_until(second, lambda m: m["type"] == "camera")["seeing"] == "3 + 4"
+        assert c.post("/vision/sync", json={"mode": "dice"}, headers={"x-forwarded-for": "203.0.113.9"}).status_code == 403
+
+
+def test_camera_goes_offline_when_reports_stop():
+    from server.camera import CameraStatus
+    cam = CameraStatus()
+    assert cam.snapshot() == {"type": "camera", "online": False, "ever": False}
+    cam.update({"mode": "dice", "dice_state": "EMPTY", "seeing": "empty", "ignored": 1})
+    old = cam.snapshot()
+    assert old["ever"] and "ignored" not in old and old["mode"] == "dice"
+    assert cam.changed() is not None and cam.changed() is None      # only the first hand-out counts as a change
+    cam.seen_at = 0.0                                                 # long ago
+    gone = cam.changed()
+    assert gone is not None and gone["online"] is False and gone["ever"] is True

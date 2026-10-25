@@ -317,3 +317,18 @@
   .board-page .board-viewport:not([data-render="3d"]) #board :is(.side-l,.side-r):not(.corner) .mm-body { padding-block: 0; row-gap: 0; }
   .board-page .board-viewport:not([data-render="3d"]) #board :is(.side-l,.side-r):not(.corner) .mm-name { font-size: 1em; line-height: 1; }
 }
+
+/* The camera's one line: in the masthead as a pill, and under the roll in the board centre. */
+.cam-pill[data-tone="ok"] { background: var(--ok, #8fd19e); color: #111; }
+.cam-pill[data-tone="wait"] { background: var(--wait, #f3d27a); color: #111; }
+.cam-pill[data-tone="warn"] { background: #e07a5f; color: #fff; }
+.board-page #board .cam-line { font-size: .8em; color: #fff5df; text-shadow: 0 2px 3px #1a372b, 0 0 10px #1a372bcc; opacity: .95; }
+.board-page #board .cam-line[data-tone="wait"] { color: #ffe9a8; }
+.board-page #board .cam-line[data-tone="warn"] { color: #ffb4a2; }
+.board-page #board .cam-line[hidden] { display: none; }
+/* Flat board: the centre stacks its children over the diagonal banner, so the camera line gets its own spot
+   just above the roll button. */
+.board-page .board-viewport:not([data-render="3d"]) .mm-center .cam-line {
+  position: absolute; left: 50%; bottom: calc(3% + 78px); transform: translateX(-50%); white-space: nowrap;
+  background: #1a372bb8; padding: .3em .9em; border-radius: 999px; font-size: .75em; max-width: 90%; overflow: hidden; text-overflow: ellipsis;
+}
