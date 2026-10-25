@@ -46,6 +46,9 @@ class GameRoom:
         self.seat_tokens = seat_tokens or {secrets.token_urlsafe(9): p.id
                                            for p in state.players if p.kind == "remote"}
         self.lock = asyncio.Lock()
+        self.belt_positions: dict[int, int] = {}  # lane -> square the physical side last reported
+        self.debug_sync = False                   # adopt the belt's square automatically (testing)
+        self._poll_task: asyncio.Task | None = None
         self.seats: dict[str, Socket] = {}       # player id -> its one live socket
         self.viewers: dict[Socket, str] = {}     # host / board sockets -> role
         self._tasks: set[asyncio.Task] = set()
@@ -115,6 +118,11 @@ class GameRoom:
         self.viewers[ws] = role
         await self._safe_send(ws, {"type": "hello", "you": None, "role": role})
         await self._safe_send(ws, {"type": "state", "state": to_public(self.state)})
+        await self._safe_send(ws, {"type": "debug_sync", "on": self.debug_sync})
+        for lane, sq in self.belt_positions.items():
+            player = next((p for p in self.state.players if p.lane == lane), None)
+            await self._safe_send(ws, {"type": "belt_position", "lane": lane, "square": sq,
+                                       "game_square": player.position if player else None, "source": "belt"})
 
     async def disconnect(self, ws: Socket) -> None:
         self.viewers.pop(ws, None)
@@ -204,6 +212,10 @@ class GameRoom:
                 if role not in ("board", "host"):
                     raise EngineError("only the board or host page can sync from the belt")
                 return await self.sync_belt()
+            if msg.get("action") == "debug_sync":
+                if role not in ("board", "host"):
+                    raise EngineError("only the board or host page can change debug sync")
+                return await self.set_debug_sync(bool(msg.get("on")))
             # A seat may only act as itself, so its "player" claim is dropped; the board/host act as the
             # system and may name a player (set_position, decision).
             action = dict(msg) if actor == SYSTEM else {k: v for k, v in msg.items() if k != "player"}
@@ -220,6 +232,51 @@ class GameRoom:
         name = next((p.name for p in self.state.players if p.id == actor), "The host")
         await self.broadcast({"type": "mirror", "kind": "say", "from": actor, "name": name,
                               "text": f"{name} says: {text}"})
+
+    async def belt_reported(self, lane: int, square: int, source: str = "belt") -> None:
+        """The physical side says where a token is. Everyone sees it; in debug mode the game adopts it
+        (never while that token is mid-move, when the belt is the one still catching up)."""
+        prev = self.belt_positions.get(lane)
+        self.belt_positions[lane] = square
+        player = next((p for p in self.state.players if p.lane == lane), None)
+        game_square = player.position if player else None
+        if prev != square or game_square != square:
+            await self.broadcast({"type": "belt_position", "lane": lane, "square": square,
+                                  "game_square": game_square, "source": source})
+        if not (self.debug_sync and player) or game_square == square:
+            return
+        pend = self.state.pending or {}
+        if self.state.phase.value == "MOVING" and pend.get("player") == player.id:
+            return
+        try:
+            await self.dispatch(SYSTEM, {"action": "set_position", "player": player.id, "square": square})
+        except EngineError as e:
+            log.info("debug sync: could not adopt belt square %s for lane %s: %s", square, lane, e)
+
+    async def set_debug_sync(self, on: bool) -> None:
+        self.debug_sync = on
+        await self.broadcast({"type": "debug_sync", "on": on})
+        if on:
+            self.start_belt_poll()
+            for lane, sq in list(self.belt_positions.items()):
+                await self.belt_reported(lane, sq, source="poll")
+
+    def start_belt_poll(self, interval: float = 3.0) -> None:
+        """Ask the bridge where the physical token is every few seconds (for gateways that cannot push)."""
+        bridge = self.adapters.bridge
+        if self._poll_task or not hasattr(bridge, "position"):
+            return
+
+        async def poll():
+            while True:
+                try:
+                    pos = await bridge.position()
+                    if pos is not None:
+                        await self.belt_reported(1, pos, source="poll")
+                except Exception as e:                      # keep polling through tunnel hiccups
+                    log.info("belt poll: %s", e)
+                await asyncio.sleep(interval)
+        self._poll_task = asyncio.create_task(poll())
 
     async def sync_belt(self) -> None:
         """Debug: ask the belt where its token really is and put the game's token there."""

@@ -100,7 +100,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
                public: str | None = None, tunnel_port: int | None = None,
                voice: str = "stub", voice_factory=None, mirror: str = "template",
                mirror_factory=None, belt_url: str | None = None, belt_lanes: int = 1,
-               bridge_factory=None, belt_key: str | None = None) -> FastAPI:
+               bridge_factory=None, belt_key: str | None = None, debug_sync: bool = False) -> FastAPI:
     """db_path: SQLite file that games are saved to and resumed from on startup.
     ":memory:" (the default, used by tests) keeps nothing across restarts.
     bridge: "stub" fakes moves; "arduino" drives lane 1 through arduino/server.py.
@@ -135,6 +135,8 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         for saved in store.games(status="active"):
             try:
                 rooms[saved["game_id"]] = await GameRoom.restore(saved, adapters(), store)
+                if debug_sync:
+                    await rooms[saved["game_id"]].set_debug_sync(True)
                 log.info("resumed game %s (turn %s, %s)", saved["game_id"],
                          saved["state"].get("turn"), saved["state"].get("phase"))
             except Exception as e:                       # one bad row must not block the server
@@ -196,7 +198,29 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         except EngineError as e:
             raise HTTPException(400, str(e))
         rooms[room.game_id] = room
+        if debug_sync:
+            await room.set_debug_sync(True)
         return links(room)
+
+    # --- the physical side reports where a token is ---
+    @app.post("/belt/position")
+    async def belt_position(request: Request, lane: int = 1, square: int = 0, key: str | None = None,
+                            game: str | None = None):
+        """Called by the belt gateway (or the bench tool) whenever its tracked square changes:
+        POST /belt/position?lane=1&square=14&key=<BELT_KEY>. Local callers need no key."""
+        import os
+        expected = belt_key or os.environ.get("BELT_KEY")
+        if not is_local(request) and (not expected or key != expected):
+            raise HTTPException(403, "wrong key")
+        if not 0 <= square < 40:
+            raise HTTPException(422, "square must be 0-39")
+        targets = [rooms[game]] if game and game in rooms else \
+            [r for r in rooms.values() if r.state.phase.value != "GAME_OVER"]
+        if game and game not in rooms:
+            raise HTTPException(404, "no such game")
+        for room in targets:
+            await room.belt_reported(lane, square, source="push")
+        return {"ok": True, "games": [r.game_id for r in targets]}
 
     @app.get("/api/games")
     async def list_games(request: Request):
@@ -393,6 +417,9 @@ def main() -> None:
     parser.add_argument("--belt-url", default=None,
                         help="with --bridge http: where arduino/server.py is running, e.g. http://192.168.1.20:8001")
     parser.add_argument("--belt-key", default=None, help="with --bridge step: the service's key (or BELT_KEY in .env)")
+    parser.add_argument("--debug-sync", action="store_true",
+                        help="testing: the game adopts the belt's reported square automatically (polls the gateway "
+                             "and accepts pushes to /belt/position); off = only show the mismatch")
     parser.add_argument("--belt-lanes", type=int, default=1,
                         help="how many lanes the belt tool really drives (lanes above this are simulated)")
     parser.add_argument("--voice", choices=VOICES, default="stub",
@@ -408,7 +435,8 @@ def main() -> None:
     load_dotenv()
     uvicorn.run(create_app(sim=args.sim, seed=args.seed, db_path=args.db, bridge=args.bridge, public=args.public,
                            tunnel_port=args.port if args.tunnel else None, voice=args.voice, mirror=args.mirror,
-                           belt_url=args.belt_url, belt_lanes=args.belt_lanes, belt_key=args.belt_key),
+                           belt_url=args.belt_url, belt_lanes=args.belt_lanes, belt_key=args.belt_key,
+                           debug_sync=args.debug_sync),
                 host=args.host, port=args.port)
 
 
