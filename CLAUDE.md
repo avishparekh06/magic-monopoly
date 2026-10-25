@@ -77,30 +77,53 @@ Conventions across all three:
   - API `https://api.meta.ai/v1`, reportedly OpenAI/Anthropic-SDK compatible via base URL swap. **Unverified — test with a
     one-line call first.** No Muse TTS documented; use browser `speechSynthesis`.
 
-### What exists (`arduino/server.py`, `arduino/ui.html`)
-- **`server.py`** — FastAPI app. Run from inside `arduino/` (it does `from control import Board`):
-  `uvicorn server:app --reload`. Deps: fastapi, uvicorn, pyserial (no requirements.txt yet).
-  - Env: `DRY_RUN=1` (no Arduino, state still updates — use for UI/logic work), `NORMAL_STEPS`, `CORNER_STEPS`,
-    `SQUARE_MM` (30) and `SPEED_MM_S` (20) (the last two only used by `/roll`).
-  - Board model: 40 squares, GO = 0, clockwise, corners {0, 10, 20, 30}. `plan_move` charges `CORNER_STEPS` for a corner
-    and `NORMAL_STEPS` otherwise, charging the square entered going forward and the square left going back, so moves are
-    reversible to the same motor position.
-  - **Only axis 0 (one token) is tracked**, persisted in `board_state.json`. `/roll/{player}` moves axes 0–2 by mm but
-    does not touch the board position; it predates the square model.
-  - Endpoints: `GET /` (serves `ui.html`), `GET /board`, `POST /board/move?squares=±n`,
-    `POST /board/goto?square=n&direction=auto|forward|back`, `POST /board/set?square=n` (re-home, no motor move),
-    `POST /move?steps=&corners=` (raw), `POST /roll/{player}`, `POST /stop`, `GET /pos`.
-    Non-blocking lock → 409 while a token is moving; motor failure → 503.
-- **`ui.html`** — single-file control panel: 11×11 Monopoly grid (GO bottom-right), click a square to drive the magnet,
-  "Set position" mode, back/forward 1, stop. Standard Monopoly names; not yet fairy-tale reskinned.
+### What exists (`server/`, `static/`, `tests/`) — "Magic Mirror Monopoly"
+Run: `.venv/bin/python -m server.main --sim [--tunnel] [--db games.db]`. Tests: `.venv/bin/pytest tests` (85).
+- **Roster model:** one in-person player ("Grandma", p1, lane 1) who rolls real dice and draws real cards, plus up to two
+  **remote** players on phones who press Roll in their app (the engine rolls for them). Camera reads give a total only, so
+  there are no doubles; jail is pay the fine, use a key card, or forced out on the third turn.
+- **`server/engine.py`** — pure engine: `apply_action(state, actor, action, rng) -> (new_state, events)`. Phases:
+  LOBBY → WAITING_FOR_ROLL → MOVING (waits for `move_done` from the bridge) → RESOLVING → WAITING_FOR_DECISION (buy) /
+  WAITING_FOR_PAYMENT (in-person player's card tap; remote payers settle automatically) / WAITING_FOR_CARD → END_OF_TURN.
+  Actions: start, roll, dice, dice_not_visible, move_done, move_failed, retry_move, buy, decline, decision, card,
+  player_card, confirm_payment, set_connected. `to_public` / `from_public` round-trip the state as JSON.
+- **`server/rules/monopoly.py` + `board.json` + `cards.json`** — fairy-tale board (Castle Gate = GO, Rapunzel's Tower =
+  jail, Cursed! = go to jail, Fairy Ring = free parking); decks `spell` and `fairy`, ids `spell_01..16`, `fairy_01..16`.
+  **These ids are the contract with the vision module** (`cards/<id>.png` and the ArUco marker map).
+- **`server/rooms.py`** — one `GameRoom` per game: the only caller of `apply_action`, under a lock; broadcasts full state +
+  events + Mirror lines over WebSocket; routes adapter events back in via `on_adapter_event`. Host and seat tokens live here.
+- **`server/store.py`** — SQLite persistence: one row per applied action with a state snapshot. On startup every unfinished
+  game is restored (`GameRoom.restore`): same host/seat tokens so links survive a restart, remote seats reset to
+  disconnected, an in-flight move is re-issued, and `bridge.restore({lane: square})` is called so hardware can drive tokens
+  back (after re-zeroing at Castle Gate). `--db` defaults to `games.db` (gitignored); tests use `:memory:`.
+- **`server/main.py`** — FastAPI: pages `/` (create + previous games), `/game/{id}/join/{seat}` (phone), `/board/{id}`
+  (laptop, dev panel, Chronicles); `POST /api/games`, `GET /api/games` (host links only for local requests),
+  `/api/games/{id}/links|history|stats`, `/api/lan` (public tunnel base if up, else LAN), `/ws/{id}?seat=|host=|role=board`.
+  **`POST /vision/events`**: accepts `vision/watch.py` events from this laptop only (forwarded requests get 403), maps
+  dice_rolled→dice(total), dice_unclear→dice_not_visible, card_drawn→card(id), and sends them to the most recently
+  active running game (or `?game=<id>`). The engine rejects reads it is not waiting for.
+- **`server/tunnel.py`** — `--tunnel` spawns `cloudflared tunnel --url` (installed via Homebrew), parses the
+  `https://*.trycloudflare.com` URL, and links/QR codes use it; falls back to the LAN address. `--public <url>` overrides.
+- **`server/adapters/`** — `bridge` (StubBridge; **GrblBridge is a stub and assumes GRBL, which is not our firmware**),
+  `vision` (StubVision with dev-panel input; `ArucoVision` stub, unused: the camera talks to `/vision/events` instead),
+  `voice` (StubVoice; MuseVoice stub), `mirror` (TemplateMirror narrator lines spoken by the board page via
+  `speechSynthesis`; MuseMirror stub). `make_adapters(sim=False)` builds all four real ones and fails until they exist.
+- **`static/`** — `create.html` (roster, join links with QR codes from vendored `qrcode.min.js`, previous games with
+  Resume / Chronicles), `kid.html` (phone), `board.html` + `board.js` (animated board, players, Mirror log, Chronicles
+  stats, dev panel), `net.js` (reconnecting WebSocket helper). `server/cli.py` plays a full game in the terminal.
+- **`arduino/server.py`** is now a hardware debug tool only (also on port 8000 — run the game server on 8000 and the
+  belt tool on another port, or fold it into the bridge).
 
 ### Next
-- Per-lane `current_square` (three tokens), then a `Player`/`Game` model and the rules engine (dice, buy, rent, jail,
-  bankruptcy, simplified). Route all token moves through it; `/board/*` becomes a debug/admin surface.
-- SQLite event log replacing `board_state.json`; `POST /vision/events` endpoint for the vision module (schema in §3).
-- WebSocket state broadcast + phone companion view (cash, properties, history) + master view for judges.
-- Fairy-tale reskin of squares, cards and names (shared with the vision card references in `cards/`).
-- Muse integration: verify the API first, then narrator → voice intents → images.
+1. **Belt bridge** (hardware + app): implement `MoveBridge.move(lane, frm, to)` over `arduino/control.Board` with the
+   corner costs from `arduino/server.py`, per-lane square tracking, and `restore()` = home to Castle Gate then drive.
+   Make `make_adapters(sim=False)` able to mix real and stub adapters so the belt can run before voice/Muse exist.
+2. Decide one-vs-three physical players with the team; the engine currently allows exactly one in-person player.
+3. Print cards with ArUco markers (ids 10–25 spells, 30–45 fairies, 50–52 player cards; see §3) and add `marker` to
+   `cards.json`; put reference photos in `cards/<id>.png`.
+4. Muse: verify the API with a one-line call, then MuseMirror (narration) → MuseVoice (yes/no) → images.
+5. Demo-day runbook: `--tunnel --db games.db`, open `/` on the laptop, scan QR codes, keep the dev panel for manual
+   dice/card entry and `confirm_payment` as fallbacks.
 
 ---
 
@@ -137,13 +160,20 @@ Conventions across all three:
 - Server side: `POST /vision/events` (logs + keeps last 200), `GET /vision/events?n=20` in `arduino/server.py`.
   The rules engine will consume these; today they are only stored.
 
+- **`live.py [index]`** — live test window: drag a box around the dice area, "die px" slider, per-frame readout and the
+  last confirmed roll. Settings in `vision/live.json`. Dice were tuned on real C920 frames (light wood table, angled):
+  the die threshold sits between the background median and the brightest pixels, not Otsu.
+- `watch.py` posts to the **game server's** `POST /vision/events` (default `http://127.0.0.1:8000`); the server maps the
+  vocabulary (see §2). The C920 was index 0 last time; `probe.py --list` finds it again.
+
 ### Next
-1. Run `probe.py` with the C920 (grant Camera permission to the terminal app first), save real frames of dice and cards.
-2. Tune `dice.py` on real frames (die area window, pip threshold) and `MOTION_THRESH` for real sensor noise.
-3. Photograph the real fairy-tale cards into `cards/<id>.png`; the ids are the contract with the rules engine.
-4. Lock C920 autofocus/exposure. If OpenCV `cap.set` is ignored (likely on macOS), use Logi Tune and keep it running.
-5. Record a clean `.mp4` of a few rolls and card draws as a regression fixture and demo backup.
-6. Optional: Muse Spark fallback on `dice_unclear` / `card_unknown` (send the crop, ask for JSON).
+1. **ArUco-first card reading**: print markers on the new cards (one `DICT_4X4_100` family: 0–3 mat corners, 10–25
+   spells, 30–45 fairies, 50–52 player cards; ~18 mm, white quiet zone, twice per card, matte stock). `cards.py` detects
+   markers first and falls back to ORB. Card ids come from `server/cards.json`.
+2. Mount the camera over the mat, run `calibrate.py`, set `zones.json`; keep the tray well inside the frame.
+3. Tune `MOTION_THRESH` on real rolls with `live.py`; lock C920 focus/exposure (Logi Tune if `cap.set` is ignored).
+4. Record a clean `.mp4` of rolls and card draws as a regression fixture and demo backup.
+5. Optional: Muse Spark fallback on `dice_unclear` / `card_unknown`.
 
 ### Original plan (kept for reference)
 ---

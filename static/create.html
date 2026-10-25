@@ -12,7 +12,9 @@
     .hero .mirror { font-size: 56px; }
     #started { text-align: center; }
     #create .btn.huge { margin-top: 24px; }
-  </style>
+    .qr { background: #fff; padding: 8px; border-radius: 8px; display: inline-block; }
+  .qr img, .qr canvas { display: block; }
+</style>
 </head>
 <body>
   <div class="wrap">
@@ -51,6 +53,7 @@
         <h3>🖥️ The board laptop</h3>
         <p class="muted">Open this on the laptop next to Grandma's board.</p>
         <div class="row">
+          <div id="board-qr"></div>
           <input class="grow" id="board-link" readonly>
           <button class="btn small secondary" data-copy="board-link" type="button">Copy</button>
         </div>
@@ -69,6 +72,7 @@
     </section>
   </div>
 
+<script src="/static/qrcode.min.js"></script>
 <script type="module">
 import { connect, toast, h, seatList } from "/static/net.js";
 
@@ -114,23 +118,21 @@ function showFormError(detail) {
 
 // ---- Step 2: links + lobby ----------------------------------------------
 
-// Links must use an address phones can reach. If this page was opened as
-// "localhost", ask the server for the laptop's Wi-Fi address instead.
+// Links must use an address phones can reach: the public tunnel when the
+// server has one, else this page's own address if it isn't "localhost",
+// else the laptop's Wi-Fi address.
 async function linkBase() {
+  let info = null;
+  try { info = await (await fetch("/api/lan")).json(); } catch {}
+  if (info?.public) return info.public;
   if (!["localhost", "127.0.0.1"].includes(location.hostname)) return location.origin;
-  try { return (await (await fetch("/api/lan")).json()).base; }
-  catch { return location.origin; }
+  return info?.base || location.origin;
 }
 
-// Reopen a saved game: /?game=<id>&host=<token> (what the URL becomes after creating one).
-{
-  const q = new URLSearchParams(location.search);
-  if (q.get("game") && q.get("host")) {
-    fetch(`/api/games/${q.get("game")}/links?host=${q.get("host")}`)
-      .then((r) => r.ok ? r.json() : Promise.reject(r.status))
-      .then(showLobby)
-      .catch(() => toast("That game isn't available any more.", "error"));
-  }
+function qr(url) {
+  const el = h("div", { class: "qr" });
+  try { new QRCode(el, { text: url, width: 128, height: 128, correctLevel: QRCode.CorrectLevel.M }); } catch {}
+  return el;
 }
 
 // Previous games (saved on this laptop): resume or review them.
@@ -157,6 +159,8 @@ async function showLobby(game) {
   document.getElementById("lobby").hidden = false;
   const base = await linkBase();
   document.getElementById("board-link").value = base + game.board_url;
+  const bq = document.getElementById("board-qr");
+  if (bq && !bq.children.length) bq.append(qr(base + game.board_url));
 
   // One socket as the host: receives live state and may press Start.
   const net = connect(`/ws/${game.game_id}?host=${game.host_token}`, {
@@ -178,6 +182,7 @@ function renderLinks(game, base, state) {
     const url = base + path;
     box.append(h("div", { class: "link-card", style: "margin-top:12px" },
       h("h3", {}, `📱 ${p.name}`),
+      h("div", { class: "row", style: "align-items:flex-start" }, qr(url), h("p", { class: "muted", style: "margin:0" }, "Scan with the phone's camera, or send the link:")),
       h("div", { class: "row" },
         h("input", { class: "grow", id, readonly: true, value: url }),
         h("button", { class: "btn small secondary", type: "button", "data-copy": id }, "Copy"),

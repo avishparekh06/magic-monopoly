@@ -65,8 +65,8 @@ def test_game_survives_restart(tmp_path):
             assert s["players"][0]["balance"] == 1550 and s["players"][0]["position"] == 7
             assert s["turn"] == before["turn"]
             p2.send_json({"action": "roll"})
-            s = state_where(p2, lambda s: s["current_player"] == "p3" or s["phase"] == "WAITING_FOR_DECISION")
-            assert s["players"][1]["position"] > 0
+            # wherever the roll lands (offer, card, tax, next turn), the move completed
+            s = state_where(p2, lambda s: s["players"][1]["position"] > 0 and s["phase"] != "MOVING")
 
 
 def test_mid_move_is_reissued_on_restart(tmp_path):

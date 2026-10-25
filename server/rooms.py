@@ -14,6 +14,7 @@ import asyncio
 import logging
 import random
 import secrets
+import time
 from typing import Any, Protocol
 
 from .adapters import Adapters
@@ -39,6 +40,7 @@ class GameRoom:
         self.rng = rng
         self.store = store
         self.seq = seq                      # number of actions applied so far (0 = just created)
+        self.updated_at = time.time()       # last action; picks "the game being played" among several
         self.host_token = host_token or secrets.token_urlsafe(9)
         # token -> player id, for remote seats only
         self.seat_tokens = seat_tokens or {secrets.token_urlsafe(9): p.id
@@ -69,8 +71,9 @@ class GameRoom:
         for p in state.players:
             if p.kind == "remote":
                 p.connected = False
-        room = cls(state, adapters, random.Random(), store,
+        room = cls(state, adapters, random.Random(saved.get("seed")), store,
                    host_token=saved["host_token"], seat_tokens=saved["seat_tokens"], seq=saved["seq"])
+        room.updated_at = saved.get("updated_at") or room.updated_at
         await room._start_adapters()
         await adapters.bridge.restore({p.lane: p.position for p in state.players if not p.bankrupt})
         if state.phase == Phase.MOVING:
@@ -128,6 +131,7 @@ class GameRoom:
         async with self.lock:
             self.state, events = apply_action(self.state, actor, action, self.rng)
             self.seq += 1
+            self.updated_at = time.time()
             if self.store and action.get("action") != "set_connected":   # presence is not game history
                 self.store.append(self.game_id, self.seq, actor, action, events, to_public(self.state))
             if events:

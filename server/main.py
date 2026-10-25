@@ -21,6 +21,7 @@ from .engine import SYSTEM, EngineError
 from .rooms import GameRoom
 from .rules.monopoly import board, cards
 from .store import Store
+from .tunnel import Tunnel
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
@@ -45,17 +46,29 @@ def lan_ip() -> str:
 
 
 def translate_vision_event(ev: dict) -> dict | None:
-    """vision/watch.py vocabulary -> engine actions. None = nothing for the engine."""
+    """vision/watch.py vocabulary -> engine actions. None = nothing for the engine.
+    Raises ValueError on a malformed body."""
     t = ev.get("type")
-    if t == "dice_rolled":
-        return {"type": "dice", "value": int(ev["total"])}
-    if t == "dice_unclear":
-        return {"type": "dice_not_visible"}
-    if t == "card_drawn":
-        return {"type": "card", "id": str(ev["card_id"])}
-    if t == "player_card":
-        return {"type": "player_card", "player": ev["player"]}
+    try:
+        if t == "dice_rolled":
+            return {"type": "dice", "value": int(ev["total"])}
+        if t == "dice_unclear":
+            return {"type": "dice_not_visible"}
+        if t == "card_drawn":
+            return {"type": "card", "id": str(ev["card_id"])}
+        if t == "player_card":
+            return {"type": "player_card", "player": str(ev["player"])}
+    except (KeyError, TypeError, ValueError) as e:
+        raise ValueError(f"bad {t} event: {e}") from None
     return None          # dice_cleared, card_removed, card_unknown: the engine has no use for these
+
+
+def is_local(request: Request) -> bool:
+    """True only for requests from this laptop. A tunnel (cloudflared, ngrok) connects
+    from 127.0.0.1 too, but it always adds a forwarding header, so those count as remote."""
+    if request.headers.get("cf-connecting-ip") or request.headers.get("x-forwarded-for"):
+        return False
+    return request.client is None or request.client.host in ("127.0.0.1", "::1", "testclient")
 
 
 class PlayerSpec(BaseModel):
@@ -68,15 +81,22 @@ class CreateGame(BaseModel):
 
 
 def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = None,
-               db_path: str | Path | None = ":memory:", bridge: str = "stub") -> FastAPI:
+               db_path: str | Path | None = ":memory:", bridge: str = "stub",
+               public: str | None = None, tunnel_port: int | None = None) -> FastAPI:
     """db_path: SQLite file that games are saved to and resumed from on startup.
     ":memory:" (the default, used by tests) keeps nothing across restarts.
-    bridge: "stub" fakes moves; "arduino" drives lane 1 through arduino/server.py."""
+    bridge: "stub" fakes moves; "arduino" drives lane 1 through arduino/server.py.
+    public: a base URL phones can reach (e.g. an ngrok address), used for join links.
+    tunnel_port: start a cloudflared tunnel to this port and use its URL as `public`."""
     rooms: dict[str, GameRoom] = {}
     store = Store(db_path or ":memory:")
+    net = {"public": public.rstrip("/") if public else None}
+    tunnel = Tunnel(tunnel_port) if tunnel_port else None
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        if tunnel and not net["public"]:
+            net["public"] = await tunnel.start()
         # Startup: bring every unfinished saved game back to life.
         for saved in store.games(status="active"):
             try:
@@ -86,6 +106,8 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             except Exception as e:                       # one bad row must not block the server
                 log.warning("could not resume game %s: %s", saved["game_id"], e)
         yield
+        if tunnel:
+            await tunnel.stop()
         store.close()
 
     app = FastAPI(title="Magic Mirror Monopoly", lifespan=lifespan)
@@ -145,7 +167,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     async def list_games(request: Request):
         """Saved games, newest first, for the resume picker. Host links are only
         included for requests from the laptop itself (the host's own browser)."""
-        local = request.client is None or request.client.host in ("127.0.0.1", "::1", "testclient")
+        local = is_local(request)
         out = []
         for g in store.games():
             st = g["state"]
@@ -188,25 +210,33 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     # its vocabulary is mapped onto the engine's and the engine decides whether a
     # read is wanted (a roll nobody is waiting for is rejected, not applied).
     @app.post("/vision/events")
-    async def vision_event(event: dict, game: str | None = None):
-        mapped = translate_vision_event(event)
+    async def vision_event(event: dict, request: Request, game: str | None = None):
+        if not is_local(request):          # the camera process runs on this laptop; nobody else may inject reads
+            raise HTTPException(403, "vision events are accepted from this machine only")
+        try:
+            mapped = translate_vision_event(event)
+        except ValueError as e:
+            raise HTTPException(422, str(e))
         if mapped is None:
             return {"ok": True, "ignored": event.get("type")}
-        live = [r for r in rooms.values() if r.state.phase.value not in ("LOBBY", "GAME_OVER")]
         if game is not None:
             room = rooms.get(game)
             if room is None:
                 raise HTTPException(404, "no such game")
-        elif len(live) == 1:
-            room = live[0]
         else:
-            raise HTTPException(409, "no single running game to send this to (pass ?game=<id>)")
+            # The game being played right now: the most recently active room that is past the lobby.
+            live = [r for r in rooms.values() if r.state.phase.value not in ("LOBBY", "GAME_OVER")]
+            if not live:
+                raise HTTPException(409, "no running game to send this to")
+            room = max(live, key=lambda r: r.updated_at)
         await room.on_adapter_event(mapped)
         return {"ok": True, "game": room.game_id, "sent": mapped}
 
     @app.get("/api/lan")
     async def lan(request: Request):
-        return {"base": f"http://{lan_ip()}:{request.url.port or 80}"}
+        """Where phones should point: the public tunnel if there is one, else the LAN address."""
+        lan_base = f"http://{lan_ip()}:{request.url.port or 80}"
+        return {"base": net["public"] or lan_base, "lan": lan_base, "public": net["public"]}
 
     @app.get("/api/board")
     async def board_data():
@@ -282,9 +312,12 @@ def main() -> None:
                         help="stub: fake moves; arduino: Grandma's lane through arduino/server.py "
                              "(set DRY_RUN=1 without an Arduino), other lanes stubbed")
     parser.add_argument("--db", default=str(DEFAULT_DB), help="SQLite file games are saved to and resumed from")
+    parser.add_argument("--tunnel", action="store_true", help="start a cloudflared tunnel and use its public URL in links")
+    parser.add_argument("--public", default=None, help="public base URL to use in links instead (e.g. an ngrok address)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(name)s: %(message)s")
-    uvicorn.run(create_app(sim=args.sim, seed=args.seed, db_path=args.db, bridge=args.bridge), host=args.host, port=args.port)
+    uvicorn.run(create_app(sim=args.sim, seed=args.seed, db_path=args.db, bridge=args.bridge, public=args.public,
+                           tunnel_port=args.port if args.tunnel else None), host=args.host, port=args.port)
 
 
 if __name__ == "__main__":
