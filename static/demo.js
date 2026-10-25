@@ -13,7 +13,10 @@ export async function mountDemoPanel() {
   const config = await fetch("/api/config").then(r => r.json()).catch(() => ({}));
   if (!config.dev) return;
 
-  let direction = "forward";
+  const players = config.jog_players?.length ? config.jog_players : [1];
+  // Where each player is lined up by hand before Resume (demo): square ids from server/board.json.
+  const START = { 1: { square: 3, name: "Gingerbread House" }, 2: { square: 1, name: "Black Forest" } };
+  let direction = "forward", player = players[0];
   const status = h("p", { style: "margin:6px 0 0;font-size:.85em;min-height:1.2em" });
   const say = (text, bad) => { status.textContent = text; status.style.color = bad ? "#b3261e" : "inherit"; };
   const act = (fn, done) => async () => {
@@ -26,16 +29,26 @@ export async function mountDemoPanel() {
     dirBtn.textContent = `Direction: ${direction}`;
   }, "secondary");
 
-  const jog = !config.jog ? h("p", { style: "margin:0;font-size:.85em" }, "Belt jog needs --virtual-axis.") : h("div", {},
+  const q = (extra = "") => `?player=${player}${extra}`;
+  const playerBtn = btn(`Jogging: Player ${player}`, () => {
+    player = players[(players.indexOf(player) + 1) % players.length];
+    playerBtn.textContent = `Jogging: Player ${player}`;
+    homeBtn.textContent = `This is ${START[player].name}`;
+  }, "secondary");
+  const homeBtn = btn(`This is ${START[player].name}`, act(() => post(`/jog/home${q(`&square=${START[player].square}`)}`),
+    "Belt tracked square set"));
+
+  const jog = !config.jog ? h("p", { style: "margin:0;font-size:.85em" }, "Belt jog needs --lane-axes (or --virtual-axis).") : h("div", {},
     h("h4", { style: "margin:0 0 6px" }, "Motor setup"),
+    players.length > 1 ? h("div", { style: "margin-bottom:6px" }, playerBtn) : null,
     h("div", { style: "display:flex;gap:6px;flex-wrap:wrap" },
-      btn("Start", act(() => post(`/jog/start?direction=${direction}`), "Running… press Stop when it's in place")),
-      btn("Stop", act(() => post("/jog/stop"), "Stopped"), "secondary"),
+      btn("Start", act(() => post(`/jog/start${q(`&direction=${direction}`)}`), "Running… press Stop when it's in place")),
+      btn("Stop", act(() => post(`/jog/stop${q()}`), "Stopped"), "secondary"),
       dirBtn),
     h("div", { style: "display:flex;gap:6px;flex-wrap:wrap;margin-top:6px" },
-      btn("-50", act(() => post("/jog/nudge?steps=-50"), "Nudged back 50 steps"), "secondary"),
-      btn("+50", act(() => post("/jog/nudge?steps=50"), "Nudged forward 50 steps"), "secondary"),
-      btn("This is Black Forest", act(() => post("/jog/home?square=1"), "Player 2's belt is now on Black Forest (square 1)"))));
+      btn("-50", act(() => post(`/jog/nudge${q("&steps=-50")}`), "Nudged back 50 steps"), "secondary"),
+      btn("+50", act(() => post(`/jog/nudge${q("&steps=50")}`), "Nudged forward 50 steps"), "secondary"),
+      homeBtn));
 
   const resume = btn("Resume (demo)", act(async () => {
     say("Starting the demo game…");

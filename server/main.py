@@ -109,7 +109,8 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
                mirror_factory=None, belt_url: str | None = None, belt_lanes: int = 1,
                bridge_factory=None, belt_key: str | None = None, debug_sync: bool = False,
                speech: str = "browser", dev: bool = False, camera_cmd: list[str] | None = None,
-               virtual_axis: int | None = None, bench_url: str | None = None) -> FastAPI:
+               virtual_axis: int | None = None, bench_url: str | None = None,
+               lane_axes: dict[int, int] | None = None) -> FastAPI:
     """db_path: SQLite file that games are saved to and resumed from on startup.
     ":memory:" (the default, used by tests) keeps nothing across restarts.
     bridge: "stub" fakes moves; "arduino" drives lane 1 through arduino/server.py.
@@ -128,7 +129,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         a = make_adapters(sim, move_delay, bridge if bridge_factory is None else "stub",
                           voice if voice_factory is None else "stub",
                           mirror if mirror_factory is None else "template", belt_url, belt_lanes, belt_key,
-                          virtual_axis, bench_url)
+                          virtual_axis, bench_url, lane_axes)
         if bridge_factory is not None:
             a.bridge = bridge_factory()
         if voice_factory is not None:
@@ -186,12 +187,13 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
         from .hardware import motor_routes
         app.router.routes.extend(r for r in motor_routes() if getattr(r, "path", None) != "/vision/events")
 
-    jog_on = dev and virtual_axis is not None
+    jog_axes = lane_axes if bridge == "http" and lane_axes else {2: virtual_axis} if virtual_axis is not None else {}
+    jog_on = bool(dev and jog_axes)
     if jog_on:   # the demo panel's motor buttons, passed on to the belt tool that owns the Arduino
         import os
         from .jog import jog_router
-        app.include_router(jog_router(is_local, bench_url or os.environ.get("BENCH_URL", "http://127.0.0.1:8001"),
-                                      virtual_axis))
+        app.include_router(jog_router(is_local, bench_url or belt_url or os.environ.get("BENCH_URL", "http://127.0.0.1:8001"),
+                                      jog_axes))
 
     if not sim or (voice == "muse" and voice_factory is None) or (mirror == "muse" and mirror_factory is None) \
             or (bridge in ("http", "step") and bridge_factory is None):
@@ -479,7 +481,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     async def config():
         """What the pages should show: the dev panel and on-screen dice only in dev mode, and whether
         yes/no is answered by voice (Muse) so the board can leave out the Buy / No buttons."""
-        return {"dev": dev, "voice": voice, "jog": jog_on}
+        return {"dev": dev, "voice": voice, "jog": jog_on, "jog_players": sorted(jog_axes)}
 
     @app.post("/api/demo/resume")
     async def demo_resume(request: Request):
@@ -589,6 +591,9 @@ def main() -> None:
     parser.add_argument("--virtual-axis", type=int, default=None, metavar="AXIS",
                         help="with --bridge step: the second player's token drives this motor axis (0-2) on the belt "
                              "tool, e.g. 0; without it that token is simulated")
+    parser.add_argument("--lane-axes", default=None, metavar="LANE:AXIS,...",
+                        help="with --bridge http: which motor axis each player's lane drives on the belt tool, "
+                             "e.g. 1:0,2:2 (Player 1 on axis 0, Player 2 on axis 2); default URL http://127.0.0.1:8001")
     parser.add_argument("--bench-url", default=None,
                         help="with --virtual-axis: the belt tool (arduino/server.py), default http://127.0.0.1:8001")
     parser.add_argument("--debug-sync", action="store_true",
@@ -623,7 +628,8 @@ def main() -> None:
                            tunnel_port=args.port if args.tunnel else None, voice=args.voice, mirror=args.mirror,
                            belt_url=args.belt_url, belt_lanes=args.belt_lanes, belt_key=args.belt_key,
                            debug_sync=args.debug_sync, speech=args.speech, dev=args.dev, camera_cmd=camera_cmd,
-                           virtual_axis=args.virtual_axis, bench_url=args.bench_url),
+                           virtual_axis=args.virtual_axis, bench_url=args.bench_url,
+                           lane_axes=dict(map(int, pair.split(":")) for pair in args.lane_axes.split(",")) if args.lane_axes else None),
                 host=args.host, port=args.port)
 
 

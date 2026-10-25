@@ -86,23 +86,22 @@ def test_start_keeps_jogging_until_stop(monkeypatch):
 
 def test_demo_resume_plays_the_scripted_moves_on_the_belt():
     assert [(p["name"], p["position"]) for p in DEMO_PLAYERS] == [("Player 1", 3), ("Player 2", 1)]
-    assert DEMO_MOVES == [("p2", 3), ("p1", 1), ("p2", 3)]
+    assert DEMO_MOVES == [("p2", 3), ("p1", 3)]
     bench = FakeBench()
     with app_client(bench) as c:
         assert c.post("/api/demo/resume").status_code == 200
         gid = next(iter(c.app.state.rooms))
         room = c.app.state.rooms[gid]
         for _ in range(50):
-            if [p.position for p in room.state.players] == [4, 7]:
+            if [p.position for p in room.state.players] == [6, 4]:
                 break
             time.sleep(0.1)
-        assert [p.position for p in room.state.players] == [4, 7]
+        assert [p.position for p in room.state.players] == [6, 4]
         assert room.state.phase.value == "WAITING_FOR_ROLL"
         # Player 2's belt (axis 0) was told it starts on Black Forest, then driven to square 4
         assert ("/board/set", {"square": "1", "axis": "0"}) in bench.calls
         assert ("/board/goto", {"square": "4", "direction": "auto", "axis": "0"}) in bench.calls
-        assert ("/board/goto", {"square": "7", "direction": "auto", "axis": "0"}) in bench.calls
-        assert bench.squares[0] == 7          # Crystal Ball (Chance)
+        assert bench.squares[0] == 4
 
 
 def test_player_1_takes_a_camera_roll_after_the_demo_moves():
@@ -121,20 +120,49 @@ def test_player_1_takes_a_camera_roll_after_the_demo_moves():
         assert c.post("/api/demo/resume").status_code == 200
         room = next(iter(c.app.state.rooms.values()))
         for _ in range(50):
-            if [p.position for p in room.state.players] == [4, 7]:
+            if [p.position for p in room.state.players] == [6, 4]:
                 break
             time.sleep(0.1)
-        assert [p.position for p in room.state.players] == [4, 7]
+        assert [p.position for p in room.state.players] == [6, 4]
         r = c.post("/vision/events", json={"type": "dice_rolled", "values": [2, 3], "total": 5, "doubles": False})
         assert r.status_code == 200 and r.json()["sent"]
         for _ in range(50):
-            if room.state.player("p1").position == 9:
+            if room.state.player("p1").position == 11:
                 break
             time.sleep(0.1)
-        assert room.state.player("p1").position == 9
-        assert (1, 4, 9) in moves
+        assert room.state.player("p1").position == 11
+        assert (1, 6, 11) in moves
 
 
 def test_demo_resume_needs_dev():
     with TestClient(create_app(sim=True, move_delay=0)) as c:
         assert c.post("/api/demo/resume").status_code == 404
+
+
+def test_two_lanes_on_the_belt_tool_axes_0_and_2(monkeypatch):
+    """Player 1 drives axis 0, Player 2 axis 2: the jog buttons, the starts and the scripted moves all follow."""
+    bench = FakeBench()
+    import server.jog as jog
+    real = jog.httpx.AsyncClient
+    monkeypatch.setattr(jog.httpx, "AsyncClient", lambda **kw: real(**{**kw, "transport": bench.transport()}))
+    app = create_app(sim=True, move_delay=0, dev=True, bridge="http", lane_axes={1: 0, 2: 2},
+                     bridge_factory=lambda: HttpBeltBridge("http://bench", lanes=0, axes={1: 0, 2: 2},
+                                                           fallback=StubBridge(0), transport=bench.transport()))
+    with TestClient(app) as c:
+        assert c.get("/api/config").json()["jog_players"] == [1, 2]
+        assert c.post("/jog/nudge", params={"steps": 50, "player": 1}).status_code == 200
+        assert c.post("/jog/nudge", params={"steps": 50, "player": 2}).status_code == 200
+        assert c.post("/jog/nudge", params={"steps": 50, "player": 3}).status_code == 422
+        assert [q["axis"] for p, q in bench.calls if p == "/jog"] == ["0", "2"]
+        bench.calls.clear()
+        assert c.post("/api/demo/resume").status_code == 200
+        room = next(iter(c.app.state.rooms.values()))
+        for _ in range(60):
+            if [p.position for p in room.state.players] == [6, 4]:
+                break
+            time.sleep(0.1)
+        assert [p.position for p in room.state.players] == [6, 4]
+        gotos = [(q["axis"], q["square"]) for p, q in bench.calls if p == "/board/goto"]
+        assert gotos == [("2", "4"), ("0", "6")]
+        assert ("/board/set", {"square": "3", "axis": "0"}) in bench.calls
+        assert ("/board/set", {"square": "1", "axis": "2"}) in bench.calls
