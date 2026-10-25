@@ -120,7 +120,7 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
   }
   function showCatalog(games, mode) {
     const list = h('div', { class: 'hub-session-list' });
-    const filtered = mode === 'continue' ? games.filter(g => g.status !== 'over' && resumeUrl(g)) : games;
+    const filtered = mode === 'continue' ? games.filter(g => g.status !== 'over' && g.status !== 'abandoned' && resumeUrl(g)) : games;
     if (!filtered.length) list.append(h('div', { class: 'hub-empty' }, h('h3', {}, mode === 'continue' ? 'A new story awaits' : 'No games here yet'),
       h('p', {}, mode === 'continue' ? 'Start a new game. Your unfinished games will appear here next time.' : historyFilter !== 'all' ? 'Try a different filter to see your other games.' : user ? 'Your linked games appear here. Choose All available games to find an older session.' : 'Games appear here as you play. Sign in to keep your own results together.')));
     else list.append(...filtered.map(game => sessionCard(game, { continue: mode === 'continue' })));
@@ -274,7 +274,14 @@ export function mountSessionHub({ parent = document.body, onNewGame } = {}) {
           h('p', { class: 'hub-game-names' }, stats.players.map(p => p.name).join(' · ')),
           h('p', {}, winner ? `${winner} won` : stats.phase === 'GAME_OVER' ? 'Finished · result not recorded' : stats.phase === 'LOBBY' ? 'Waiting for players' : `In progress${game ? ` · Turn ${game.turn}` : ''}`),
           game ? h('p', { class: 'hub-subtle' }, date(game.created_at)) : null,
-          game && resumeUrl(game) ? h('a', { class: 'btn', href: resumeUrl(game) }, game.phase === 'LOBBY' ? 'Continue lobby' : 'Continue game') : null);
+          game && resumeUrl(game) ? h('a', { class: 'btn', href: resumeUrl(game) }, game.phase === 'LOBBY' ? 'Continue lobby' : 'Continue game') : null,
+          // The host can end a game for good: it stops being resumed on restart and its links die; history stays.
+          game && ctx.host && game.status !== 'over' && game.status !== 'abandoned'
+            ? button('End this game', async () => {
+                if (!confirm('End this game for everyone? Its history is kept, but it cannot be continued.')) return;
+                try { await api(`/api/games/${id}/abandon?host=${encodeURIComponent(ctx.host)}`, {}); hub.openGame(id, ctx, returnTo); }
+                catch (e) { alert(e.message); }
+              }, 'secondary') : null);
         const playerCards = [...stats.players].sort((a,b) => stats.phase === 'GAME_OVER' ? (a.placement ?? Infinity) - (b.placement ?? Infinity) : 0).map(p => h('details', { class: 'hub-player-stats', 'data-player': p.id },
           h('summary', {}, h('span', { class: 'hub-player-name' }, h('strong', {}, p.name),
             h('span', { class: 'hub-subtle' }, p.placement != null ? `Finish #${p.placement}` : stats.phase === 'GAME_OVER' ? 'Finish not recorded' : stats.phase === 'LOBBY' ? 'Waiting to start' : p.bankrupt ? 'Out' : 'Still playing')),

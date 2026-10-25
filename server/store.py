@@ -84,6 +84,10 @@ class Store:
                 self.db.execute("UPDATE games SET specs = ?, seat_tokens = ? WHERE game_id = ?",
                                 (json.dumps(specs), json.dumps(seat_tokens), game_id))
 
+    def set_status(self, game_id: str, status: str) -> None:
+        with self.db:
+            self.db.execute("UPDATE games SET status = ?, updated_at = ? WHERE game_id = ?", (status, time.time(), game_id))
+
     def games(self, status: str | None = None) -> list[dict]:
         """Newest first. Each: game_id, created_at, updated_at, specs, seed, host_token, seat_tokens, status, seq, state."""
         q = ("SELECT g.*, a.seq, a.state FROM games g JOIN actions a ON a.game_id = g.game_id "

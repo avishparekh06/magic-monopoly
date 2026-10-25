@@ -447,3 +447,18 @@ dice from all 40 spaces in landscape and portrait. Both use isolated display fix
 The game embeds **Planewalker** by Neale Davidson / Pixel Sagas for its interface
 and canvas board labels. Regular, bold, italic, and bold-italic faces are served
 locally from `static/fonts/planewalker/`; the original font license is included there.
+
+## Flags added Saturday night
+
+| Flag | What it does |
+| --- | --- |
+| `--bridge step --belt-url https://... --belt-key ...` | Drive track 1 through the remote belt gateway (`POST /step?squares=n&key=`, `GET /position`). URL and key can live in `.env` as `BELT_URL` / `BELT_KEY`. |
+| `--bridge http --belt-url http://host:8001 [--belt-lanes N]` | Drive lanes through a running `arduino/server.py` over HTTP (`/board/goto?axis=`). |
+| `--belt-lanes N` | How many lanes the belt really drives; higher lanes are simulated. |
+| `--debug-sync` | Testing: the game adopts the belt's reported square between turns (polls `/position`, accepts `POST /belt/position`). Also a checkbox in the board dev panel. |
+| `--voice muse` | Yes/no answers through Meta Muse Voice Transcribe from the board page's microphone (`MUSE_API_KEY` in `.env`). |
+| `--mirror muse` | Narration written by Muse Spark with the template lines as fallback. |
+| `--tunnel` / `--public URL` | Public address for phones: start a cloudflared quick tunnel, or use a given base URL. Join links and QR codes use it. |
+| `--db games.db` | SQLite file games are saved to and resumed from. Finished-with games can be ended from the session hub ("End this game"). |
+
+Camera: `vision/live.py 0 --post` (dice), `vision/live.py 0 --cards --post` (ArUco cards), `vision/watch.py --frames` (calibrated mat, posts scene frames for the Mirror). Markers to print: `vision/card_markers/markers_letter.pdf`.

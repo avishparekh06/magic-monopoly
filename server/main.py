@@ -231,6 +231,29 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             await room.belt_reported(lane, square, source="push")
         return {"ok": True, "games": [r.game_id for r in targets]}
 
+    @app.post("/api/games/{game_id}/abandon")
+    async def abandon_game(game_id: str, host: str):
+        """Host gives up on a game: it stops being resumed on restart, its links die, its history stays."""
+        room = rooms.get(game_id)
+        saved = store.game(game_id)
+        token = room.host_token if room else (saved or {}).get("host_token")
+        if token is None:
+            raise HTTPException(404, "no such game")
+        if host != token:
+            raise HTTPException(403, "wrong host token")
+        if room:
+            if room._poll_task:
+                room._poll_task.cancel()
+            for ws in room.all_sockets():
+                await room._safe_send(ws, {"type": "error", "message": "this game was ended by the host", "fatal": True})
+                try:
+                    await ws.close(code=4410)
+                except Exception:
+                    pass
+            rooms.pop(game_id, None)
+        store.set_status(game_id, "abandoned")
+        return {"ok": True, "game_id": game_id, "status": "abandoned"}
+
     @app.get("/api/games")
     async def list_games(request: Request):
         """Saved games, newest first, for the resume picker. Host links are only
