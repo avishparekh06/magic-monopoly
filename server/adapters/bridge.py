@@ -53,7 +53,7 @@ class StubBridge(MoveBridge):
 class ArduinoBridge(MoveBridge):
     """Moves through Avish's motor code (arduino/server.py), called in-process.
 
-    His server drives one token (axis 0), so lane 1 (Grandma) goes through his
+    His server drives one token (axis 0), so lane 1 (the host's token) goes through his
     board_goto(); other lanes use `fallback` until his server supports them.
     Set DRY_RUN=1 to run his code without an Arduino attached.
     """

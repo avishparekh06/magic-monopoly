@@ -1,6 +1,6 @@
 # Magic Mirror Monopoly
 
-A fairy-tale Monopoly board for HackTX 26. Grandma plays at her own table with real dice and cards, the grandkids
+A fairy-tale Monopoly board for HackTX 26. In-person players sit at the table with real dice and cards, remote players
 join from their phones, and the tokens slide by themselves, pulled by magnets on motorized belts under the board.
 One laptop next to the board runs everything: the game server, the motors, the overhead camera, and the
 "Magic Mirror" that narrates out loud.
@@ -10,7 +10,7 @@ One laptop next to the board runs everything: the game server, the motors, the o
 | Folder | What it is | Owner |
 |---|---|---|
 | `server/` | Game server: the rules engine, WebSocket server, adapters for motors/camera/voice/narrator, a text-mode demo | App |
-| `static/` | The web pages: create a game, the kids' phone app, and the board laptop page (with a dev panel) | App |
+| `static/` | The web pages: create a game, the remote players' phone page, and the board laptop page (with a dev panel) | App |
 | `tests/` | Tests for the game server (no hardware needed) | App |
 | `arduino/` | Motor firmware (`.ino`), `control.py` (talks to the Arduino over USB), `server.py` (motor endpoints, used by the game server) | Hardware |
 | `vision/` | Overhead-camera dice and card reader. See [`vision/README.md`](vision/README.md) | Vision |
@@ -52,12 +52,12 @@ You should see `Uvicorn running on http://0.0.0.0:8000`. Leave that terminal ope
 
 Then:
 
-1. **Create a game.** On a laptop or phone, open **http://localhost:8000**. Keep "Grandma" as the in-person player,
-   add one or two grandchildren, and tap **Create the game ✨**.
+1. **Create a game.** On a laptop or phone, open **http://localhost:8000**. Enter your name as the in-person host,
+   add one or two more players (in person or virtual), and tap **Create the game ✨**.
 2. **Open the board page.** Copy the **board laptop** link and open it in a new window. This is the screen that sits
    next to the physical board. It shows the 2D board, the players, the Mirror's log, and the dev panel.
-3. **Join as the kids.** Copy each grandchild's link and open it in its own window, or send it to a phone on the
-   same Wi-Fi (see section 5). Each link drops that kid straight into their seat; no sign-up. Reopening a link
+3. **Join as the remote players.** Copy each remote player's link and open it in its own window, or send it to a phone on the
+   same Wi-Fi (see section 5). Each link drops that player straight into their seat; no sign-up. Reopening a link
    rejoins; opening it on a second device takes the seat over.
 4. **Start.** When everyone shows ✓, press **Start the game** (on the create page or the board page).
 5. **Hear the Mirror.** On the board page click **🔊 Wake the Mirror** once. Browsers only allow speech after a
@@ -209,41 +209,41 @@ mode settles the dice immediately. Without WebGL, simple animated dice show the 
 server result. Physical camera reads currently provide only a total; the UI reports
 that total without inventing individual dice values.
 
-### Playing Grandma's turn with the dev panel
+### Playing an in-person turn with the dev panel
 
-For physical play, Grandma can use real dice and voice. In simulation the **🛠️ Dev panel** on the board page (bottom of the right column)
+For physical play, in-person players use real dice and voice. In simulation the **🛠️ Dev panel** on the board page (bottom of the right column)
 stands in for the camera, microphone and motors:
 
 | Real world | Dev panel |
 |---|---|
-| Grandma rolls the dice into the tray | **Camera — dice tray:** pick a total, **Read dice** (or **Dice not visible** to make the Mirror ask for a reroll) |
-| Grandma says "yes" / "no" | **Voice:** **Yes** / **No**, or type what she said and press **Hear** |
-| Grandma lays her player card on the reader to pay | **Camera — reader spot:** **Grandma's card on reader** |
-| Grandma lays a drawn Crystal Ball / Chest of Spells card on the card spot | **Camera — card spot:** pick the card, **Read card** |
+| The in-person player rolls the dice into the tray | **Camera — dice tray:** pick a total, **Read dice** (or **Dice not visible** to make the Mirror ask for a reroll) |
+| The in-person player says "yes" / "no" | **Voice:** **Yes** / **No**, or type what they said and press **Hear** |
+| The in-person player lays their player card on the reader to pay | **Camera — reader spot:** **card on reader** |
+| Someone at the table lays a drawn Crystal Ball / Chest of Spells card on the card spot | **Camera — card spot:** pick the card, **Read card** |
 | The card tap isn't read | **Payment fallback:** **Confirm payment** |
 | A token gets stuck | **Motors:** **Retry stuck move** |
 
-Kids play from their app: **🎲 Roll**, **Buy** / **No thanks**, and the tower choice. If the camera can't read a
-card drawn for them, their app shows a "which card was it?" list.
+Remote players play from their phone: **🎲 Roll**, **Buy** / **No thanks**, and the tower choice. If the camera can't read a
+card drawn for them, their phone shows a "which card was it?" list.
 
-Useful starting rolls for Grandma from Once Upon a Time: **6** = Stepmother's Manor (buy it), **7** = Crystal Ball (card),
+Useful starting rolls for the host from Once Upon a Time: **6** = Stepmother's Manor (buy it), **7** = Crystal Ball (card),
 **4** = Rumpelstiltskin's Bargain (tax), **10** = Rapunzel's Tower (just visiting).
 
 ### Text-only demo (no browser)
 
 ```bash
-python -m server.cli                    # Grandma, Maya, Leo
-python -m server.cli Grandma Maya --seed 3
+python -m server.cli                    # Ava (in person), Maya, Leo
+python -m server.cli Ava Maya --seed 3
 ```
 
-Type Grandma's dice total (or press Enter for a random roll), answer `y`/`n`, and press Enter to "tap" her card.
+Type the in-person player's dice total (or press Enter for a random roll), answer `y`/`n`, and press Enter to "tap" their card.
 
 ---
 
 ## 3. Run with the real motors
 
-Only **lane 1 (Grandma's token)** moves through the real belts today, because `arduino/server.py` tracks one
-token (axis 0). The grandkids' tokens (lanes 2 and 3) are simulated and shown on the board page until it supports
+Only **lane 1 (the host's token)** moves through the real belts today, because `arduino/server.py` tracks one
+token (axis 0). The other tokens (lanes 2 and 3) are simulated and shown on the board page until it supports
 more lanes.
 
 ### 3a. Flash the firmware (once per Arduino)
@@ -267,14 +267,14 @@ Commands: `0 200` (axis 0, 200 steps), `0 -200` (back), `mm 0 40` (40 mm), `pos`
 
 ### 3c. Start the game server with the motors
 
-Place Grandma's token on **Once Upon a Time** (square 0), then:
+Place the host's token on **Once Upon a Time** (square 0), then:
 
 ```bash
 source .venv/bin/activate
 python -m server.main --sim --bridge arduino
 ```
 
-- `--bridge arduino` sends Grandma's game moves through `arduino/server.py` (its `plan_move` and the Arduino).
+- `--bridge arduino` sends the host's game moves through `arduino/server.py` (its `plan_move` and the Arduino).
   The default, `--bridge stub`, fakes every move.
 - `--sim` still simulates the camera, voice and narrator with the dev panel.
 - The server also serves the motor endpoints from `arduino/server.py` (section 6).
@@ -355,7 +355,7 @@ then, use the dev panel's camera buttons.
 
 ## 5. Playing on phones
 
-The kids' phones must reach the laptop.
+Remote players' phones must reach the laptop.
 
 - **Same Wi-Fi (easiest):** start the server, then create the game at `http://localhost:8000` on the laptop. The
   join links automatically use the laptop's Wi-Fi address, e.g. `http://192.168.1.20:8000/game/...`.
@@ -380,24 +380,24 @@ python -m server.main [--sim] [--bridge stub|arduino] [--port 8000] [--host 0.0.
 |---|---|
 | `--sim` | Simulate camera, voice and narrator (use the dev panel). Without it, the real ones are required (not built yet). |
 | `--bridge stub` | Fake every token move (default). |
-| `--bridge arduino` | Grandma's token through `arduino/server.py` and the Arduino; other tokens simulated. |
+| `--bridge arduino` | The host's token through `arduino/server.py` and the Arduino; other tokens simulated. |
 | `--port` | Port to serve on (default 8000). |
 | `--host` | `0.0.0.0` (default) lets phones on the network connect. |
-| `--seed` | Make the kids' dice rolls repeatable. |
+| `--seed` | Make remote players' dice rolls repeatable. |
 
 ### Pages
 
 | URL | Who | What |
 |---|---|---|
-| `/` | Parent / grandkid | Create a game, share links, lobby, Start |
-| `/game/<game_id>/join/<seat_token>` | Each grandkid | Their phone app |
+| `/` | The host | Create a game, share links, lobby, Start |
+| `/game/<game_id>/join/<seat_token>` | Each remote player | Their phone page |
 | `/board/<game_id>` | The laptop by the board | 2D board, Mirror voice, dev panel |
 
 ### Motor endpoints (from `arduino/server.py`, with `--bridge arduino`)
 
 | Endpoint | Does |
 |---|---|
-| `GET /board` | Where Grandma's token is |
+| `GET /board` | Where the host's token is |
 | `POST /board/goto?square=N&direction=auto\|forward\|back` | Drive the token to square N |
 | `POST /board/move?squares=±N` | Move N squares (negative = back) |
 | `POST /board/move-many` | Move several belts at the same time (see below) |

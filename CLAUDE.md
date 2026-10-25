@@ -34,9 +34,9 @@ Keys go in `.env` at the repo root (gitignored; the server loads it on start):
 | Flag | Default | What it does |
 |---|---|---|
 | `--sim` | off | Stub camera/voice/Mirror adapters. **Always pass it** (real vision adapter isn't built). |
-| `--dev` | off | Dev button (bottom right, next to the Mirror) with manual dice, cards, yes/no, token positions, motors; also the board's on-screen Roll Dice and Buy / No buttons. Without it: Grandma rolls real dice (camera), remote players roll on their phones, payments settle by themselves. |
+| `--dev` | off | Dev button (bottom right, next to the Mirror) with manual dice, cards, yes/no, token positions, motors; also the board's on-screen Roll Dice and Buy / No buttons. Without it: in-person players roll real dice (camera), remote players roll on their phones, payments settle by themselves. |
 | `--mirror template\|muse` | template | Who writes the narrator lines. `muse` = Muse Spark, one short sentence per action, template fallback. |
-| `--voice stub\|muse` | stub | Grandma's yes/no. `muse` = she answers aloud: board's "Mic" (in the Mirror button) → Muse Voice Transcribe; outside `--dev` the board then shows no Buy / No buttons, and the Mirror opens and pulses if a yes/no is waiting with the mic off (click Mic once per session). |
+| `--voice stub\|muse` | stub | In-person yes/no. `muse` = the player answers aloud: board's "Mic" (in the Mirror button) → Muse Voice Transcribe; outside `--dev` the board then shows no Buy / No buttons, and the Mirror opens and pulses if a yes/no is waiting with the mic off (click Mic once per session). |
 | `--speech browser\|elevenlabs` | browser | Who reads lines aloud. `browser` is free; `elevenlabs` (George) spends credits. Turn sound on with the Mirror button → "Voice". |
 | `--bridge stub\|arduino\|http\|step` | stub | How tokens move. `step` = remote belt gateway (`BELT_URL`/`BELT_KEY`); `arduino` = Uno on this laptop (`DRY_RUN=1` without one). |
 | `--tunnel` / `--public URL` | off | Public address for phone links/QR codes (cloudflared quick tunnel, or a given URL). |
@@ -130,9 +130,9 @@ Conventions across all three:
 
 ### What exists (`server/`, `static/`, `tests/`) — "Magic Mirror Monopoly"
 Run: `.venv/bin/python -m server.main --sim [--tunnel] [--db games.db]`. Tests: `.venv/bin/pytest tests` (85).
-- **Roster model:** one in-person player ("Grandma", p1, lane 1) who rolls real dice and draws real cards, plus up to two
-  **remote** players on phones who press Roll in their app (the engine rolls for them). Camera reads give a total only, so
-  there are no doubles; jail is pay the fine, use a key card, or forced out on the third turn.
+- **Roster model:** the board host (p1, lane 1, always in person) plus up to two more seats, each **in person** (rolls
+  real dice, draws their own cards, answers aloud) or **remote** (presses Roll on their phone and the engine rolls; the host
+  draws their cards). `GameState.host` is the host. Camera reads give a total only, so there are no doubles; jail is pay the fine, use a key card, or forced out on the third turn.
 - **`server/engine.py`** — pure engine: `apply_action(state, actor, action, rng) -> (new_state, events)`. Phases:
   LOBBY → WAITING_FOR_ROLL → MOVING (waits for `move_done` from the bridge) → RESOLVING → WAITING_FOR_DECISION (buy) /
   WAITING_FOR_PAYMENT (in-person player's card tap; remote payers settle automatically) / WAITING_FOR_CARD → END_OF_TURN.
@@ -171,7 +171,7 @@ Run: `.venv/bin/python -m server.main --sim [--tunnel] [--db games.db]`. Tests: 
   **The Muse call is built from the docs (dev.meta.ai/docs/speech-to-text) and tested against a mock; run
   `scripts/muse_check.py` with the real key before the demo.**
 - **`static/`** — `create.html` (roster, join links with QR codes from vendored `qrcode.min.js`, previous games with
-  Resume / Chronicles), `kid.html` (phone), `board.html` + `board.js` (animated board, players, Mirror log, Chronicles
+  Resume / Chronicles), `phone.html` (remote player's phone), `board.html` + `board.js` (animated board, players, Mirror log, Chronicles
   stats, dev panel), `net.js` (reconnecting WebSocket helper). `server/cli.py` plays a full game in the terminal.
 - **`--bridge arduino`** also mounts `arduino/server.py`'s motor endpoints (`/board/*`, `/move`, `/stop`, `/pos`) on
   the game server, so re-homing with `/board/set` is shared with the game. `README.md` has the full runbook.

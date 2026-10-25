@@ -2,16 +2,16 @@
 import pytest
 
 from server.engine import SYSTEM, EngineError, Phase
-from tests.test_turns import Dice, act, at_turn, finish_move, grandma_rolls, kid_rolls, started, types
+from tests.test_turns import Dice, act, at_turn, finish_move, host_rolls, remote_rolls, started, types
 
 SPELLS, TITHE, CURSED, TOWER = 7, 4, 30, 10
 
 
 def maya_on_spells():
-    """Maya (p2) rolls from 4 onto a Crystal Ball square; Grandma is asked to draw."""
+    """Maya (p2) rolls from 4 onto a Crystal Ball square; the host is asked to draw."""
     s = at_turn(started(), "p2")
     s.player("p2").position = 4
-    s, events = kid_rolls(s, "p2", 1, 2)
+    s, events = remote_rolls(s, "p2", 1, 2)
     return s, events
 
 
@@ -21,7 +21,7 @@ def read(s, card_id, actor=SYSTEM):
 
 # --- drawing --------------------------------------------------------------
 
-def test_landing_on_spells_asks_grandma_to_draw_for_the_kid():
+def test_landing_on_spells_asks_host_to_draw_for_a_remote_player():
     s, events = maya_on_spells()
     assert s.phase == Phase.WAITING_FOR_CARD
     assert s.pending == {"kind": "card", "deck": "crystal", "for": "p2"}
@@ -52,7 +52,7 @@ def test_player_card_is_not_a_game_card():
         act(s, SYSTEM, "player_card", player="p1")
 
 
-def test_kid_fallback_picker_only_for_the_drawer():
+def test_remote_fallback_picker_only_for_the_drawer():
     s, _ = maya_on_spells()
     with pytest.raises(EngineError, match="for Maya"):
         read(s, "crystal_08", actor="p3")
@@ -130,17 +130,17 @@ def test_nearest_well_pays_ten_times_dice():
 def test_collect_from_each_is_paid_automatically():
     s = at_turn(started(), "p2")
     s.player("p2").position = 0
-    s, _ = kid_rolls(s, "p2", 1, 1)                            # Chest of Spells at 2
+    s, _ = remote_rolls(s, "p2", 1, 1)                            # Chest of Spells at 2
     s, events = read(s, "chest_09")                            # birthday: 10 from each, Grandma included
     assert s.player("p2").balance == 1520
     assert s.player("p1").balance == 1490 and s.player("p3").balance == 1490
     assert s.current_player.id == "p3" and s.payment_queue == []
 
 
-def test_grandma_pays_each_player_automatically():
+def test_host_pays_each_player_automatically():
     s = started()
     s.player("p1").position = 4
-    s, _ = grandma_rolls(s, 3)                                 # Crystal Ball
+    s, _ = host_rolls(s, 3)                                 # Crystal Ball
     s, events = read(s, "crystal_15")                            # pay each player 50
     assert [e["to"] for e in events if e["type"] == "paid"] == ["p2", "p3"]
     assert s.player("p1").balance == 1400 and s.current_player.id == "p2"
@@ -165,7 +165,7 @@ def test_bankrupt_while_paying_birthday_money_skips_later_payments():
     s = at_turn(started(), "p2")
     s.player("p2").position = 0
     s.player("p3").balance = 5
-    s, _ = kid_rolls(s, "p2", 1, 1)
+    s, _ = remote_rolls(s, "p2", 1, 1)
     s, events = read(s, "chest_09")
     assert s.player("p3").bankrupt and s.player("p2").balance == 1515
     assert s.current_player.id == "p1"                        # Leo is skipped
@@ -173,17 +173,17 @@ def test_bankrupt_while_paying_birthday_money_skips_later_payments():
 
 # --- taxes ----------------------------------------------------------------
 
-def test_grandma_pays_tax_automatically():
-    s, events = grandma_rolls(started(), 4)                    # King's Tithe
+def test_host_pays_tax_automatically():
+    s, events = host_rolls(started(), 4)                    # King's Tithe
     paid = next(e for e in events if e["type"] == "paid")
     assert paid["to"] == "bank" and paid["amount"] == 200
     assert s.player("p1").balance == 1300 and s.current_player.id == "p2"
 
 
-def test_dragons_toll_kid_pays_automatically():
+def test_dragons_toll_remote_pays_automatically():
     s = at_turn(started(), "p2")
     s.player("p2").position = 35
-    s, _ = kid_rolls(s, "p2", 1, 2)
+    s, _ = remote_rolls(s, "p2", 1, 2)
     assert s.player("p2").balance == 1400
 
 
@@ -192,7 +192,7 @@ def test_dragons_toll_kid_pays_automatically():
 def jail_maya():
     s = at_turn(started(), "p2")
     s.player("p2").position = 25
-    s, events = kid_rolls(s, "p2", 2, 3)                       # 25 -> 30 Cursed!
+    s, events = remote_rolls(s, "p2", 2, 3)                       # 25 -> 30 Cursed!
     assert "cursed" in types(events) and s.phase == Phase.MOVING
     assert events[-1] == {"type": "move", "player": "p2", "lane": 2, "from": CURSED, "to": TOWER}
     s, events = finish_move(s)                                 # 30 -> 10 wraps but pays no salary
@@ -245,7 +245,7 @@ def test_third_turn_in_tower_must_pay():
     assert s.phase == Phase.WAITING_FOR_ROLL
 
 
-def test_grandma_pays_fine_by_voice():
+def test_host_pays_fine_by_voice():
     s = started()
     s.player("p1").in_jail, s.player("p1").position = True, TOWER
     s, events = come_back_to(s, "p1")
@@ -264,5 +264,5 @@ def test_jail_key_used_automatically():
 
 
 def test_visiting_the_tower_is_harmless():
-    s, events = grandma_rolls(started(), 10)
+    s, events = host_rolls(started(), 10)
     assert not s.player("p1").in_jail and s.current_player.id == "p2"

@@ -14,11 +14,10 @@ through one function:
   broadcasts and feeds to adapters (Mirror lines, move commands).
 
 A turn:
-    WAITING_FOR_ROLL --roll (kid) / dice read (Grandma)--> MOVING
+    WAITING_FOR_ROLL --roll (remote player) / dice read (in-person player)--> MOVING
     MOVING --move_done--> RESOLVING --> one of
         WAITING_FOR_DECISION (unowned: buy yes/no)
-        WAITING_FOR_PAYMENT  (Grandma owes: waits for her card tap;
-                              remote payers settle immediately)
+        WAITING_FOR_PAYMENT  (only games saved mid-payment: every payment now settles at once)
         WAITING_FOR_CARD     (Crystal Ball / Chest of Spells: the player draws, camera reads)
         END_OF_TURN --> next player's WAITING_FOR_ROLL
                         (or a pay-the-fine decision if they're in the tower)
@@ -46,7 +45,7 @@ class Phase(str, Enum):
     MOVING = "MOVING"                          # waits for move_done from the bridge
     RESOLVING = "RESOLVING"
     WAITING_FOR_DECISION = "WAITING_FOR_DECISION"  # buy yes/no
-    WAITING_FOR_PAYMENT = "WAITING_FOR_PAYMENT"    # Grandma's card tap; auto for remote
+    WAITING_FOR_PAYMENT = "WAITING_FOR_PAYMENT"    # legacy card tap; kept so old saves can finish
     WAITING_FOR_CARD = "WAITING_FOR_CARD"
     END_OF_TURN = "END_OF_TURN"
     GAME_OVER = "GAME_OVER"
@@ -89,7 +88,7 @@ class GameState:
     #   {"kind": "card", "deck": "crystal", "for": "p2"}
     pending: dict | None = None
     payment_queue: list[dict] = field(default_factory=list)  # payments still to come this turn
-    last_card: dict | None = None   # {"id": "crystal_07", "for": "p2"}: shown in that kid's app
+    last_card: dict | None = None   # {"id": "crystal_07", "for": "p2"}: shown on that player's phone
     winner: str | None = None
 
     def player(self, pid: str) -> Player:
@@ -102,12 +101,17 @@ class GameState:
     def current_player(self) -> Player:
         return self.players[self.current]
 
+    @property
+    def host(self) -> Player:
+        """The board host: seat 1, always in person. Draws the cards for remote players."""
+        return self.players[0]
+
     def owner_of(self, square: int) -> Player | None:
         return next((p for p in self.players if square in p.properties), None)
 
 
 def new_game(game_id: str, specs: list[dict]) -> GameState:
-    """Build a game in LOBBY. specs: [{"name": "Grandma", "kind": "in_person"}, ...]
+    """Build a game in LOBBY. specs: [{"name": "Ava", "kind": "in_person"}, ...]
 
     The first player must be in_person (the host at the table). Any other seat may be
     in_person too (rolls the real dice, no phone needed) or remote (rolls in their app).
@@ -130,7 +134,7 @@ def new_game(game_id: str, specs: list[dict]) -> GameState:
             raise EngineError(f"start position must be 0-{rules.NUM_SQUARES - 1}")
         players.append(Player(
             id=f"p{i + 1}", name=name[:20], kind=kind, lane=i + 1, position=position,
-            # Grandma is present from the start; remote kids connect by link.
+            # In-person players are present from the start; remote players connect by link.
             connected=kind != "remote",
         ))
     return GameState(game_id=game_id, players=players)
@@ -222,7 +226,7 @@ def _set_attendance(s: GameState, actor: str, a: dict, rng: random.Random) -> li
     kind = a.get("kind")
     if kind not in PLAYER_KINDS:
         raise EngineError(f"unknown player kind: {kind}")
-    if p.id == s.players[0].id and kind != "in_person":
+    if p.id == s.host.id and kind != "in_person":
         raise EngineError("the board host must stay in person")
     if p.kind == kind:
         return []
@@ -434,7 +438,7 @@ def _resolve(s: GameState, p: Player, move: dict) -> list[dict]:
         return events + _end_turn(s)
 
     if sq["type"] == "card":
-        # Grandma draws the physical card for whoever landed; the camera reads it.
+        # A physical card is drawn (by the player if in person, else by the host); the camera reads it.
         s.phase = Phase.WAITING_FOR_CARD
         s.pending = {"kind": "card", "deck": sq["deck"], "for": p.id}
         return events + [{"type": "card_requested", "player": p.id, "deck": sq["deck"]}]

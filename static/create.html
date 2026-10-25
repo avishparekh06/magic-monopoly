@@ -44,8 +44,8 @@
     <!-- Step 1: who's playing -->
     <form id="create" class="tag" hidden>
       <h2>Who's playing?</h2>
-      <label for="grandma">At the board, in person</label>
-      <input id="grandma" value="Grandma" maxlength="20" required>
+      <label for="host-name">At the board, in person (you)</label>
+      <input id="host-name" placeholder="Your name" maxlength="20" required>
 
       <div id="seat-fields"></div>
 
@@ -68,7 +68,7 @@
         <p class="muted center">Choose In person or Virtual for each guest. You can change this until the game starts. Share a join link with virtual players.</p>
         <ul class="guests" id="guests"></ul>
         <div class="board-row">
-          <span class="who"><span class="name">Board laptop</span><span class="role">the screen next to Grandma's board</span></span>
+          <span class="who"><span class="name">Board laptop</span><span class="role">the screen next to the board</span></span>
           <a class="btn ink small" id="board-open" target="_blank" rel="noopener">Open</a>
           <button class="btn ink small" id="board-copy" type="button">Copy link</button>
           <button class="btn ink small" id="board-qr-btn" type="button">QR code</button>
@@ -127,13 +127,13 @@ for (const [n, label] of [[2, "Second player"], [3, "Third player"]]) {
       h("input", { id: `name${n}`, placeholder: "Name", maxlength: 20 }),
       h("select", { id: `kind${n}`, "aria-label": `${label}: who` },
         h("option", { value: "in_person", selected: n === 2 }, "At the board"),
-        h("option", { value: "remote" }, "Grandchild on a phone"),
+        h("option", { value: "remote" }, "Virtual, on a phone"),
         h("option", { value: "empty", selected: n === 3 }, "Empty seat"))));
 }
 
 document.getElementById("create").addEventListener("submit", async (e) => {
   e.preventDefault();  // stop the browser's default full-page form submit
-  const players = [{ name: document.getElementById("grandma").value, kind: "in_person" }];
+  const players = [{ name: document.getElementById("host-name").value, kind: "in_person" }];
   for (const n of [2, 3]) {
     const kind = document.getElementById(`kind${n}`).value;
     if (kind === "empty") continue;
@@ -181,8 +181,8 @@ function qr(url) {
 const hub = mountSessionHub({ onNewGame: account => {
   document.getElementById("home-menu").hidden = true;
   document.getElementById("create").hidden = false;
-  if (account) document.getElementById("grandma").value = Array.from(account.display_name).slice(0, 20).join("");
-  document.getElementById("grandma").focus();
+  if (account) document.getElementById("host-name").value = Array.from(account.display_name).slice(0, 20).join("");
+  document.getElementById("host-name").focus();
 } });
 document.getElementById("home-play").onclick = () => hub.openPlay();
 document.getElementById("home-history").onclick = () => hub.openHistory();
@@ -267,11 +267,12 @@ const qrEls = {};
 function linkButtons(p) {
   const url = links[p.id];
   if (!url || p.kind !== "remote") return null;
+  const host = lastLobbyState?.players[0]?.name || "us";
   return h("span", { class: "acts" },
     h("button", { class: "btn ink small", type: "button", onclick: () => copy(url) }, "Copy link"),
     navigator.share && h("button", {
       class: "btn ink small fill", type: "button",
-      onclick: () => navigator.share({ title: "Play with Grandma!", text: `${p.name}, tap to join Grandma's game:`, url }).catch(() => {}),
+      onclick: () => navigator.share({ title: `Play with ${host}!`, text: `${p.name}, tap to join ${host}'s game:`, url }).catch(() => {}),
     }, "Share"),
     h("button", { class: "btn ink small", type: "button", onclick: (e) => {
       qrOpen.has(p.id) ? qrOpen.delete(p.id) : qrOpen.add(p.id);

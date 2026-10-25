@@ -402,7 +402,7 @@ class GameRoom:
         async with self.lock:
             if self.state.phase != Phase.LOBBY:
                 raise EngineError("courtyard movement is only available while waiting in the lobby")
-            pid = self.state.players[0].id if actor == SYSTEM else actor
+            pid = self.state.host.id if actor == SYSTEM else actor
             if (role == "seat" and self.seats.get(pid) is not ws) or (role != "seat" and ws not in self.viewers):
                 raise EngineError("this lobby connection is no longer active")
             if msg.get("player", pid) != pid:

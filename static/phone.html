@@ -30,10 +30,10 @@
       <div class="lobby-hero">
         <div class="big">Magic Mirror</div>
         <h1 id="hello"></h1>
-        <p class="muted">Waiting for everyone to arrive at Grandma's table…</p>
+        <p class="muted">Waiting for everyone to arrive at the table…</p>
       </div>
       <div class="panel" id="lobby-seats"></div>
-      <p class="muted" style="text-align:center">Grandma's board will start the game.</p>
+      <p class="muted" style="text-align:center">The board host will start the game.</p>
     </section>
 
     <!-- Game -->
@@ -173,7 +173,7 @@ function render() {
     ? (state.winner === me ? "You won! " : "The tale is told!")
     : myTurn ? "Your turn! " : `${current.name}'s turn`;
 
-  // Only what this player has to do; other players' prompts (e.g. Grandma's "say yes or no") stay off this phone.
+  // Only what this player has to do; other players' prompts (e.g. an in-person "say yes or no") stay off this phone.
   const status = document.getElementById("status");
   status.textContent = myTurn ? statusText(state, boardData, me) : "";
   status.hidden = !status.textContent;
@@ -199,7 +199,7 @@ function render() {
 
   renderPicker();
 
-  // The last card Grandma drew for me
+  // The last card drawn for me at the table
   const lc = state.last_card;
   const card = lc && lc.for === me && cardData.cards.find((c) => c.id === lc.id);
   document.getElementById("card-slot").replaceChildren(card ? h("div", {
@@ -212,7 +212,7 @@ function render() {
   places.replaceChildren(renderPropertyCards(boardData, mine, { openSquare, showMoney, money: false }));
 }
 
-// "Which card was it?" — only if the camera can't read the card Grandma drew
+// "Which card was it?" — only if the camera can't read the card drawn for me
 // for me. Kept open across redraws so a state push doesn't collapse it.
 let pickerOpen = false;
 function renderPicker() {
@@ -223,7 +223,7 @@ function renderPicker() {
     return slot.replaceChildren();
   }
   const details = h("details", { class: "picker panel", open: pickerOpen },
-    h("summary", {}, "The Mirror can't see the card? Tap the one Grandma read out"),
+    h("summary", {}, "The Mirror can't see the card? Tap the one that was read out"),
     h("div", { class: "cards" }, cardData.cards.filter((c) => c.deck === pend.deck).map((c) =>
       h("button", { class: "btn secondary", onclick: () => act("card", { id: c.id }) }, c.title))));
   details.addEventListener("toggle", () => { pickerOpen = details.open; });

@@ -226,7 +226,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
             pid = room.seat_tokens.get(seat_token)
             if pid and room.state.player(pid).kind == "remote":
                 return RedirectResponse(f"/?game={game_id}&seat={seat_token}", status_code=302, headers={"Cache-Control": "no-store"})
-        return page("kid.html")
+        return page("phone.html")
 
     @app.get("/board/{game_id}")
     async def board_page(game_id: str):
@@ -515,7 +515,7 @@ def create_app(sim: bool = True, move_delay: float = 1.0, seed: int | None = Non
     async def ws_endpoint(ws: WebSocket, game_id: str, seat: str | None = None,
                           host: str | None = None, role: str | None = None):
         # Who you are comes from the URL credential, never from message contents:
-        #   ?seat=<token>  kid's phone, acts as that seat's player
+        #   ?seat=<token>  a remote player's phone, acts as that seat's player
         #   ?host=<token>  create/lobby page, acts as "system" (can start)
         #   ?role=board    board laptop, acts as "system" (start + dev panel)
         await ws.accept()

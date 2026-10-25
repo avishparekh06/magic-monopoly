@@ -24,8 +24,8 @@ class Mirror(ABC):
 
 
 class TemplateMirror(Mirror):
-    """Stub: one template per event type. Grandma never needs a screen, so
-    every payment touching her also says her new balance."""
+    """Stub: one template per event type. In-person players have no screen, so
+    every payment touching one of them also says their new balance."""
 
     async def line(self, event: dict, state: GameState) -> str | None:
         kind = event.get("type", "")
@@ -40,9 +40,9 @@ class TemplateMirror(Mirror):
         return next((p.name for p in state.players if p.id == pid), "Someone")
 
     @staticmethod
-    def _grandma_balance(state: GameState, *pids: str) -> str:
-        g = state.players[0]
-        return f" {g.name}, you now have {g.balance} gold." if g.id in pids else ""
+    def _spoken_balance(state: GameState, *pids: str) -> str:
+        return "".join(f" {p.name}, you now have {p.balance} gold."
+                       for p in state.players if p.id in pids and p.kind == "in_person")
 
     # --- lobby ---
     def _player_connected(self, e, s):
@@ -70,7 +70,7 @@ class TemplateMirror(Mirror):
 
     def _salary(self, e, s):
         return (f"{self._name(s, e['player'])} passes Once Upon a Time and collects {e['amount']} gold!"
-                + self._grandma_balance(s, e["player"]))
+                + self._spoken_balance(s, e["player"]))
 
     def _landed(self, e, s):
         return f"{self._name(s, e['player'])} arrives at {square(e['square'])['name']}."
@@ -130,14 +130,15 @@ class TemplateMirror(Mirror):
             text = f"{payer} paid {amount} gold to escape the tower."
         else:
             text = f"{payer} paid {payee} {amount} gold."
-        return text + self._grandma_balance(s, e["from"], e["to"])
+        return text + self._spoken_balance(s, e["from"], e["to"])
 
     # --- cards ---
     def _card_requested(self, e, s):
-        grandma = s.players[0]
+        lander = s.player(e["player"])
+        drawer = lander if lander.kind == "in_person" else s.host
         article = f"a {cards()['decks'][e['deck']]['name']} card"
-        for_whom = "for yourself" if e["player"] == grandma.id else f"for {self._name(s, e['player'])}"
-        return f"{grandma.name}, please draw {article} {for_whom} and lay it on the card spot."
+        for_whom = "for yourself" if drawer is lander else f"for {lander.name}"
+        return f"{drawer.name}, please draw {article} {for_whom} and lay it on the card spot."
 
     def _card_drawn(self, e, s):
         c = card(e["id"])
@@ -218,8 +219,8 @@ class MuseMirror(TemplateMirror):
     NARRATE = {"rolled", "landed", "paid", "bought", "card_drawn", "cursed", "jailed", "released",
                "salary", "bankrupt", "game_over", "repairs", "got_jail_key", "stayed_in_jail",
                "used_jail_key", "cant_afford", "move_failed"}
-    SYSTEM = ("You are the Magic Mirror, narrator of a fairy-tale Monopoly game. At the table sits the in-person "
-              "player; the other players are grandchildren on phones far away who cannot see the table, so your words "
+    SYSTEM = ("You are the Magic Mirror, narrator of a fairy-tale Monopoly game. At the table sit the in-person "
+              "players; the other players are remote players on phones far away who cannot see the table, so your words "
               "are their window into the room. One short sentence, at most 15 words. Warm, a little mischievous, in character, "
               "never explain rules, never break the fourth wall, no emoji, no quotation marks. Address players by name. "
               "If a draft line is given, keep its facts (names, places, amounts) exactly.")

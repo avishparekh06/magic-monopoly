@@ -1,4 +1,4 @@
-"""Grandma's lane moves through Avish's arduino/server.py, loaded unchanged, in one server."""
+"""The host's lane moves through Avish's arduino/server.py, loaded unchanged, in one server."""
 import asyncio
 
 import pytest
@@ -44,7 +44,7 @@ def test_stub_bridge_does_not_load_his_routes(hw):
         assert c.get("/board").status_code == 404
 
 
-def test_grandmas_game_move_goes_through_his_code(client, hw):
+def test_hosts_game_move_goes_through_his_code(client, hw):
     g = client.post("/api/games", json={"players": PLAYERS}).json()
     gid = g["game_id"]
     with client.websocket_connect(f"/ws/{gid}?role=board") as board, \
