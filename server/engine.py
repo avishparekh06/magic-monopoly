@@ -490,6 +490,8 @@ def _apply_card(s: GameState, p: Player, eff: dict) -> list[dict]:
         to = rules.nearest(p.position, eff["type"])
         flags = {k: eff[k] for k in ("rent_multiplier", "utility_multiplier") if k in eff}
         return _begin_move(s, p, to, **flags)
+    if kind == "forward":
+        return _begin_move(s, p, (p.position + eff["spaces"]) % rules.NUM_SQUARES)
     if kind == "back":
         return _begin_move(s, p, (p.position - eff["spaces"]) % rules.NUM_SQUARES, no_salary=True)
     if kind == "go_to_jail":

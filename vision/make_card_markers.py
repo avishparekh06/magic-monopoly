@@ -17,7 +17,11 @@ data = json.load(open(os.path.join(ROOT, "server", "cards.json"), encoding="utf-
 d = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_250)
 os.makedirs(OUT, exist_ok=True)
 
-items = [(c["marker"], c["id"], f"{data['decks'][c['deck']]['name']}: {c['title']}") for c in data["cards"]]
+items = [
+    (c["marker"], c["id"], f"{data['decks'][c['deck']]['name']}: {c['title']}"
+     + (f" — {c['text']}" if c["effect"]["kind"] == "forward" else ""))
+    for c in data["cards"]
+]
 items += [(m, pid, f"player card {pid}") for pid, m in data["player_card_markers"].items()]
 
 SIZE, PAD = 300, 50          # marker pixels and quiet zone; print at ~18 mm for the marker itself

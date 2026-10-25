@@ -476,3 +476,11 @@ Common ways to run it:
 ```
 
 Camera: `vision/live.py 0 --post` (dice), `vision/live.py 0 --cards --post` (ArUco cards), `vision/watch.py --frames` (calibrated mat, posts scene frames for the Mirror). Markers to print: `vision/card_markers/markers_letter.pdf`.
+
+### Card instruction update
+
+Marker **9** (`crystal_10`, Crystal Ball card 10, **Spoilers!**) now means
+**Move forward 3 spaces**. Its printed marker stays the same. Update the physical
+card's instruction text; the original `design/All Cards.pdf` still describes the
+older backwards action. Forward movement resolves the destination normally and
+collects 200 gold if it passes Once Upon a Time.

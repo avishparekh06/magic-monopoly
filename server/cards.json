@@ -139,11 +139,11 @@
       "id": "crystal_10",
       "deck": "crystal",
       "marker": 9,
-      "art": "⏪",
+      "art": "→",
       "title": "Spoilers!",
-      "text": "Move back 3 spaces.",
+      "text": "Move forward 3 spaces.",
       "effect": {
-        "kind": "back",
+        "kind": "forward",
         "spaces": 3
       }
     },

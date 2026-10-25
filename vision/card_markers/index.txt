@@ -7,7 +7,7 @@
   6  crystal_07   Crystal Ball: The Genie's Fine Print
   7  crystal_08   Crystal Ball: Golden Egg
   8  crystal_09   Crystal Ball: Flynn Rider to the Rescue
-  9  crystal_10   Crystal Ball: Spoilers!
+  9  crystal_10   Crystal Ball: Spoilers! — Move forward 3 spaces.
  10  crystal_11   Crystal Ball: Caught by the Witch
  11  crystal_12   Crystal Ball: Fee-Fi-Fo-Fum
  12  crystal_13   Crystal Ball: Pinocchio's Nose

@@ -74,13 +74,39 @@ def test_advance_to_once_upon_a_time_moves_and_pays_salary():
     assert s.player("p2").position == 0 and s.player("p2").balance == 1700
 
 
-def test_go_back_three_travels_forward_without_salary_and_pays_tax():
+def test_marker_nine_moves_forward_three_and_only_visits_tower():
+    from server.rules.monopoly import card
+    data = card("crystal_10")
+    assert data["marker"] == 9
+    assert data["text"] == "Move forward 3 spaces."
+    assert data["effect"] == {"kind": "forward", "spaces": 3}
     s, _ = maya_on_spells()
-    s, events = read(s, "crystal_10")                            # back 3: 7 -> 4 (King's Tithe)
-    assert events[-1] == {"type": "move", "player": "p2", "lane": 2, "from": SPELLS, "to": TITHE}
+    s, events = read(s, "crystal_10")
+    assert events[-1] == {"type": "move", "player": "p2", "lane": 2, "from": SPELLS, "to": TOWER}
+    assert not s.pending.get("no_salary") and not s.pending.get("to_jail")
     s, events = finish_move(s)
+    assert s.player("p2").position == TOWER
+    assert not s.player("p2").in_jail
+    assert s.player("p2").balance == 1500
     assert "salary" not in types(events)
-    assert s.player("p2").balance == 1300                      # paid the 200 tithe automatically
+
+
+@pytest.mark.parametrize("start,destination,salary", [(22, 25, False), (36, 39, False), (39, 2, True)])
+def test_forward_three_resolves_destination_and_passing_start(start, destination, salary):
+    s, _ = maya_on_spells()
+    s.player("p2").position = start
+    s, events = read(s, "crystal_10")
+    assert events[-1]["to"] == destination
+    assert s.player("p2").position == start  # Wait for the token to finish moving.
+    s, events = finish_move(s)
+    assert s.player("p2").position == destination
+    assert ("salary" in types(events)) == salary
+    assert s.player("p2").balance == 1500 + (200 if salary else 0)
+    if salary:
+        assert s.phase == Phase.WAITING_FOR_CARD and s.pending["deck"] == "chest"
+    else:
+        assert s.phase == Phase.WAITING_FOR_DECISION and s.pending["square"] == destination
+
 
 
 def test_nearest_ride_pays_double_rent():
